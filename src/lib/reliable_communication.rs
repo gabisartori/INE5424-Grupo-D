@@ -1,33 +1,40 @@
-use std::net::UdpSocket;
+/*
+As aplicações de propósito geral acessam a biblioteca a partir da API
+disponibilizada pela camada de difusão confiável (Reliable Communication),
+permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
+*/
+
+use std::net::SocketAddr;
+
+// Importa a camada de canais
+use super::channels::Channel;
+use crate::config::BUFFER_SIZE;
 
 pub struct ReliableCommunication {
-    socket: UdpSocket,
+    // a hashmap of channels, using the string address as the key
+    channel: Channel
 }
 
 impl ReliableCommunication {
-    pub fn new(port: u16) -> ReliableCommunication {
-        println!("Creating new ReliableCommunication instance");
-        let socket = UdpSocket::bind(format!("127.0.0.1:{}", port)).unwrap();
-        println!("Socket bound to {}", socket.local_addr().unwrap());
-        ReliableCommunication {
-            socket: socket,
-        }
+    // Função para inicializar a camada com um canal de comunicação
+    pub fn new(addr: &SocketAddr) -> Self {
+        let channel = Channel::initialize(&addr).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
+        Self { channel: channel }
     }
 
-
-    pub fn send(&self, host: &str, port: u16, message: &str) {
-        self.socket.send_to(message.as_bytes(), format!("{}:{}", host, port)).unwrap();
+    // Função para enviar mensagem com garantias de comunicação confiável
+    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8; BUFFER_SIZE]) {
+        // Implementação da lógica de comunicação confiável (ex.: retransmissão, ACKs, etc.)
+        self.channel.send(&dst_addr, message).expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        // Lógica para lidar com confirmação de entrega e retransmissão
     }
 
-    pub fn receive(&self, message: &mut [u8]) -> (usize, std::net::SocketAddr) {
-        self.socket.recv_from(message).unwrap()
-    }
+    // Função para receber mensagens confiáveis
+    pub fn receive(&self, buffer: &mut [u8; BUFFER_SIZE]) -> (usize, SocketAddr) {
+        self.channel.receive(buffer).expect("Falha ao receber mensagem no nível Rel_Com\n")
 
-    pub fn broadcast(message: &str) {
-        println!("Broadcasting message: {}", message);
-    }
-
-    pub fn deliver(message: &str) {
-        println!("Delivering message: {}", message);
+        // Lógica para validar e garantir a entrega confiável
+        // buffer[..size].to_vec() // Retorna a mensagem recebida
     }
 }
+
