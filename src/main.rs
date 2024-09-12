@@ -1,56 +1,61 @@
 mod lib {pub mod reliable_communication;}
-use lib::reliable_communication;
 
-use std::net::UdpSocket;
 use std::thread;
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::Arc;
+use std::env;
 
-fn client_1() {
-    reliable_communication::send("Hello world");
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    reliable_communication::send("Hello world");
+struct Agent {
+    port: u16,
+    agent_number: u32,
 }
 
-fn client_2() {
-    let socket = UdpSocket::bind("localhost:3001").expect("Could not bind to address");
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    let _ = socket.send_to("Hello world".as_bytes(), "localhost:3000").expect("Couldn't send data");
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    let _ = socket.send_to("Hello again".as_bytes(), "localhost:3000").expect("Couldn't send data");
-
-    println!("Client thread has finished executing");
-}
-
-fn server(tx: mpsc::Sender<()>) {
-    let socket = UdpSocket::bind("localhost:3000").expect("Could not bind to address");
-    println!("Listening on {}", socket.local_addr().unwrap());
-    
-    let mut buf = [0; 20];
-    loop {
-        let (number_of_bytes, src_addr) = socket.recv_from(&mut buf).expect("Didn't receive data");
-        let received = std::str::from_utf8(&buf[..number_of_bytes]).expect("Couldn't convert data to string");
-        if tx.send(()).is_err() {
-            break;
+impl Agent {
+    fn new(port: u16, agent_number: u32) -> Agent {
+        Agent {
+            port,
+            agent_number,
         }
-        println!("Received message from {src_addr}: {received}");
     }
-    println!("Server thread has finished executing");
+
+    fn listener(&self) {
+        println!("Agent {} is listening", self.agent_number);
+
+    }
+
+    fn sender(&self, user_controlled: bool) {
+        println!("Agent {} is sending messages", self.agent_number);
+
+    }
+
+    fn run(self: Arc<Self>) {
+        let listener_clone = Arc::clone(&self);
+        let sender_clone = Arc::clone(&self);
+
+        let listener = thread::spawn(move || listener_clone.listener());
+        let sender = thread::spawn(move || sender_clone.sender(false));
+
+        listener.join().unwrap();
+        sender.join().unwrap();
+    }
 }
+
 
 fn main() {
-    let (tx, rx) = std::sync::mpsc::channel();
+    let args: Vec<String> = env::args().collect();
+    let agent_number = match args.len() {
+        2 => args[1].parse::<u32>().unwrap(),
+        _ => 4,
+    };
 
-    let client = thread::spawn(client_2);
-    let server = thread::spawn(|| server(tx));
-    let timeout = std::time::Duration::from_secs(10);
-    loop {
-        match rx.recv_timeout(timeout) {
-            Ok(()) => println!("Server received a message"),
-            Err(RecvTimeoutError::Timeout) => {
-                println!("Server was up for {} seconds", timeout.as_secs());
-                break;
-            },
-            Err(RecvTimeoutError::Disconnected) => {println!("Client thread disconnected"); break;},
-        }
+    let mut agent_handlers: Vec<thread::JoinHandle<()>> = Vec::new();
+
+    let start_port = 3000;
+    for i in 0..agent_number {
+        let agent = Arc::new(Agent::new(start_port + (i as u16), i));
+        agent_handlers.push(thread::spawn(move || agent.run()));
+    }
+
+    for handler in agent_handlers {
+        handler.join().unwrap();
     }
 }
