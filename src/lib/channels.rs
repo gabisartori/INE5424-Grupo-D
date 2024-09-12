@@ -17,7 +17,7 @@ pub struct Channel {
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn initialize(bind_addr: &SocketAddr) -> Result<Self, Error> {
+    pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
         let socket = UdpSocket::bind(bind_addr)?;
         // socket.set_nonblocking(true)?;
         Ok(Self { socket: socket})
