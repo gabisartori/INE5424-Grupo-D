@@ -9,9 +9,11 @@ dependencies = [
  "arc",
  "environment",
  "error",
+ "ip-address",
  "rand 0.8.5",
  "socket_addr",
  "threading",
+ "time",
  "udp-socket",
 ]
 
@@ -198,6 +200,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
 
 [[package]]
+name = "deranged"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
+dependencies = [
+ "powerfmt",
+]
+
+[[package]]
 name = "environment"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -352,6 +363,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ip-address"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08e3c9e8120c1d9ea6f6b63b84ec425c53653302f9b14925eceec6c2fd2cb0b7"
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,6 +415,12 @@ checksum = "e2d80299ef12ff69b16a84bb182e3b9df68b5a91574d3d4fa6e41b65deec4df1"
 dependencies = [
  "adler2",
 ]
+
+[[package]]
+name = "num-conv"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
 name = "num-traits"
@@ -513,6 +536,12 @@ dependencies = [
  "pin-project-lite",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "powerfmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "ppv-lite86"
@@ -713,6 +742,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8e3592472072e6e22e0a54d5904d9febf8508f65fb8552499a1abc7d1078c3a"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "243902eda00fad750862fc144cea25caca5e20d615af0a81bee94ca738f1df1f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.77",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -788,6 +837,25 @@ checksum = "c50cf14be468c0bdaff48e295804718dc2c45daa0b5f5c6959750b316f36b468"
 dependencies = [
  "num_cpus",
 ]
+
+[[package]]
+name = "time"
+version = "0.3.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
+dependencies = [
+ "deranged",
+ "num-conv",
+ "powerfmt",
+ "serde",
+ "time-core",
+]
+
+[[package]]
+name = "time-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "traitobject"
