@@ -4,4 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arc = "0.0.1"
+environment = "0.1.1"
+error = "0.1.9"
 rand = "0.8.5"
+socket_addr = "0.1.0"
+sync = "0.1.0"
+threading = "0.1.2"
+udp-socket = "0.1.5"
