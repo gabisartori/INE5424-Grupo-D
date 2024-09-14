@@ -21,7 +21,6 @@ pub struct ReliableCommunication {
 impl ReliableCommunication {
     // Função para inicializar a camada com um canal de comunicação
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
-        println!("{}", host);
         let channel = Channel::new(&host)
         .expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
         Self { channel: channel, host: host, group: group }
@@ -71,7 +70,6 @@ impl ReliableCommunication {
         Se o ACK de um pacote é perdido ou a entrega falha, todos os pacotes a partir do pacote perdido são retransmitidos.
         Quando um ACK é recebido, a janela é movida para frente, permitindo o envio de novos pacotes.
         */
-
         self.channel.send(&dst_addr, message).expect("Falha ao enviar mensagem no nível Rel_Com\n");
         // Lógica para lidar com confirmação de entrega e retransmissão
     }

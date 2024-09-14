@@ -3,7 +3,7 @@
 #![allow(unused_mut)]
 #![allow(dead_code)]
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::thread;
 use std::sync::Arc;
 use std::env;
@@ -18,7 +18,7 @@ use lib::reliable_communication::ReliableCommunication;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, BUFFER_SIZE, FAILURE_DETECTION_INTERVAL, HEARTBEAT_INTERVAL, NODES, TIMEOUT};
+use config::{Node, BUFFER_SIZE, FAILURE_DETECTION_INTERVAL, HEARTBEAT_INTERVAL, LOCALHOST, NODES, TIMEOUT};
 
 struct Agent {
     addr: SocketAddr,
@@ -48,14 +48,17 @@ impl Agent {
     fn sender(&self, user_controlled: bool) {
         println!("Agent {} is sending messages", self.agent_number);
 
-        for node in NODES.to_vec() {
-            if node.addr == self.addr { continue; }
-            println!("\nAgent {} sending message to Agent {}\n", self.agent_number, node.agent_number);
-            
-            let message: [u8; BUFFER_SIZE] = self.format_message(&"Hello from Agent".to_string(), self.agent_number);
-            self.communication.send(&(node.addr), &message);
+        loop {
+            for node in NODES.to_vec() {
+                if node.addr == self.addr { continue; }
+                println!("\nAgent {} sending message to Agent {}\n", self.agent_number, node.agent_number);
+                
+                let message: [u8; BUFFER_SIZE] = self.format_message(&"Hello from Agent".to_string(), self.agent_number);
+                self.communication.send(&(node.addr), &message);
+            }
             thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
         }
+
     }
 
     fn run(self: Arc<Self>) {
@@ -91,17 +94,13 @@ fn main() {
         agent_number = NODES.len() as u32;
     }
 
-    let mut agent_handlers: Vec<thread::JoinHandle<()>> = Vec::new();
+    // let mut agent_handlers: Vec<thread::JoinHandle<()>> = Vec::new();
 
-    for i in 0..agent_number {
-        let node: Node  = NODES[i as usize].clone();
-        let agent: Arc<Agent> = Arc::new(Agent::new(node.addr, i));
-        agent_handlers.push(thread::spawn(move || agent.run()));
-    }
+    let agent: Arc<Agent> = Arc::new(Agent::new(SocketAddr::new(config::EU_UFSC, 3000), 0));
+    let agent_handler = thread::spawn(move || agent.run());
+    agent_handler.join().unwrap();
 
-    println!();
-
-    for handler in agent_handlers {
-        handler.join().unwrap();
-    }
+    // for handler in agent_handlers {
+    //     handler.join().unwrap();
+    // }
 }
