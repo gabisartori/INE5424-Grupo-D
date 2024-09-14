@@ -20,11 +20,11 @@ impl Channel {
     pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
         let socket = UdpSocket::bind(bind_addr)?;
         // socket.set_nonblocking(true)?;
-        Ok(Self { socket: socket})
+        Ok(Self { socket })
     }
 
     // Função para enviar mensagem para um destinatário específico
-    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8; BUFFER_SIZE]) -> Result<(), Error> {
+    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8]) -> Result<(), Error> {
         self.socket.send_to(message, dst_addr)?;
         Ok(())
     }

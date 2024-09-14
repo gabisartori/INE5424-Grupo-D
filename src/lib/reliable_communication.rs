@@ -11,9 +11,9 @@ use crate::config::{BUFFER_SIZE, Node};
 use std::net::SocketAddr;
 
 pub struct ReliableCommunication {
-    channel: Channel,
-    host: SocketAddr,
-    group: Vec<Node>,
+    pub channel: Channel,
+    pub host: SocketAddr,
+    pub group: Vec<Node>
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -27,7 +27,7 @@ impl ReliableCommunication {
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
-    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8; BUFFER_SIZE]) {
+    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8]) {
         /*
         pseudo-código:
         INICIO GoBackN(Sender, Receiver, N)
