@@ -7,19 +7,33 @@ pub struct Node {
     pub agent_number: u32
 }
 
-// Endereço IP do localhost
+// Endereços IP úteis
 pub const LOCALHOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 pub const MAYKON: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 208));
-pub const UFSC: IpAddr = IpAddr::V6(Ipv6Addr::new(0x2801, 0x84, 0, 0x2, 0, 0, 0, 0x10));
-pub const EU_UFSC: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
+pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
 
-pub const P1_ADDR: Node = Node{addr: SocketAddr::new(MAYKON, 3000), agent_number: 1};
-pub const P2_ADDR: Node = Node{addr: SocketAddr::new(LOCALHOST, 3001), agent_number: 1};
-pub const P3_ADDR: Node = Node{addr: SocketAddr::new(LOCALHOST, 3002), agent_number: 2};
+
+/*
+    Existem dois estados principais para os valores de AGENT_NUM e NODES
+    1. Cenário de teste local: AGENT_NUM é um valor qualquer e não há NODES remotos
+    2. Cenário que imita um ambiente distribuído: AGENT_NUM é 1 (apenas a própria máquina) e NODES é um vetor com os vários endereços de outras máquinas pertencentes ao grupo
+*/
+
+// Quantia de agentes locais a serem criados
+pub const AGENT_NUM: u32 = 4;
+
+// Endereços de agentes externos
+// pub const NODES: Option<&[Node]> = Some(&[
+//     Node { addr: SocketAddr::new(MAYKON, 8080), agent_number: 1 },
+//     Node { addr: SocketAddr::new(MAYKON, 8081), agent_number: 2 },
+//     Node { addr: SocketAddr::new(MAYKON, 8082), agent_number: 3 },
+//     Node { addr: SocketAddr::new(MAYKON, 8083), agent_number: 4 }
+// ]);
+pub const NODES: Option<&[Node]> = None;
+
+
+// Configurações da comunicação
 pub const TIMEOUT: u64 = 1000; // 1 segundo
 pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
 pub const BUFFER_SIZE: usize = 1024;
-
-// um vetor com os endereços dos processos
-pub const NODES: [Node; 1] = [P1_ADDR];
