@@ -18,7 +18,7 @@ use lib::reliable_communication::ReliableCommunication;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{BUFFER_SIZE, NODES, TIMEOUT, HEARTBEAT_INTERVAL, FAILURE_DETECTION_INTERVAL};
+use config::{Node, BUFFER_SIZE, FAILURE_DETECTION_INTERVAL, HEARTBEAT_INTERVAL, NODES, TIMEOUT};
 
 struct Agent {
     addr: SocketAddr,
@@ -31,7 +31,7 @@ impl Agent {
         Agent {
             addr,
             agent_number,
-            communication: ReliableCommunication::new(&addr)
+            communication: ReliableCommunication::new(addr, NODES.to_vec())
         }
     }
 
@@ -48,20 +48,12 @@ impl Agent {
     fn sender(&self, user_controlled: bool) {
         println!("Agent {} is sending messages", self.agent_number);
 
-        for addr in NODES {
-            println!("\nAgent {} sending message to {}\n", self.agent_number, addr);
+        for node in NODES.to_vec() {
+            if node.addr == self.addr { continue; }
+            println!("\nAgent {} sending message to Agent {}\n", self.agent_number, node.agent_number);
             
-            let message: [u8; 1024] = {
-                let msg = format!("Hello agent {}", addr);
-                let msg = msg.as_bytes();
-                // format the message to a [u8; 1024] size
-                let mut message_array: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-                for i in 0..msg.len() {
-                    message_array[i] = msg[i];
-                }
-                message_array
-            };
-            self.communication.send(&addr, &message);
+            let message: [u8; BUFFER_SIZE] = self.format_message(&"Hello from Agent".to_string(), self.agent_number);
+            self.communication.send(&(node.addr), &message);
             thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
         }
     }
@@ -75,6 +67,15 @@ impl Agent {
 
         listener.join().unwrap();
         sender.join().unwrap();
+    }
+
+    fn format_message(&self, message: &String, id: u32) -> [u8; BUFFER_SIZE] {
+        let message = format!("{} {}", message, id);
+        let mut message_array: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+        for i in 0..message.len() {
+            message_array[i] = message.as_bytes()[i];
+        }
+        message_array
     }
 }
 
@@ -93,8 +94,8 @@ fn main() {
     let mut agent_handlers: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for i in 0..agent_number {
-        let address: SocketAddr  = NODES[i as usize];
-        let agent: Arc<Agent> = Arc::new(Agent::new(address, i));
+        let node: Node  = NODES[i as usize].clone();
+        let agent: Arc<Agent> = Arc::new(Agent::new(node.addr, i));
         agent_handlers.push(thread::spawn(move || agent.run()));
     }
 
