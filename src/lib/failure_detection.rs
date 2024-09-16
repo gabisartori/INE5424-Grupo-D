@@ -65,7 +65,7 @@ impl FailureDetection {
     // Função para verificar se um processo está morto
     pub fn is_dead(&self, addr: &SocketAddr) -> bool {
         if let Some(process) = self.processes.get(addr) {
-            process.last_heartbeat.elapsed() > Duration::from_millis(TIMEOUT)
+            process.last_heartbeat.elapsed() > Duration::from_millis(TIMEOUT as u64)
         } else {
             false
         }
@@ -74,7 +74,7 @@ impl FailureDetection {
     // Função para verificar se um processo está morto
     pub fn detect_failures(&mut self) {
         for (addr, process) in self.processes.iter_mut() {
-            if process.last_heartbeat.elapsed() > Duration::from_millis(TIMEOUT) {
+            if process.last_heartbeat.elapsed() > Duration::from_millis(TIMEOUT as u64) {
                 process.is_alive = false;
             }
         }

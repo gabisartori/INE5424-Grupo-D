@@ -6,14 +6,14 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
-use crate::config::{BUFFER_SIZE, Node};
+use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
 
 pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
-    pub group: Vec<Node>
+    pub group: Vec<Node>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -28,49 +28,45 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: &[u8]) {
-        /*
-        pseudo-código:
-        INICIO GoBackN(Sender, Receiver, N)
+        let mut base = 0;
+        let mut buffer_acks: [u8; W_SIZE] = [0; W_SIZE];
+        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect::<Vec<&[u8]>>();
+        let mut next_seq_num = 0;
+        loop {
+            if next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
+                let pck = packages[next_seq_num];
+                // enviando pacotes da janela
+                self.channel.send(&dst_addr, pck)
+                .expect("Falha ao enviar mensagem no nível Rel_Com\n");
+                next_seq_num += 1;
+            } else {
+                // Lógica para confirmar recebimento de ACKs
+                let mut timer = std::time::Instant::now();
+                loop {
+                    if timer.elapsed().as_millis() < TIMEOUT {
+                        let mut ack_buffer = [0; BUFFER_SIZE];
+                        let (size, src) = self.receive(&mut ack_buffer);
+                        let ack = ack_buffer[0] as usize;
+                        if ack == base {
+                            base += 1;
+                        } else {
+                            next_seq_num = base;                        
+                            break;
+                        }
+                        if base == next_seq_num {
+                            break;
+                        }
+                    } else { // timeout estourado
+                        next_seq_num = base;
+                        break;
+                    }
+                }
 
-            base ← 0
-            nextSeqNum ← 0
-            janela ← N
-            bufferACKS ← []
-
-            ENQUANTO houver pacotes a serem enviados OU pacotes aguardando ACK:
-                SE nextSeqNum < base + janela E houver pacotes a serem enviados:
-                pacote ← PROXIMO_PACOTE()
-                ENVIAR pacote[nextSeqNum] PARA Receiver
-                nextSeqNum ← nextSeqNum + 1
-                FIMSE
-
-                INICIAR temporizador
-
-                ENQUANTO temporizador não expirar:
-                SE ACK for recebido E ACK = base OU bufferACKS CONTER ACK:
-                    base ← ACK + 1
-                    INTERROMPER temporizador
-                FIMSE
-                FIMENQUANTO
-
-                SE temporizador expirar:
-                PARA i DE base ATÉ nextSeqNum - 1:
-                    ENVIAR pacote[i] novamente PARA Receiver
-                FIMPARA
-                REINICIAR temporizador
-                FIMSE
-
-            FIMENQUANTO
-
-        FIM GoBackN
-
-        Explicação:
-        O remetente mantém uma janela de tamanho N.
-        Ele envia pacotes até que o nextSeqNum atinja o limite da janela.
-        Se o ACK de um pacote é perdido ou a entrega falha, todos os pacotes a partir do pacote perdido são retransmitidos.
-        Quando um ACK é recebido, a janela é movida para frente, permitindo o envio de novos pacotes.
-        */
-        self.channel.send(&dst_addr, message).expect("Falha ao enviar mensagem no nível Rel_Com\n");
+                if next_seq_num >= packages.len() {
+                    break;
+                }
+            }
+        }
         // Lógica para lidar com confirmação de entrega e retransmissão
     }
 
