@@ -28,10 +28,9 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
-        let mut base = 0;
-        let mut buffer_acks: [u8; W_SIZE] = [0; W_SIZE];
-        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
+        let mut base: usize = 0;
         let mut next_seq_num = 0;
+        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
         loop {
             if next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
                 // let mut pck: [u8] = packages[next_seq_num];
@@ -43,6 +42,7 @@ impl ReliableCommunication {
                     ack_num: 0,
                     seq_num: next_seq_num as u32,
                     msg_size: msg.len(),
+                    checksum: 0,
                     flags: 0,
                     is_last: next_seq_num + 1 == packages.len(),
                     msg: msg,
@@ -98,6 +98,7 @@ impl ReliableCommunication {
                     ack_num: header.seq_num,
                     seq_num: 0,
                     msg_size: 0,
+                    checksum: 0,
                     flags: 0,
                     is_last: false,
                     msg: Vec::new(),

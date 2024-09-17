@@ -40,7 +40,10 @@ pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
 pub const BUFFER_SIZE: usize = 1024;
 
 // Mensagem com 10240 bytes para testes
-pub const LARGE_MSG: &str = "\n\nSTART OF MESSAGE\n
+pub const LARGE_MSG: &str = "
+--------------------------------------
+START OF MESSAGE
+--------------------------------------
 Universidade Federal de Santa Catarina - UFSC
 Departamento em Informática e Estatística
 INE5424-06208B - Sistemas Operacionais II
@@ -63,4 +66,8 @@ transmitidas pelos protocolos de rede subjacentes. A biblioteca deve ser impleme
 linguagem C++ e a comunicação entre processos deve ser feita por sockets padrão
 (Berkeley sockets / POSIX.1-2008). Não é admitido o uso de bibliotecas pré-existentes para
 comunicação confiável ou que apresentem outras abstrações de comunicação para além do
-uso de sockets padrão.\n\nEND OF MESSAGE\n\n";
+uso de sockets padrão.
+--------------------
+END OF MESSAGE
+--------------------
+";
