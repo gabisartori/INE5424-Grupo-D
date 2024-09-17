@@ -13,7 +13,7 @@ use std::io::Error;
 use std::process::Output;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
-const HEADER_SIZE: usize = 29; // Header::new_empty().to_bytes().len()
+const HEADER_SIZE: usize = 30; // Header::new_empty().to_bytes().len()
 // estrutura para o cabeçalho
 pub struct Header {
     pub src_addr: SocketAddr,
@@ -22,6 +22,7 @@ pub struct Header {
     pub seq_num: u32,
     pub msg_size: usize,
     pub flags: u8,
+    pub is_last: bool,
     // um vetor mutável de bytes
     pub msg: Vec<u8>,
 }
@@ -35,6 +36,7 @@ impl<'a> Header {
             seq_num: 0,
             msg_size: 0,
             flags: 0,
+            is_last: false,
             // a mensagem é uma array de bytes vazio
             msg: Vec::new(),
         }
@@ -55,6 +57,7 @@ impl<'a> Header {
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.extend_from_slice(&self.msg_size.to_be_bytes());
         bytes.push(self.flags);
+        bytes.push(self.is_last as u8);
         bytes.extend_from_slice(self.msg.as_slice());
         bytes
     }
@@ -75,6 +78,7 @@ impl<'a> Header {
             bytes[24], bytes[25], bytes[26], bytes[27]
         ]);
         let flags = bytes[28];
+        let is_last = bytes[29] == 1;
         let mut msg = bytes[HEADER_SIZE..].to_vec();
         
         self.src_addr = src_addr;
@@ -83,6 +87,7 @@ impl<'a> Header {
         self.seq_num = seq_num;
         self.msg_size = msg_size;
         self.flags = flags;
+        self.is_last = is_last;
         self.msg = msg;
     }
 }

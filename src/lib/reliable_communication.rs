@@ -38,17 +38,26 @@ impl ReliableCommunication {
                 let mut msg = packages[next_seq_num].to_vec();
                 let mut msg = msg.as_mut_slice();
                 // enviando pacotes da janela
-                self.raw_send(&dst_addr, &mut msg);
+                let header = Header {
+                    src_addr: self.host,
+                    dst_addr: *dst_addr,
+                    ack_num: 0,
+                    seq_num: next_seq_num as u32,
+                    msg_size: msg.len(),
+                    flags: 0,
+                    is_last: next_seq_num + 1 == packages.len(),
+                    msg: msg.to_vec(),
+                };
+                self.raw_send(header);
                 next_seq_num += 1;
             } else {
                 // Lógica para confirmar recebimento de ACKs
                 let mut timer = std::time::Instant::now();
                 loop {
                     if timer.elapsed().as_millis() < TIMEOUT {
-                        let mut ack_buffer = [0; BUFFER_SIZE];
-                        let (size, src) = self.receive(&mut ack_buffer);
-                        let ack = ack_buffer[0] as usize;
-                        if ack == base {
+                        let mut header = Header::new_empty();
+                        self.raw_receive(&mut header);
+                        if header.ack_num as usize == base {
                             base += 1;
                         } else {
                             next_seq_num = base;                        
@@ -73,34 +82,47 @@ impl ReliableCommunication {
     // Função para receber mensagens confiáveis
     pub fn receive(&self, buffer: &mut [u8]) -> (usize, SocketAddr) {
         let mut header = Header::new_empty();
-        let (size, src) =  self.channel.receive(&mut header)
-        .expect("Falha ao receber mensagem no nível Rel_Com\n");
-        buffer.copy_from_slice(&header.msg);
-        // Lógica para validar e garantir a entrega confiável
-        if self.validate_message(buffer) {
-            (size, src)
-        } else {
-            (0, src)
+        let mut vec_buffer: Vec<u8> = Vec::new();
+        let mut src = self.host;
+        loop {
+            self.raw_receive(&mut header);
+            vec_buffer.extend_from_slice(&header.msg);
+            src = header.src_addr;
+            // Lógica para validar e garantir a entrega confiável
+            if self.validate_message(&header) {
+                let ack_header = Header {
+                    src_addr: self.host,
+                    dst_addr: src,
+                    ack_num: header.seq_num,
+                    seq_num: 0,
+                    msg_size: 0,
+                    flags: 0,
+                    is_last: false,
+                    msg: Vec::new(),
+                };
+                self.raw_send(ack_header);
+            }
+            if header.is_last {
+                break;
+            }
         }
+        buffer.copy_from_slice(&vec_buffer);
+        (vec_buffer.len(), src)
     }
 
-    fn validate_message(&self, message: &[u8]) -> bool {
+    fn validate_message(&self, header: &Header) -> bool {
         // Lógica para validar a mensagem recebida
         true
     }
 
-    fn raw_send(&self, dst_addr: &SocketAddr, message: &mut [u8]) {
-        let header = Header {
-            src_addr: self.host,
-            dst_addr: *dst_addr,
-            ack_num: 0,
-            seq_num: 0,
-            msg_size: message.len(),
-            flags: 0,
-            msg: message.to_vec(),
-        };
+    fn raw_send(&self, header: Header) {
         self.channel.send(header)
         .expect("Falha ao enviar mensagem no nível Rel_Com\n");
+    }
+
+    fn raw_receive(&self, header: &mut Header){
+        self.channel.receive(header)
+        .expect("Falha ao receber mensagem no nível Rel_Com\n");
     }
 }
 

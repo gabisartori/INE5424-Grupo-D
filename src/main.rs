@@ -67,6 +67,7 @@ impl Agent {
                 => se não for alocado na memória (em uma variável), não dá pra passar a referência (&[u8])
             */
             let msg: String = format!("Hello from agent {}", self.id);
+            // let msg: String = config::LARGE_MSG.to_string();
             let msg: &[u8] = msg.as_bytes();
             println!("Agent {} sending message to agent {}", self.id, destination);
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
