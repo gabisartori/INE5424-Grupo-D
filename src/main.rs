@@ -18,7 +18,7 @@ use lib::reliable_communication::ReliableCommunication;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, BUFFER_SIZE, FAILURE_DETECTION_INTERVAL, HEARTBEAT_INTERVAL, LOCALHOST, NODES, TIMEOUT};
+use config::{Node, LOCALHOST, NODES};
 
 struct Agent {
     id: u32,
@@ -36,7 +36,7 @@ impl Agent {
     }
 
     fn listener(&self) {
-        println!("Agent {} is listening", self.id);
+        // println!("Agent {} is listening", self.id);
         loop {
             let mut message: [u8; 1024] = [0; 1024];
             let (size, sender) = self.communication.receive(&mut message);
@@ -46,7 +46,7 @@ impl Agent {
     }
 
     fn sender(&self, user_controlled: bool) {
-        println!("Agent {} is sending messages", self.id);
+        // println!("Agent {} is sending messages", self.id);
 
         // Choice of destination for each message the agent sends
         let mut destination: u32;
@@ -63,11 +63,13 @@ impl Agent {
                 TODO: Isso aqui tá uma gambiarra eu não entendo por que fazer direto
                 format!("Hello from agent {}", self.id).as_bytes()
                 Dá erro.
-            */ 
+                =>=> Porque format! retorna um String e não um &str,
+                => se não for alocado na memória (em uma variável), não dá pra passar a referência (&[u8])
+            */
             let msg: String = format!("Hello from agent {}", self.id);
-            let message: &[u8] = msg.as_bytes();
+            let msg: &[u8] = msg.as_bytes();
             println!("Agent {} sending message to agent {}", self.id, destination);
-            self.communication.send(&(self.communication.group[destination as usize].addr), message);
+            self.communication.send(&(self.communication.group[destination as usize].addr), msg);
 
             // Sleep for a random amount of time
             thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
