@@ -27,7 +27,7 @@ impl ReliableCommunication {
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
-    pub fn send(&self, dst_addr: &SocketAddr, message: &[u8]) {
+    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
         let mut base = 0;
         let mut buffer_acks: [u8; W_SIZE] = [0; W_SIZE];
         let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
@@ -35,8 +35,7 @@ impl ReliableCommunication {
         loop {
             if next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
                 // let mut pck: [u8] = packages[next_seq_num];
-                let mut msg = packages[next_seq_num].to_vec();
-                let mut msg = msg.as_mut_slice();
+                let mut msg: Vec<u8> = packages[next_seq_num].to_vec();
                 // enviando pacotes da janela
                 let header = Header {
                     src_addr: self.host,
@@ -46,7 +45,7 @@ impl ReliableCommunication {
                     msg_size: msg.len(),
                     flags: 0,
                     is_last: next_seq_num + 1 == packages.len(),
-                    msg: msg.to_vec(),
+                    msg: msg,
                 };
                 self.raw_send(header);
                 next_seq_num += 1;
@@ -54,24 +53,29 @@ impl ReliableCommunication {
                 // Lógica para confirmar recebimento de ACKs
                 let mut timer = std::time::Instant::now();
                 loop {
+                    // enquanto não houver timeout nem não receber todos os ACKs
                     if timer.elapsed().as_millis() < TIMEOUT {
                         let mut header = Header::new_empty();
+                        // recebendo os acks em um header vazio
                         self.raw_receive(&mut header);
-                        if header.ack_num as usize == base {
+                        if header.ack_num == base as u32 {
                             base += 1;
                         } else {
+                            // perdeu um pacote, reinicia a janela a partir do perdido
                             next_seq_num = base;                        
                             break;
                         }
                         if base == next_seq_num {
+                            // todos os pacotes foram enviados
                             break;
                         }
-                    } else { // timeout estourado
+                    } else {
+                        // timeout estourado
                         next_seq_num = base;
                         break;
                     }
                 }
-
+                // se todos os pacotes foram enviados
                 if next_seq_num >= packages.len() {
                     break;
                 }
@@ -80,19 +84,17 @@ impl ReliableCommunication {
     }
 
     // Função para receber mensagens confiáveis
-    pub fn receive(&self, buffer: &mut [u8]) -> (usize, SocketAddr) {
+    pub fn receive(&self, buffer: &mut Vec<u8>) -> (usize, SocketAddr) {
         let mut header = Header::new_empty();
         let mut vec_buffer: Vec<u8> = Vec::new();
-        let mut src = self.host;
         loop {
             self.raw_receive(&mut header);
             vec_buffer.extend_from_slice(&header.msg);
-            src = header.src_addr;
             // Lógica para validar e garantir a entrega confiável
             if self.validate_message(&header) {
                 let ack_header = Header {
                     src_addr: self.host,
-                    dst_addr: src,
+                    dst_addr: header.src_addr,
                     ack_num: header.seq_num,
                     seq_num: 0,
                     msg_size: 0,
@@ -106,8 +108,8 @@ impl ReliableCommunication {
                 break;
             }
         }
-        buffer.copy_from_slice(&vec_buffer);
-        (vec_buffer.len(), src)
+        buffer.extend_from_slice(&vec_buffer);
+        (vec_buffer.len(), header.src_addr)
     }
 
     fn validate_message(&self, header: &Header) -> bool {
