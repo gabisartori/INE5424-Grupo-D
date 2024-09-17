@@ -4,10 +4,13 @@
 #![allow(dead_code)]
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::process::ExitCode;
 use std::thread;
 use std::sync::Arc;
 use std::env;
 use rand::Rng;
+// use std::io::Write;
+// use std::fs::{File, OpenOptions};
 
 mod lib {
     pub mod reliable_communication;
@@ -37,26 +40,24 @@ impl Agent {
 
     fn listener(&self) {
         // println!("Agent {} is listening", self.id);
+        // let path = format!("testes/listener_{}.txt", self.id);
+        // let mut file: File = OpenOptions::new().append(true).open(path).unwrap();
         // loop
         {
             let mut message: Vec<u8> = Vec::new();
             let (size, sender) = self.communication.receive(&mut message);
-            // println!("\nAgent {} receiving {} bytes from {}\nMessage: {}\n", self.id, size, sender, std::str::from_utf8(&message).unwrap());
-            print!("Agent {} receiving {} bytes from {}\nMessage: ", self.id, size, sender);
             // divide a mensagem em chunks de forma que possa ser convertida para string
             let chuncked_msg = message.chunks(BUFFER_SIZE);
             let mut full_msg: Vec<&str> = Vec::new();
             for m in chuncked_msg {
-                let msg: Result<&str, std::str::Utf8Error> = std::str::from_utf8(&m);
-                match msg {
-                    Ok(msg) => {
-                        print!("{}", msg);
-                        full_msg.push(msg); },
-                    Err(e) => { println!("\n-------------------------\nError\n------------------");                   
-                    }
-                }
+                let pck = std::str::from_utf8(&m).unwrap();
+                full_msg.push(pck);
             }
-            // let msg = full_msg.join("");
+            let msg = full_msg.join("");
+            let msf = format!("Agent {} receiving {} bytes from {}\n--> Message:\n{}", self.id, size, sender, msg);
+            // write message to a listener.txt file
+            // file.write_all(msf.as_bytes()).unwrap();
+            println!("{}", msf);
         }
     }
 
@@ -84,13 +85,12 @@ impl Agent {
             */
             // let msg: String = format!("Hello from agent {}", self.id);
             let msg: String = config::LARGE_MSG.to_string();
-            println!("the message has {} bytes and is:\n{}", msg.len(), msg);
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             println!("Agent {} sending message to agent {}", self.id, destination);
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
 
             // Sleep for a random amount of time
-            thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
+            // thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
         }
     }
 
