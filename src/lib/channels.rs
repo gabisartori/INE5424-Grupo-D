@@ -13,6 +13,7 @@ use std::io::Error;
 use std::process::Output;
 use std::sync::mpsc;
 use std::thread;
+use std::collections::HashMap;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
 const HEADER_SIZE: usize = 32; // Header::new_empty().to_bytes().len()
@@ -134,7 +135,9 @@ pub struct Channel {
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(bind_addr: &SocketAddr, input_rx: mpsc::Receiver<mpsc::Sender<Header>>) -> Result<Self, Error> {
+    pub fn new(bind_addr: &SocketAddr,
+        input_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>)
+         -> Result<Self, Error> {
         let socket = UdpSocket::bind(bind_addr)?;
         // Instantiate sender and listener threads
         // And create a channel to communicate between them
@@ -144,19 +147,20 @@ impl Channel {
         Ok(Self { socket})
     }
 
-    fn listener(rx: mpsc::Receiver<mpsc::Sender<Header>>, socket: UdpSocket) {
-        let mut sends: Vec<mpsc::Sender<Header>> = Vec::new();
+    fn listener(rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>, socket: UdpSocket) {
         let mut headers: Vec<Header> = Vec::new();
         let mut msgs: Vec<Header> = Vec::new();
+        // a hashmap for the senders, indexed by the destination address
+        let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
         loop {
             loop {
                 // Receber tx sempre que a função send for chamada
                 match rx.try_recv() {
                     // Se a função send foi chamada, armazenar o tx (unwraped)
-                    Ok(tx) => sends.push(tx),
+                    Ok((tx, key)) => sends.insert(key, tx),
                     // Se não, quebrar o loop
                     Err(_) => break,
-                }
+                };
             }
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
@@ -173,15 +177,21 @@ impl Channel {
                 // If it's an ACK, send it to the corresponding sender
                 if header.flags == 1 { // ack
                     let dst = header.dst_addr;
-                    for tx in sends.iter() {
-                        // verficar se o endereço de destino é o mesmo do header
-                        // se for, enviar o header para o sender
-                        continue; // TODO: achar alguma forma de identificar os tx's
+                    match sends.get(&dst) {
+                        Some(tx) => {
+                            match tx.send(header.clone()) {
+                                Ok(_) => (),
+                                Err(_) => (),
+                            }
+                        }
+                        None => (),
                     }
                 } else {
                     // If it's a message, keep it to itself and send an ACK
                     let ack = header.get_ack();
                     msgs.push(header.clone());
+                    let msg = std::str::from_utf8(&header.msg).unwrap();
+                    println!("Received message from {}:\n{}", header.src_addr, msg);
                     match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                         Ok(_) => (),
                         Err(_) => (),
