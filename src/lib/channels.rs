@@ -147,17 +147,16 @@ impl Channel {
         Ok(Self { socket})
     }
 
-    fn listener(rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>, socket: UdpSocket) {
+    fn listener(rx: mpsc::Receiver<(mpsc::Sender<Header>)>, socket: UdpSocket) {
+        let mut sends: Vec<mpsc::Sender<Header>> = Vec::new();
         let mut headers: Vec<Header> = Vec::new();
         let mut msgs: Vec<Header> = Vec::new();
-        // a hashmap for the senders, indexed by the destination address
-        let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
         loop {
             loop {
                 // Receber tx sempre que a função send for chamada
                 match rx.try_recv() {
                     // Se a função send foi chamada, armazenar o tx (unwraped)
-                    Ok((tx, key)) => sends.insert(key, tx),
+                    Ok(tx) => sends.push(tx),
                     // Se não, quebrar o loop
                     Err(_) => break,
                 };
@@ -177,21 +176,15 @@ impl Channel {
                 // If it's an ACK, send it to the corresponding sender
                 if header.flags == 1 { // ack
                     let dst = header.dst_addr;
-                    match sends.get(&dst) {
-                        Some(tx) => {
-                            match tx.send(header.clone()) {
-                                Ok(_) => (),
-                                Err(_) => (),
-                            }
-                        }
-                        None => (),
+                    for tx in sends.iter() {
+                        // verficar se o endereço de destino é o mesmo do header
+                        // se for, enviar o header para o sender
+                        continue; // TODO: achar alguma forma de identificar os tx's
                     }
                 } else {
                     // If it's a message, keep it to itself and send an ACK
                     let ack = header.get_ack();
                     msgs.push(header.clone());
-                    let msg = std::str::from_utf8(&header.msg).unwrap();
-                    println!("Received message from {}:\n{}", header.src_addr, msg);
                     match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                         Ok(_) => (),
                         Err(_) => (),
