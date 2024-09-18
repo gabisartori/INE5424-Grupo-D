@@ -126,7 +126,9 @@ impl ReliableCommunication {
     fn raw_send(&self, header: Header) {
         // self.channel.send(header)
         // .expect("Falha ao enviar mensagem no nível Rel_Com\n");
-        self.tx.send(header).expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        let (tx, rx) = mpsc::channel();
+        self.tx.send(tx).expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        rx
     }
 
     fn raw_receive(&self, header: &mut Header){

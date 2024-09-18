@@ -106,50 +106,35 @@ pub struct Channel {
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(bind_addr: &SocketAddr, input_rx: mpsc::Receiver<Header>) -> Result<Self, Error> {
+    pub fn new(bind_addr: &SocketAddr, input_rx: mpsc::Receiver<mpsc::Sender<Header>>) -> Result<Self, Error> {
         let socket = UdpSocket::bind(bind_addr)?;
         // Instantiate sender and listener threads
         // And create a channel to communicate between them
         // MPSC: Multi-Producer Single-Consumer
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || Channel::sender(input_rx, rx));
-        thread::spawn(move || Channel::listener(tx));
+        thread::spawn(move || Channel::listener(input_rx));
         Ok(Self { socket})
     }
 
-    fn sender(rel_comm_rx: mpsc::Receiver<Header>, listener_rx: mpsc::Receiver<Header>) {
+    fn listener(rx: mpsc::Receiver<mpsc::Sender<Header>>) {
+        let mut sends: Vec<mpsc::Sender<Header>> = Vec::new();
+        
         loop {
-            for header in rel_comm_rx.try_iter() {
-                // Add message to list of waiting acks
-
-                // Send message through the socket
-                
-            }
-            for header in listener_rx.try_iter() {
-                // Wait for acks
-                continue;
-            } 
-        }
-    }
-
-    fn listener(tx: mpsc::Sender<Header>) {
-        loop {
-            let message = [0; BUFFER_SIZE+HEADER_SIZE];
-            match self.socket.recv_from(&mut message) {
-                Ok((size, src)) => {
-                    let mut header = Header::new_empty();
-                    header.from_bytes(message);
-                    tx.send(header).unwrap();
-                }
-                Err(_) => {
-                    continue;
+            for maybe_tx in rx.try_recv() {
+                match maybe_tx {
+                    Ok(_) => sends.push(maybe_tx),
+                    Err(_) => break,
                 }
             }
-            // Process message
-            // If it's an ACK, send it to the sender
+            // Armazenar tx sempre que ler que a função send foi chamada
+            // Read packets from socket
+            continue;
+            
+            // Process Packet
+            // If it's an ACK, send it to the corresponding sender
             // If it's a message, keep it to itself and send an ACK
         }
     }
+
 
     pub fn receive(&self) {
         return;
