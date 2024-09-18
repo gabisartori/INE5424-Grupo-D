@@ -9,13 +9,13 @@ use super::channels::{Channel, Header};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Sender};
 
 pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    pub tx: mpsc::Sender<Header>,
+    pub tx: mpsc::Sender<Sender<Header>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -97,17 +97,7 @@ impl ReliableCommunication {
             vec_buffer.extend_from_slice(&header.msg);
             // Lógica para validar e garantir a entrega confiável
             if self.validate_message(&header) {
-                let ack_header = Header {
-                    src_addr: self.host,
-                    dst_addr: header.src_addr,
-                    ack_num: header.seq_num,
-                    seq_num: 0,
-                    msg_size: 0,
-                    checksum: 0,
-                    flags: 0,
-                    is_last: false,
-                    msg: Vec::new(),
-                };
+                let ack_header = header.get_ack();
                 self.raw_send(ack_header);
             }
             if header.is_last {
@@ -123,7 +113,7 @@ impl ReliableCommunication {
         true
     }
 
-    fn raw_send(&self, header: Header) {
+    fn raw_send(&self, header: Header) -> mpsc::Receiver<Header> {
         // self.channel.send(header)
         // .expect("Falha ao enviar mensagem no nível Rel_Com\n");
         let (tx, rx) = mpsc::channel();
@@ -132,8 +122,7 @@ impl ReliableCommunication {
     }
 
     fn raw_receive(&self, header: &mut Header){
-        self.channel.receive(header)
-        .expect("Falha ao receber mensagem no nível Rel_Com\n");
+        self.channel.receive(header);
     }
 }
 

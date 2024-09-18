@@ -45,6 +45,34 @@ impl<'a> Header {
             msg: Vec::new(),
         }
     }
+
+    pub fn get_ack(&self) -> Self {
+        Self {
+            src_addr: self.dst_addr,
+            dst_addr: self.src_addr,
+            ack_num: self.seq_num,
+            seq_num: 0,
+            msg_size: 0,
+            checksum: 0,
+            flags: 1,
+            is_last: false,
+            msg: Vec::new(),
+        }
+    }
+
+    pub fn clone (&self) -> Self {
+        Self {
+            src_addr: self.src_addr,
+            dst_addr: self.dst_addr,
+            ack_num: self.ack_num,
+            seq_num: self.seq_num,
+            msg_size: self.msg_size,
+            checksum: self.checksum,
+            flags: self.flags,
+            is_last: self.is_last,
+            msg: self.msg.clone(),
+        }
+    }
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         match self.src_addr.ip() {
@@ -111,34 +139,67 @@ impl Channel {
         // Instantiate sender and listener threads
         // And create a channel to communicate between them
         // MPSC: Multi-Producer Single-Consumer
-        thread::spawn(move || Channel::listener(input_rx));
+        let skt = socket.try_clone().unwrap();
+        thread::spawn(move || Channel::listener(input_rx, skt));
         Ok(Self { socket})
     }
 
-    fn listener(rx: mpsc::Receiver<mpsc::Sender<Header>>) {
+    fn listener(rx: mpsc::Receiver<mpsc::Sender<Header>>, socket: UdpSocket) {
         let mut sends: Vec<mpsc::Sender<Header>> = Vec::new();
-        
+        let mut headers: Vec<Header> = Vec::new();
+        let mut msgs: Vec<Header> = Vec::new();
         loop {
-            for maybe_tx in rx.try_recv() {
-                match maybe_tx {
-                    Ok(_) => sends.push(maybe_tx),
+            loop {
+                // Receber tx sempre que a função send for chamada
+                match rx.try_recv() {
+                    // Se a função send foi chamada, armazenar o tx (unwraped)
+                    Ok(tx) => sends.push(tx),
+                    // Se não, quebrar o loop
                     Err(_) => break,
                 }
             }
-            // Armazenar tx sempre que ler que a função send foi chamada
             // Read packets from socket
-            continue;
-            
+            let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
+            match socket.recv_from(&mut buffer) {
+                Ok((size, src_addr)) => {
+                    let mut header = Header::new_empty();
+                    header.from_bytes(buffer);
+                    headers.push(header);
+                }
+                Err(_) => continue,
+            }
             // Process Packet
-            // If it's an ACK, send it to the corresponding sender
-            // If it's a message, keep it to itself and send an ACK
+            for header in headers.iter() {
+                // If it's an ACK, send it to the corresponding sender
+                if header.flags == 1 { // ack
+                    let dst = header.dst_addr;
+                    for tx in sends.iter() {
+                        // verficar se o endereço de destino é o mesmo do header
+                        // se for, enviar o header para o sender
+                        continue; // TODO: achar alguma forma de identificar os tx's
+                    }
+                } else {
+                    // If it's a message, keep it to itself and send an ACK
+                    let ack = header.get_ack();
+                    msgs.push(header.clone());
+                    match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
+                        Ok(_) => (),
+                        Err(_) => (),
+                    }
+                }
+            }
         }
     }
 
 
-    pub fn receive(&self) {
-        return;
+    pub fn receive(&self, header: &mut Header){
         // If there's a message ready, return it
-        // Else: block and wait for there to be a
-    } 
+        // Else: block and wait for there to be a message
+        let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
+        match self.socket.recv_from(&mut buffer) {
+            Ok((size, src_addr)) => (),
+            Err(e) => (),
+        };
+        header.from_bytes(buffer);
+    }
 }
