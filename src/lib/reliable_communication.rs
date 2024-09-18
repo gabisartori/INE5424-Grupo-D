@@ -15,7 +15,7 @@ pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    pub tx: mpsc::Sender<Sender<Header>>,
+    pub tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -117,7 +117,8 @@ impl ReliableCommunication {
         // self.channel.send(header)
         // .expect("Falha ao enviar mensagem no nível Rel_Com\n");
         let (tx, rx) = mpsc::channel();
-        self.tx.send(tx).expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        // the addres is the one who will receive acks
+        self.tx.send((tx, header.src_addr)).expect("Falha ao enviar mensagem no nível Rel_Com\n");
         rx
     }
 
