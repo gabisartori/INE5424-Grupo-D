@@ -9,11 +9,13 @@ use super::channels::{Channel, Header};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
+use std::sync::mpsc;
 
 pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
+    pub tx: mpsc::Sender<Header>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -21,9 +23,12 @@ pub struct ReliableCommunication {
 impl ReliableCommunication {
     // Função para inicializar a camada com um canal de comunicação
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
-        let channel = Channel::new(&host)
-        .expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
-        Self { channel: channel, host: host, group: group }
+        // Tx: Rel_comm way of telling the channels that it wants to send messages
+        // Rx: Channel::sender way of receiving rel_comm requests
+        let (tx, rx) = mpsc::channel();
+        let channel = Channel::new(&host, rx).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
+        
+        Self { channel, host, group, tx }
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -119,8 +124,9 @@ impl ReliableCommunication {
     }
 
     fn raw_send(&self, header: Header) {
-        self.channel.send(header)
-        .expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        // self.channel.send(header)
+        // .expect("Falha ao enviar mensagem no nível Rel_Com\n");
+        self.tx.send(header).expect("Falha ao enviar mensagem no nível Rel_Com\n");
     }
 
     fn raw_receive(&self, header: &mut Header){

@@ -11,6 +11,8 @@ use std::f32::consts::E;
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 use std::io::Error;
 use std::process::Output;
+use std::sync::mpsc;
+use std::thread;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
 const HEADER_SIZE: usize = 32; // Header::new_empty().to_bytes().len()
@@ -104,32 +106,54 @@ pub struct Channel {
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
+    pub fn new(bind_addr: &SocketAddr, input_rx: mpsc::Receiver<Header>) -> Result<Self, Error> {
         let socket = UdpSocket::bind(bind_addr)?;
-        // socket.set_nonblocking(true)?;
-        Ok(Self { socket })
+        // Instantiate sender and listener threads
+        // And create a channel to communicate between them
+        // MPSC: Multi-Producer Single-Consumer
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || Channel::sender(input_rx, rx));
+        thread::spawn(move || Channel::listener(tx));
+        Ok(Self { socket})
     }
 
-    // Função para enviar mensagem para um destinatário específico
-    pub fn send(&self, header: Header) -> Result<(), Error> {
+    fn sender(rel_comm_rx: mpsc::Receiver<Header>, listener_rx: mpsc::Receiver<Header>) {
+        loop {
+            for header in rel_comm_rx.try_iter() {
+                // Add message to list of waiting acks
 
-        self.socket.send_to(&header.to_bytes(), header.dst_addr)?;
-        Ok(())
-    }
-
-    // Função para receber mensagens
-    pub fn receive(&self, header: &mut Header) -> Result<(usize, SocketAddr), Error> {
-        let mut buffer = [0; BUFFER_SIZE+HEADER_SIZE];
-        let info = self.socket.recv_from(&mut buffer);
-        match info {
-            Ok((size, src)) => {
-                header.from_bytes(buffer);
-                Ok((size, src))
+                // Send message through the socket
+                
             }
-            Err(_) => {
-                Ok((0, SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)))
-            }
-            
-        }        
+            for header in listener_rx.try_iter() {
+                // Wait for acks
+                continue;
+            } 
+        }
     }
+
+    fn listener(tx: mpsc::Sender<Header>) {
+        loop {
+            let message = [0; BUFFER_SIZE+HEADER_SIZE];
+            match self.socket.recv_from(&mut message) {
+                Ok((size, src)) => {
+                    let mut header = Header::new_empty();
+                    header.from_bytes(message);
+                    tx.send(header).unwrap();
+                }
+                Err(_) => {
+                    continue;
+                }
+            }
+            // Process message
+            // If it's an ACK, send it to the sender
+            // If it's a message, keep it to itself and send an ACK
+        }
+    }
+
+    pub fn receive(&self) {
+        return;
+        // If there's a message ready, return it
+        // Else: block and wait for there to be a
+    } 
 }
