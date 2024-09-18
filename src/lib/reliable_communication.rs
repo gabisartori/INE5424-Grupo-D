@@ -5,7 +5,8 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 // Importa a camada de canais
-use super::channels::{Channel, Header};
+use super::channels::Channel;
+use super::header::Header;
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
@@ -28,7 +29,7 @@ impl ReliableCommunication {
         let (tx, rx) = mpsc::channel();
         let channel = Channel::new(&host, rx).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
         
-        Self { channel, host, group, tx }
+        Self { channel, host, group, tx}
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -94,12 +95,12 @@ impl ReliableCommunication {
         let mut vec_buffer: Vec<u8> = Vec::new();
         loop {
             self.raw_receive(&mut header);
-            vec_buffer.extend_from_slice(&header.msg);
             // Lógica para validar e garantir a entrega confiável
             if self.validate_message(&header) {
                 let ack_header = header.get_ack();
                 self.raw_send(ack_header);
             }
+            vec_buffer.extend_from_slice(&header.msg);
             if header.is_last {
                 break;
             }
@@ -114,8 +115,6 @@ impl ReliableCommunication {
     }
 
     fn raw_send(&self, header: Header) -> mpsc::Receiver<Header> {
-        // self.channel.send(header)
-        // .expect("Falha ao enviar mensagem no nível Rel_Com\n");
         let (tx, rx) = mpsc::channel();
         // the addres is the one who will receive acks
         self.tx.send((tx, header.src_addr)).expect("Falha ao enviar mensagem no nível Rel_Com\n");
