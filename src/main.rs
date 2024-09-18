@@ -16,6 +16,7 @@ mod lib {
     pub mod reliable_communication;
     pub mod channels;
     pub mod failure_detection;
+    pub mod header;
 }
 use lib::reliable_communication::ReliableCommunication;
 
@@ -97,10 +98,8 @@ impl Agent {
     fn run(self: Arc<Self>) {
         let listener_clone = Arc::clone(&self);
         let sender_clone = Arc::clone(&self);
-
-        let listener = thread::spawn(move || listener_clone.listener());
         let sender = thread::spawn(move || sender_clone.sender(false));
-
+        let listener = thread::spawn(move || listener_clone.listener());
         listener.join().unwrap();
         sender.join().unwrap();
     }
