@@ -45,16 +45,10 @@ impl Agent {
         // let mut file: File = OpenOptions::new().append(true).open(path).unwrap();
         // loop
         {
-            let mut message: Vec<u8> = Vec::new();
+            let mut message: &mut [u8] = &mut [0; BUFFER_SIZE];
             let (size, sender) = self.communication.receive(&mut message);
-            // divide a mensagem em chunks de forma que possa ser convertida para string
-            let chuncked_msg = message.chunks(BUFFER_SIZE);
-            let mut full_msg: Vec<&str> = Vec::new();
-            for m in chuncked_msg {
-                let pck = std::str::from_utf8(&m).unwrap();
-                full_msg.push(pck);
-            }
-            let msg = full_msg.join("");
+            let msg = String::from_utf8_lossy(&message);
+
             let msf = format!("Agent {} receiving {} bytes from {}\n--> Message:\n{}", self.id, size, sender, msg);
             // write message to a listener.txt file
             // file.write_all(msf.as_bytes()).unwrap();
@@ -63,27 +57,15 @@ impl Agent {
     }
 
     fn sender(&self) {
-        // println!("Agent {} is sending messages", self.id);
-
-        // Choice of destination for each message the agent sends
         let mut destination: u32;
-        // loop
-        {
+        loop {
             // Pick a random node to send a message to
-            // If the random node is the agent itself, pick another one
             loop {
                 destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
                 if destination != self.id { break; }
             }
 
             // Send message to the selected node
-            /*
-                TODO: Isso aqui tá uma gambiarra eu não entendo por que fazer direto
-                format!("Hello from agent {}", self.id).as_bytes()
-                Dá erro.
-                =>=> Porque format! retorna um String e não um &str,
-                => se não for alocado na memória (em uma variável), não dá pra passar a referência (&[u8])
-            */
             // let msg: String = format!("Hello from agent {}", self.id);
             let msg: String = config::LARGE_MSG.to_string();
             let msg: Vec<u8> = msg.as_bytes().to_vec();
