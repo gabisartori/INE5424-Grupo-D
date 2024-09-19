@@ -37,12 +37,10 @@ impl ReliableCommunication {
         let mut base: usize = 0;
         let mut next_seq_num = 0;
         let (ack_tx, ack_rx) = mpsc::channel();
-                let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
+        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
         loop {
-            if next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
-                // let mut pck: [u8] = packages[next_seq_num];
-                let mut msg: Vec<u8> = packages[next_seq_num].to_vec();
-                // enviando pacotes da janela
+            while next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
+                let msg: Vec<u8> = packages[next_seq_num].to_vec();
                 let header = Header {
                     src_addr: self.host,
                     dst_addr: *dst_addr,
@@ -57,41 +55,30 @@ impl ReliableCommunication {
                 };
                 self.send_tx.send((ack_tx.clone(), *dst_addr)).expect("Falha ao enviar mensagem\n");
                 next_seq_num += 1;
-            } else {
-                // Lógica para confirmar recebimento de ACKs
-                let mut timer = std::time::Instant::now();
-                loop {
-                    // enquanto não houver timeout nem não receber todos os ACKs
-                    if timer.elapsed().as_millis() < TIMEOUT {
-                        let header = ack_rx.recv().unwrap();
-                        if header.ack_num == base as u32 {
-                            base += 1;
-                        } else {
-                            // perdeu um pacote, reinicia a janela a partir do perdido
-                            next_seq_num = base;                        
-                            break;
-                        }
-                        if base == next_seq_num {
-                            // todos os pacotes foram enviados
+            } 
+            
+            match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
+                Ok(header) => {
+                    if header.ack_num == base as u32 {
+                        base += 1;
+                        if base == packages.len() {
                             break;
                         }
                     } else {
-                        // timeout estourado
                         next_seq_num = base;
-                        break;
                     }
-                }
-                // se todos os pacotes foram enviados
-                if next_seq_num >= packages.len() {
-                    break;
+                },
+                Err(_) => {
+                    next_seq_num = base;
                 }
             }
         }
     }
 
     // Função para receber mensagens confiáveis
-    pub fn receive(&self, buffer: &mut Vec<u8>) -> (usize, SocketAddr) {
-        *buffer = self.receive_rx.recv().expect("Thread listener terminou e não há mais mensagens para receber\n");
+    pub fn receive(&self, buffer: &mut [u8]) -> (usize, SocketAddr) {
+        let char_vec = self.receive_rx.recv().expect("Thread listener terminou e não há mais mensagens para receber\n");
+        buffer.copy_from_slice(&char_vec);
         (buffer.len(), self.host)
     }
 }
