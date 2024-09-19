@@ -16,31 +16,26 @@ use std::sync::{Arc, Mutex};
 // Estrutura básica para a camada de comunicação por canais
 pub struct Channel {
     socket: UdpSocket,
-    tx: mpsc::Sender<(mpsc::Sender<Header>, SocketAddr)>,
 }
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(bind_addr: &SocketAddr,
-        input_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>)
-         -> Result<Self, Error> {
+    pub fn new(
+        bind_addr: &SocketAddr,
+        send_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
+        receive_tx: mpsc::Sender<Vec<u8>>
+        ) -> Result<Self, Error> {
+        
         let socket = UdpSocket::bind(bind_addr)?;
-        // Instantiate sender and listener threads
-        // And create a channel to communicate between them
-        // MPSC: Multi-Producer Single-Consumer
         let skt: UdpSocket = socket.try_clone().unwrap();
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || Channel::listener(input_rx, rx, skt));
-        Ok(Self { socket, tx })
+        thread::spawn(move || Channel::listener(skt, send_rx, receive_tx));
+        Ok(Self { socket })
     }
 
-    fn listener(rx_acks: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-                rx_msgs: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-                socket: UdpSocket) {
-        let mut msgs: Vec<Header> = Vec::new();
+    fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>, receive_tx: mpsc::Sender<Vec<u8>>) {
         // a hashmap for the senders, indexed by the destination address
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
-        let mut receivers: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
+        let mut receivers: HashMap<(SocketAddr, u32), Vec<u8>> = HashMap::new();
         loop {
             loop {
                 // Receber tx sempre que a função send for chamada
@@ -51,46 +46,39 @@ impl Channel {
                     Err(_) => break,
                 };
             }
-            loop {
-                // Receber tx sempre que a função send for chamada
-                match rx_msgs.try_recv() {
-                    // Se a função send foi chamada, armazenar o tx (unwraped)
-                    Ok((tx, key)) => receivers.insert(key, tx),
-                    // Se não, quebrar o loop
-                    Err(_) => break,
-                };
-            }
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
             match socket.recv_from(&mut buffer) {
                 Ok((size, src_addr)) => {
-                    let mut header = Header::new_empty();
-                    header.from_bytes(buffer);
-                    // If it's an ACK, send it to the corresponding sender
+                    let header = Header::pure_from_bytes(buffer);
+                    let dst = header.dst_addr;
+                    let msg_id = header.id;
+                    // If packet read is an ACK, send it to the corresponding sender
                     if header.flags == 1 { // ack
-                        let dst = header.dst_addr;
                         match sends.get(&dst) {
+                            // Forward the ack to the corresponding sender
                             Some(tx) => {
                                 match tx.send(header.clone()) {
                                     Ok(_) => (),
                                     Err(_) => (),
                                 }
                             }
+                            // No sender is waiting for this ack, discard it
                             None => (),
                         }
                     } else {
-                        // If it's a message, keep it to itself and send an ACK
-                        let dst = header.dst_addr;
-                        match receivers.get(&dst) {
-                            Some(tx) => {
-                                match tx.send(header.clone()) {
-                                    Ok(_) => (),
-                                    Err(_) => (),
-                                }
+                        // If the packet contains a message, store it in the receivers hashmap and send an ACK
+                        if !receivers.contains_key(&(dst, msg_id)) {
+                            receivers.insert((dst, msg_id), Vec::new());
+                        }
+                        match receivers.get_mut(&(dst, msg_id)) {
+                            Some(buff) => {
                                 let ack = header.get_ack();
-                                msgs.push(header.clone());
+                                buff.extend_from_slice(&header.msg);
+                                // DEBUG
                                 let msg = std::str::from_utf8(&header.msg).unwrap();
                                 println!("Received message from {}:\n{}", header.src_addr, msg);
+                                // Send ACK
                                 match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                                     Ok(_) => (),
                                     Err(_) => (),
@@ -98,17 +86,18 @@ impl Channel {
                             }
                             None => (),
                         }
-                        
+                        if header.is_last {
+                            match receivers.remove(&(dst, msg_id)) {
+                                Some(msg) => {
+                                    receive_tx.send(msg).unwrap();
+                                }
+                                None => (),
+                            }
+                        }
                     }
                 }
                 Err(_) => continue,
             }
         }
-    }
-
-    pub fn receive(&self, header: &mut Header) {
-        // If there's a message ready, return it
-        // Else: block and wait for there to be a message
-        return;
     }
 }
