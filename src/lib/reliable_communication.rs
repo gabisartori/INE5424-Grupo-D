@@ -26,7 +26,10 @@ impl ReliableCommunication {
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = Channel::new(host.clone(), send_rx, receive_rx).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
+        let channel = match Channel::new(host.clone(), send_rx, receive_rx) {
+            Ok(c) => c,
+            Err(_) => panic!("Erro ao criar o canal de comunicação"),
+        };
         
         Self { channel, host, group, send_tx, receive_tx}
     }
@@ -54,19 +57,30 @@ impl ReliableCommunication {
                 self.raw_send(ack_tx.clone(), header);
                 next_seq_num += 1;
             } 
-            
+            if crate::config::DEBUG {
+                println!("Waiting for acks form {} to {}", base, next_seq_num);
+            }
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(header) => {
+                    if crate::config::DEBUG {
+                        println!("Received ack with ack_num: {}", header.ack_num);
+                    }
                     if header.ack_num == base as u32 {
                         base += 1;
                         if base == packages.len() {
                             break;
                         }
                     } else {
+                        if crate::config::DEBUG {
+                            println!("Received ack with ack_num: {} but expected {}", header.ack_num, base);
+                        }
                         next_seq_num = base;
                     }
                 },
                 Err(_) => {
+                    if crate::config::DEBUG {
+                        println!("Timeout, resending from {} to {}", base, next_seq_num);
+                    }
                     next_seq_num = base;
                 }
             }
@@ -74,7 +88,20 @@ impl ReliableCommunication {
     }
 
     fn raw_send(&self, ack_tx: Sender<Header>, header: Header) {
-        self.send_tx.send((ack_tx, header.dst_addr)).unwrap();
+        if crate::config::DEBUG {
+            println!("Subscribing to listener to send a msg");
+        }
+        match self.send_tx.send((ack_tx, header.dst_addr)) {
+            Ok(_) => {},
+            Err(_) => {
+                if crate::config::DEBUG {
+                    println!("\n---------\nErro ao enviar mensagem\n--------");
+                }
+            }
+        }
+        if crate::config::DEBUG {
+            println!("Sending message with seq_num: {}", header.seq_num);
+        }
         self.channel.send(header);
     }
 
@@ -93,22 +120,36 @@ impl ReliableCommunication {
         let mut next_seq_num = 0;
         let mut sender: SocketAddr;
         loop {
-            self.receive_tx.send((msg_tx.clone(), self.host)).unwrap();
-            match msg_rx.recv() {
-                Ok(header) => {
-                    if header.seq_num == next_seq_num {
-                        buffer.extend(header.msg);
-                        next_seq_num += 1;
-                        sender = header.src_addr;
-                        if header.is_last {
-                            break;
+            if crate::config::DEBUG {
+                println!("Subscribing to listener to receive a msg");
+            }
+            match self.receive_tx.send((msg_tx.clone(), self.host)) {
+                Ok(_) => {
+                    if crate::config::DEBUG {
+                        println!("Waiting for message with seq_num: {}", next_seq_num);
+                    }
+                    match msg_rx.recv() {
+                        Ok(header) => {
+                            if header.seq_num == next_seq_num {
+                                buffer.extend(header.msg);
+                                next_seq_num += 1;
+                                sender = header.src_addr;
+                                if header.is_last {
+                                    break;
+                                }
+                            } // listener already sends ack
+                        },
+                        Err(_) => {
+                            if crate::config::DEBUG {
+                                println!("\n---------\nErro ao enviar mensagem\n--------");
+                            }
                         }
-                    } // listener already sends ack
+                        
+                    }
                 },
-                Err(_) => {
-                    println!("Erro ao receber mensagem");
+                Err(_) => if crate::config::DEBUG {
+                    println!("\n---------\nErro ao enviar mensagem\n--------");
                 }
-                
             }
         }
         (buffer.len(), sender) 
