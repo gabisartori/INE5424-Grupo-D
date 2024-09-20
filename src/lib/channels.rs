@@ -27,7 +27,13 @@ impl Channel {
         ) -> Result<Self, Error> {
         
         let socket = UdpSocket::bind(bind_addr)?;
-        let skt: UdpSocket = socket.try_clone().unwrap();
+        let skt: UdpSocket = match socket.try_clone() {
+            Ok(s) => s,
+            Err(_) => return Err(Error::new(std::io::ErrorKind::Other, "Erro ao clonar o socket")),
+        };
+        if crate::config::DEBUG {
+            println!("Incializando Listener em {}", bind_addr);
+        }
         thread::spawn(move || Channel::listener(skt, send_rx, receive_rx));
         Ok(Self { socket })
     }
@@ -52,23 +58,46 @@ impl Channel {
                     let source: SocketAddr = header.src_addr;
                     // If packet read is an ACK, send it to the corresponding sender
                     if header.is_ack() { // ack
+                        if crate::config::DEBUG {
+                            println!("Received ACK from {} with seq_num: {}", source, header.ack_num);
+                        }
                         match sends.get(&source) {
                             // Forward the ack to the corresponding sender
                             Some(tx) => {
                                 match tx.send(header.clone()) {
-                                    Ok(_) => (),
-                                    Err(_) => (),
+                                    Ok(_) => {
+                                        if crate::config::DEBUG {
+                                            println!("Sent ACK for {} with seq_num: {}", source, header.ack_num);
+                                        }
+                                    },
+                                    Err(_) => {
+                                        if crate::config::DEBUG {
+                                            println!("\n---------\nErro ao enviar ACK {} para {}\n--------",
+                                            header.ack_num, source);
+                                        }
+                                    },
                                 }
                             }
                             // No sender is waiting for this ack, discard it
-                            None => (),
+                            None => {
+                                if crate::config::DEBUG {
+                                    println!("Sender not found for {}", source);
+                                }
+                            },
                         }
                     } else {
                         // If the packet contains a message, store it in the receivers hashmap and send an ACK
+                        if crate::config::DEBUG {
+                            println!("Received message from {} with seq_num: {}", source, header.seq_num);
+                        }
                         Channel::prepare_send(&mut receivers, &header, &socket);
                     }
                 }
-                Err(_) => continue,
+                Err(_) => {
+                    if crate::config::DEBUG {
+                        println!("\n---------\nErro ao receber mensagem na listener\n---------");
+                    }
+                },
             }
 
             // Check if there are messages waiting for the receiver
@@ -87,7 +116,11 @@ impl Channel {
                 Ok((tx, key)) => {
                     match map.get(&key) {
                         Some(_) => continue,
-                        None => map.insert(key, tx)
+                        None => {
+                            if crate::config::DEBUG {
+                                println!("Subscribing {} to listener", key);
+                            }
+                            map.insert(key, tx)}
                     };
                 },
                 Err(_) => break,
@@ -99,30 +132,61 @@ impl Channel {
                     header: &Header, socket: &UdpSocket) {
         match receivers.get_mut(&header.dst_addr) {
             Some(tx) => {
-                // DEBUG
-                let message = std::str::from_utf8(&header.msg).unwrap();
+                // Send the message to the receiver
                 match tx.send(header.clone()) {
-                    Ok(_) => (),
-                    Err(_) => (),
+                    Ok(_) => {
+                        if crate::config::DEBUG {
+                            println!("Sending message to {} with seq_num: {}",
+                            header.dst_addr, header.seq_num);
+                        }
+                    },
+                    Err(_) => {
+                        if crate::config::DEBUG {
+                            println!("\n---------\nErro ao enviar mensagem com seq_num {} para {}\n--------",
+                            header.seq_num, header.dst_addr);
+                        }
+                    },
                 }
                 // Send ACK
                 let ack = header.get_ack();
+                if crate::config::DEBUG {
+                    println!("Sending ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
+                }
                 match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
-                    Ok(_) => (),
-                    Err(_) => (),
+                    Ok(_) => {
+                        if crate::config::DEBUG {
+                            println!("Sent ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
+                        }
+                    },
+                    Err(_) => {
+                        if crate::config::DEBUG {
+                            println!("\n---------\nErro ao enviar ACK {} para {}\n--------",
+                            ack.ack_num, ack.dst_addr);
+                        }
+                    },
                 }
                 if header.is_last {
                     // If the message is the last one, remove the receiver from the hashmap
+                    if crate::config::DEBUG {
+                        println!("Removing receiver {}", header.dst_addr);
+                    }
                     receivers.remove(&header.dst_addr);
                 }
             }
-            None => (),
+            None => if crate::config::DEBUG {
+                println!("Receiver not found for {}", header.dst_addr);
+            },
         }
     }
 
     pub fn send(&self, header: Header) {
         let dst_addr = header.dst_addr;
         let bytes = header.to_bytes();
-        self.socket.send_to(&bytes, dst_addr).unwrap();
+        match self.socket.send_to(&bytes, dst_addr) {
+            Ok(_) => (),
+            Err(_) => {
+                println!("\n---------\nErro ao enviar mensagem de seq_num {} para {}\n--------",
+                        header.seq_num, dst_addr)}
+        }
     }
 }

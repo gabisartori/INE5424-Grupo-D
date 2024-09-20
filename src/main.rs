@@ -4,15 +4,11 @@
 #![allow(dead_code)]
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::process::ExitCode;
 use std::str::FromStr;
 use std::thread;
 use std::sync::Arc;
 use std::env;
-use lib::header::HEADER_SIZE;
 use rand::Rng;
-// use std::io::Write;
-// use std::fs::{File, OpenOptions};
 
 mod lib {
     pub mod reliable_communication;
@@ -21,6 +17,7 @@ mod lib {
     pub mod header;
 }
 use lib::reliable_communication::ReliableCommunication;
+use lib::header::HEADER_SIZE;
 
 // Importa as configurações de endereços dos processos
 mod config;
@@ -42,9 +39,10 @@ impl Agent {
     }
 
     fn listener(&self) {
-        // println!("Agent {} is listening", self.id);
-        // let path = format!("testes/listener_{}.txt", self.id);
-        // let mut file: File = OpenOptions::new().append(true).open(path).unwrap();
+        let mut file: std::fs::File;
+        if config::DEBUG {
+            println!("Agent {} is listening", self.id);
+        }
         // loop
         {
             let mut message: Vec<u8> = Vec::new();
@@ -52,8 +50,20 @@ impl Agent {
             let msg = String::from_utf8_lossy(&message);
             let msf = format!("Agent {} receiving {} bytes from {}\n--> Message:\n{}", self.id, size, sender, msg);
             // write message to a listener.txt file
-            // file.write_all(msf.as_bytes()).unwrap();
-            println!("{}", msf);
+            if config::DEBUG {
+                let path = format!("target/listener_{}.txt", self.id);
+                let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                                    .create(true)
+                                                    .append(true)
+                                                    .open(path) {
+                    Ok(f) => f,
+                    Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+                };
+                std::io::Write::write_all(&mut file, msf.as_bytes().trim_ascii_end())
+                .expect("Erro ao escrever no arquivo");
+            } else {
+                println!("{}", msf);
+            }
         }
     }
 
@@ -69,8 +79,7 @@ impl Agent {
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
-            // let msg: String = config::LARGE_MSG.to_string();
-            let msg: String = String::from_str("Hello world").unwrap();
+            let msg: String = config::LARGE_MSG.to_string();
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
             // Sleep for a random amount of time
@@ -83,8 +92,14 @@ impl Agent {
         let sender_clone = Arc::clone(&self);
         let sender = thread::spawn(move || sender_clone.sender());
         let listener = thread::spawn(move || listener_clone.listener());
-        listener.join().unwrap();
-        sender.join().unwrap();
+        match listener.join() {
+            Ok(_) => (),
+            Err(_) => ()
+        }
+        match sender.join() {
+            Ok(_) => (),
+            Err(_) => ()
+        }
     }
 }
 
@@ -114,7 +129,10 @@ fn main() {
     }
 
     for agent in local_agents {
-        agent.join().unwrap();
+        match agent.join() {
+            Ok(_) => (),
+            Err(_) => ()
+        }
     }
 
 }

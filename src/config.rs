@@ -39,6 +39,8 @@ pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
 pub const BUFFER_SIZE: usize = 1024;
 
+pub const DEBUG: bool = true;
+
 // Mensagem com 10240 bytes para testes
 pub const LARGE_MSG: &str = "
 --------------------------------------
