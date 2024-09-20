@@ -81,7 +81,8 @@ impl ReliableCommunication {
     fn checksum(&self, msg: &Vec<u8>) -> u16 {
         let mut sum: u16 = 0;
         for byte in msg {
-            sum += *byte as u16;
+            // adds without overflow
+            sum = sum.wrapping_add(*byte as u16);
         }
         sum as u16
     }

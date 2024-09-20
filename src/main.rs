@@ -77,9 +77,11 @@ impl Agent {
         }
     }
 
-    pub fn run(&self) {
-        let sender = thread::spawn(move || self.sender());
-        let listener = thread::spawn(move || self.listener());
+    pub fn run(self: Arc<Self>) {
+        let listener_clone = Arc::clone(&self);
+        let sender_clone = Arc::clone(&self);
+        let sender = thread::spawn(move || sender_clone.sender());
+        let listener = thread::spawn(move || listener_clone.listener());
         listener.join().unwrap();
         sender.join().unwrap();
     }
@@ -103,7 +105,7 @@ fn main() {
 
     // Inicializar os agentes locais
     for i in 0..config::AGENT_NUM {
-        let agent: Agent = Agent::new(i, SocketAddr::new(config::LOCALHOST, 3100 + i as u16), nodes.clone());
+        let agent: Arc<Agent> = Arc::new(Agent::new(i, SocketAddr::new(config::LOCALHOST, 3100 + i as u16), nodes.clone()));
         let agent_handler = thread::spawn(move || agent.run());
         local_agents.push(agent_handler);
     }
