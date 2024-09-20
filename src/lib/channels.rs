@@ -32,7 +32,7 @@ impl Channel {
             Err(_) => return Err(Error::new(std::io::ErrorKind::Other, "Erro ao clonar o socket")),
         };
         if crate::config::DEBUG {
-            let agent = bind_addr.to_string().chars().last().unwrap();
+            let agent = bind_addr.to_string()[bind_addr.to_string().len()-4..].to_string();
             println!("Incializando Listener no Agente {}", agent);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
@@ -60,7 +60,7 @@ impl Channel {
                     // If packet read is an ACK, send it to the corresponding sender
                     if header.is_ack() { // ack
                         if crate::config::DEBUG {
-                            let agent = header.src_addr.to_string().chars().last().unwrap();
+                            let agent = header.src_addr.to_string()[header.src_addr.to_string().len()-4..].to_string();
                             println!("Listener read ACK {} from Agente {} through the socket", header.ack_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
@@ -70,14 +70,14 @@ impl Channel {
                                 match tx.send(header.clone()) {
                                     Ok(_) => {
                                         if crate::config::DEBUG {
-                                            let agent = header.dst_addr.to_string().chars().last().unwrap();
+                                            let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                                             println!("Delivered ACK {} for Agente {}", header.ack_num, agent);
                                             let _ = std::io::Write::flush(&mut std::io::stdout());
                                         }
                                         if header.is_last {
                                             // If the message is the last one, remove the sender from the hashmap
                                             if crate::config::DEBUG {
-                                                let agent = header.dst_addr.to_string().chars().last().unwrap();
+                                                let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                                                 println!("Removing Agente {} from sender subscription", agent);
                                                 let _ = std::io::Write::flush(&mut std::io::stdout());
                                             }
@@ -86,7 +86,7 @@ impl Channel {
                                     },
                                     Err(_) => {
                                         if crate::config::DEBUG {
-                                            let agent = header.dst_addr.to_string().chars().last().unwrap();
+                                            let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                                             println!("\n---------\nErro ao entregar ACK {} para o Agente {}\n--------",
                                             header.ack_num, agent);
                                             let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -97,7 +97,7 @@ impl Channel {
                             // No sender is waiting for this ack, discard it
                             None => {
                                 if crate::config::DEBUG {
-                                    let agent = header.dst_addr.to_string().chars().last().unwrap();
+                                    let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                                     println!("Sender Agent {} not found for ACK {}", agent, header.ack_num);
                                     let _ = std::io::Write::flush(&mut std::io::stdout());
                                 }
@@ -106,7 +106,7 @@ impl Channel {
                     } else {
                         // If the packet contains a message, store it in the receivers hashmap and send an ACK
                         if crate::config::DEBUG {
-                            let agent = header.src_addr.to_string().chars().last().unwrap();
+                            let agent = header.src_addr.to_string()[header.src_addr.to_string().len()-4..].to_string();
                             println!("Listener read package {} from Agente {} through the socket", header.seq_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
@@ -114,7 +114,7 @@ impl Channel {
                             // Send ACK
                             let ack = header.get_ack();
                             if crate::config::DEBUG {
-                                let agent = ack.dst_addr.to_string().chars().last().unwrap();
+                                let agent = ack.dst_addr.to_string()[ack.dst_addr.to_string().len()-4..].to_string();
                                 println!("Msg was validated, sending ACK {} to Agente {}",
                                 ack.ack_num, agent);
                                 let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -122,7 +122,7 @@ impl Channel {
                             match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                                 Ok(_) => {
                                     if crate::config::DEBUG {
-                                        let agent = ack.dst_addr.to_string().chars().last().unwrap();
+                                        let agent = ack.dst_addr.to_string()[ack.dst_addr.to_string().len()-4..].to_string();
                                         println!("Sent ACK {} for Agente {} through the socket sucessfully", ack.ack_num, agent);
                                         let _ = std::io::Write::flush(&mut std::io::stdout());
                                     }
@@ -130,7 +130,7 @@ impl Channel {
                                 },
                                 Err(_) => {
                                     if crate::config::DEBUG {
-                                        let agent = ack.dst_addr.to_string().chars().last().unwrap();
+                                        let agent = ack.dst_addr.to_string()[ack.dst_addr.to_string().len()-4..].to_string();
                                         println!("\n---------\nErro ao enviar ACK {} para o Agente {} pelo socket\n--------",
                                         ack.ack_num, agent);
                                         let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -138,7 +138,7 @@ impl Channel {
                                 },
                             }
                         } else if crate::config::DEBUG {
-                            let agent = header.dst_addr.to_string().chars().last().unwrap();
+                            let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                             println!("Invalid message received from {}", agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
@@ -172,14 +172,17 @@ impl Channel {
             match rx.try_recv() {
                 Ok((tx, key)) => {
                     match map.get(&key) {
-                        Some(_) => continue,
+                        Some(_) => {
+                            println!("Agente {} is already waiting for a message", key);
+                            let _ = std::io::Write::flush(&mut std::io::stdout());
+                        },
                         None => {
                             if crate::config::DEBUG {
-                                let agent = key.to_string().chars().last().unwrap();
+                                let agent = key.to_string()[key.to_string().len()-4..].to_string();
                                 println!("Subscribing Agente {} to listener as {}", agent, role);
                                 let _ = std::io::Write::flush(&mut std::io::stdout());
                             }
-                            map.insert(key, tx)}
+                            map.insert(key, tx);}
                     };
                 },
                 Err(_) => break,
@@ -195,14 +198,14 @@ impl Channel {
                 match tx.send(header.clone()) {
                     Ok(_) => {
                         if crate::config::DEBUG {
-                            let agent = header.dst_addr.to_string().chars().last().unwrap();
+                            let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                             println!("Listener delivered package {} to Agente {}", header.seq_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
                         if header.is_last {
                             // If the message is the last one, remove the receiver from the hashmap
                             if crate::config::DEBUG {
-                                let agent = header.dst_addr.to_string().chars().last().unwrap();
+                                let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                                 println!("Removing Agente {} from receivers subscription", agent);
                                 let _ = std::io::Write::flush(&mut std::io::stdout());
                             }
@@ -212,7 +215,7 @@ impl Channel {
                     },
                     Err(_) => {
                         if crate::config::DEBUG {
-                            let agent = header.dst_addr.to_string().chars().last().unwrap();
+                            let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                             println!("\n---------\nErro ao entregar pacote {} para Agente {}\n--------",
                             header.seq_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -223,7 +226,7 @@ impl Channel {
             }
             None => {
                 if crate::config::DEBUG {
-                    let agent = header.dst_addr.to_string().chars().last().unwrap();
+                    let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
                     println!("Agente {} not found as Receiver", agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
@@ -244,15 +247,15 @@ impl Channel {
         match self.socket.send_to(&bytes, dst_addr) {
             Ok(_) => {
                 if crate::config::DEBUG {
-                    let agent_d = dst_addr.to_string().chars().last().unwrap();
-                    let agent_s = src_addr.to_string().chars().last().unwrap();
+                    let agent_d = dst_addr.to_string()[dst_addr.to_string().len()-4..].to_string();
+                    let agent_s = src_addr.to_string()[src_addr.to_string().len()-4..].to_string();
                     println!("Agente {} sent package {} to Agente {} through socket sucessfully", agent_s, header.seq_num, agent_d);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
             },
             Err(_) => {
                 if crate::config::DEBUG {
-                    let agent = dst_addr.to_string().chars().last().unwrap();
+                    let agent = dst_addr.to_string()[dst_addr.to_string().len()-4..].to_string();
                     println!("\n---------\nErro ao enviar pacote {} para o Agente {} pelo socket\n--------",
                         header.seq_num, agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());}

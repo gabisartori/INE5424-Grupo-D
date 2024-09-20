@@ -71,21 +71,22 @@ impl Agent {
     }
 
     fn sender(&self) {
-        let mut destination: u32;
+        let mut destination: u32 = (self.id + 1) % self.communication.group.len() as u32;
         for _ in 0..3
         {
             // Pick a random node to send a message to
-            loop {
-                destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
-                if destination != self.id { break; }
-            }
+            // loop {
+            //     destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
+            //     if destination != self.id { break; }
+            // }
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
-            let msg: String = config::LARGE_MSG.to_string();
+            // let msg: String = config::LARGE_MSG.to_string();
+            let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             if config::DEBUG {
-                println!("\n-------------\nAGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}\n-------------",
+                println!("\n-------------\nAGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}\n-------------\n",
                 self.id, destination);
                 let _ = std::io::Write::flush(&mut std::io::stdout());
             }
@@ -105,14 +106,8 @@ impl Agent {
         let sender = thread::spawn(move || sender_clone.sender());
         let listener_clone = Arc::clone(&self);
         let listener = thread::spawn(move || listener_clone.listener());
-        match listener.join() {
-            Ok(_) => (),
-            Err(_) => ()
-        }
-        match sender.join() {
-            Ok(_) => (),
-            Err(_) => ()
-        }
+        sender.join().unwrap();
+        listener.join().unwrap();
 }
 }
 

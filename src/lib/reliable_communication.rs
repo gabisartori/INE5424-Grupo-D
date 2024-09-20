@@ -41,15 +41,15 @@ impl ReliableCommunication {
         let (ack_tx, ack_rx) = mpsc::channel();
 
         if crate::config::DEBUG {
-            let agent = self.host.to_string().chars().last().unwrap();
-            println!("Agente {} is subscribing to listener to send packages",
-            agent);
+            // get 4 last characters from self.host
+            let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+            println!("Agente {agent} is subscribing to listener to send packages");
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         match self.send_tx.send((ack_tx, self.host)) {
             Ok(_) => {
                 if crate::config::DEBUG {
-                    let agent = self.host.to_string().chars().last().unwrap();
+                    let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                     println!("Agente {} sent subscription to send packages sucessfully",
                     agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -57,7 +57,7 @@ impl ReliableCommunication {
             },
             Err(_) => {
                 if crate::config::DEBUG {
-                    let agent = self.host.to_string().chars().last().unwrap();
+                    let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                     println!("\n---------\nErro em Agente {} ao inscrever-se para mandar pacotes\n--------", agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
@@ -82,16 +82,15 @@ impl ReliableCommunication {
             } 
             if crate::config::DEBUG {
                 // recovers the last character from self.host
-                let agent = self.host.to_string().chars().last().unwrap();
+                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                 println!("Agente {} is waiting for ACK {}",agent, base);
                 let _ = std::io::Write::flush(&mut std::io::stdout());                
             }
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(header) => {
                     if crate::config::DEBUG {
-                        let agent = self.host.to_string().chars().last().unwrap();
-                        println!("Agente {} received ACK {}",
-                                agent, header.ack_num);
+                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                        println!("Agente {} received ACK {}", agent, header.ack_num);
                         let _ = std::io::Write::flush(&mut std::io::stdout());
                     }
                     if header.ack_num == base as u32 {
@@ -101,7 +100,7 @@ impl ReliableCommunication {
                         }
                     } else {
                         if crate::config::DEBUG {
-                            let agent = self.host.to_string().chars().last().unwrap();
+                            let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                             println!("Agente {} expected ACK {} but received ACK {}",
                             agent, base, header.ack_num);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -111,7 +110,7 @@ impl ReliableCommunication {
                 },
                 Err(_) => {
                     if crate::config::DEBUG {
-                        let agent = self.host.to_string().chars().last().unwrap();
+                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                         println!("Timeout for Agente {}, resending from {} to {}",
                             agent, base, next_seq_num);
                         let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -124,7 +123,7 @@ impl ReliableCommunication {
 
     fn raw_send(&self, header: Header) {
         if crate::config::DEBUG {
-            let agent = self.host.to_string().chars().last().unwrap();
+            let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
             println!("Agente {} is sending package {}",
             agent, header.seq_num);
             let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -137,15 +136,15 @@ impl ReliableCommunication {
         let (msg_tx, msg_rx) = mpsc::channel();
         let mut next_seq_num = 0;
         if crate::config::DEBUG {
-            let agent = self.host.to_string().chars().last().unwrap();
+            let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
             println!("Agente {} is subscribing to listener to receive messages",
                     agent);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         match self.receive_tx.send((msg_tx.clone(), self.host)) {
             Ok(_) => {
+                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                 if crate::config::DEBUG {
-                    let agent = self.host.to_string().chars().last().unwrap();
                     println!("Agente {} sent subscription to receive messages", agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
@@ -153,7 +152,7 @@ impl ReliableCommunication {
                     match msg_rx.recv() {
                         Ok(header) => {
                             if crate::config::DEBUG {
-                                let agent = self.host.to_string().chars().last().unwrap();
+                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                                 println!("Agente {} received package {}", agent, header.seq_num);
                                 let _ = std::io::Write::flush(&mut std::io::stdout());
                             }
@@ -167,7 +166,7 @@ impl ReliableCommunication {
                         },
                         Err(_) => {
                             if crate::config::DEBUG {
-                                let agent = self.host.to_string().chars().last().unwrap();
+                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                                 println!("\n---------\nAgente {} falhou ao receber o pacote {}\n--------",
                                 agent, next_seq_num);
                                 let _ = std::io::Write::flush(&mut std::io::stdout());
@@ -178,7 +177,7 @@ impl ReliableCommunication {
                 }
             }
             Err(_) => if crate::config::DEBUG {
-                let agent = self.host.to_string().chars().last().unwrap();
+                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                 println!("\n---------\nErro no Agente {} ao inscrever-se como recebedor\n--------", agent);
                 let _ = std::io::Write::flush(&mut std::io::stdout());
             }
