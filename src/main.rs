@@ -39,7 +39,7 @@ impl Agent {
     }
 
     fn listener(&self) {
-        let mut file: std::fs::File;
+        // let mut file: std::fs::File;
         for _ in 0..3
         {
             let mut message: Vec<u8> = Vec::new();
@@ -103,13 +103,13 @@ impl Agent {
     pub fn run(self: Arc<Self>) {
         let sender_clone = Arc::clone(&self);
         let sender = thread::spawn(move || sender_clone.sender());
-        match sender.join() {
-            Ok(_) => (),
-            Err(_) => ()
-        }
         let listener_clone = Arc::clone(&self);
         let listener = thread::spawn(move || listener_clone.listener());
         match listener.join() {
+            Ok(_) => (),
+            Err(_) => ()
+        }
+        match sender.join() {
             Ok(_) => (),
             Err(_) => ()
         }
