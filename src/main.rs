@@ -45,7 +45,7 @@ impl Agent {
         // let mut file: File = OpenOptions::new().append(true).open(path).unwrap();
         // loop
         {
-            let mut message: &mut [u8] = &mut [0; BUFFER_SIZE];
+            let mut message: Vec<u8> = Vec::new();
             let (size, sender) = self.communication.receive(&mut message);
             let msg = String::from_utf8_lossy(&message);
 

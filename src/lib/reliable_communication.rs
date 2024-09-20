@@ -10,26 +10,25 @@ use super::header::Header;
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
     pub send_tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
-    pub receive_rx: mpsc::Receiver<Vec<u8>>,
+    pub receive_tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
-
 impl ReliableCommunication {
     // Função para inicializar a camada com um canal de comunicação
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = Channel::new(&host, send_rx, receive_tx).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
+        let channel = Channel::new(host.clone(), send_rx, receive_rx).expect("\nFalha ao inicializar o canal no nível Rel_Com\n");
         
-        Self { channel, host, group, send_tx, receive_rx}
+        Self { channel, host, group, send_tx, receive_tx}
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -47,13 +46,12 @@ impl ReliableCommunication {
                     ack_num: 0,
                     seq_num: next_seq_num as u32,
                     msg_size: msg.len(),
-                    checksum: 0,
+                    checksum: self.checksum(&msg),
                     flags: 0,
                     is_last: next_seq_num + 1 == packages.len(),
-                    id: 0,
                     msg: msg,
                 };
-                self.send_tx.send((ack_tx.clone(), *dst_addr)).expect("Falha ao enviar mensagem\n");
+                self.raw_send(ack_tx.clone(), header);
                 next_seq_num += 1;
             } 
             
@@ -75,11 +73,44 @@ impl ReliableCommunication {
         }
     }
 
+    fn raw_send(&self, ack_tx: Sender<Header>, header: Header) {
+        self.send_tx.send((ack_tx, header.dst_addr)).unwrap();
+        self.channel.send(header);
+    }
+
+    fn checksum(&self, msg: &Vec<u8>) -> u16 {
+        let mut sum: u16 = 0;
+        for byte in msg {
+            sum += *byte as u16;
+        }
+        sum as u16
+    }
+
     // Função para receber mensagens confiáveis
-    pub fn receive(&self, buffer: &mut [u8]) -> (usize, SocketAddr) {
-        let char_vec = self.receive_rx.recv().expect("Thread listener terminou e não há mais mensagens para receber\n");
-        buffer.copy_from_slice(&char_vec);
-        (buffer.len(), self.host)
+    pub fn receive(&self, buffer: &mut Vec<u8>) -> (usize, SocketAddr) {
+        let (msg_tx, msg_rx) = mpsc::channel();
+        let mut next_seq_num = 0;
+        let mut sender: SocketAddr;
+        loop {
+            self.receive_tx.send((msg_tx.clone(), self.host)).unwrap();
+            match msg_rx.recv() {
+                Ok(header) => {
+                    if header.seq_num == next_seq_num {
+                        buffer.extend(header.msg);
+                        next_seq_num += 1;
+                        sender = header.src_addr;
+                        if header.is_last {
+                            break;
+                        }
+                    } // listener already sends ack
+                },
+                Err(_) => {
+                    println!("Erro ao receber mensagem");
+                }
+                
+            }
+        }
+        (buffer.len(), sender) 
     }
 }
 
