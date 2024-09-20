@@ -5,9 +5,11 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process::ExitCode;
+use std::str::FromStr;
 use std::thread;
 use std::sync::Arc;
 use std::env;
+use lib::header::HEADER_SIZE;
 use rand::Rng;
 // use std::io::Write;
 // use std::fs::{File, OpenOptions};
@@ -48,7 +50,6 @@ impl Agent {
             let mut message: Vec<u8> = Vec::new();
             let (size, sender) = self.communication.receive(&mut message);
             let msg = String::from_utf8_lossy(&message);
-
             let msf = format!("Agent {} receiving {} bytes from {}\n--> Message:\n{}", self.id, size, sender, msg);
             // write message to a listener.txt file
             // file.write_all(msf.as_bytes()).unwrap();
@@ -58,7 +59,8 @@ impl Agent {
 
     fn sender(&self) {
         let mut destination: u32;
-        loop {
+        // loop {
+        {
             // Pick a random node to send a message to
             loop {
                 destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
@@ -67,11 +69,10 @@ impl Agent {
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
-            let msg: String = config::LARGE_MSG.to_string();
+            // let msg: String = config::LARGE_MSG.to_string();
+            let msg: String = String::from_str("Hello world").unwrap();
             let msg: Vec<u8> = msg.as_bytes().to_vec();
-            println!("Agent {} sending message to agent {}", self.id, destination);
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
-
             // Sleep for a random amount of time
             // thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
         }
@@ -89,6 +90,8 @@ impl Agent {
 
 
 fn main() {
+    assert!(config::AGENT_NUM > 0, "Número de agentes deve ser maior que 0");
+    assert!(BUFFER_SIZE > HEADER_SIZE, "Tamanho do buffer ({}) deve ser maior que o tamanho do cabeçalho ({})", BUFFER_SIZE, HEADER_SIZE);
     let mut nodes: Vec<Node> = Vec::new();
     let mut local_agents: Vec<thread::JoinHandle<()>> = Vec::new();
 

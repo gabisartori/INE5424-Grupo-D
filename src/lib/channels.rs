@@ -41,19 +41,18 @@ impl Channel {
         let mut msgs: Vec<Header> = Vec::new();
         loop {
             // Read packets from socket
-            let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
+            let mut buffer = [0; BUFFER_SIZE];
             match socket.recv_from(&mut buffer) {
-
                 Ok((size, src_addr)) => {
                     // Get the senders from the channel
                     Channel::get_txs(&rx_acks, &mut sends);
                     Channel::get_txs(&receive_tx, &mut receivers);
 
                     let header: Header = Header::create_from_bytes(buffer);
-                    let dst: SocketAddr = header.dst_addr;
+                    let source: SocketAddr = header.src_addr;
                     // If packet read is an ACK, send it to the corresponding sender
                     if header.is_ack() { // ack
-                        match sends.get(&dst) {
+                        match sends.get(&source) {
                             // Forward the ack to the corresponding sender
                             Some(tx) => {
                                 match tx.send(header.clone()) {
@@ -102,7 +101,6 @@ impl Channel {
             Some(tx) => {
                 // DEBUG
                 let message = std::str::from_utf8(&header.msg).unwrap();
-                println!("Received message from {}:\n{}", header.src_addr, message);
                 match tx.send(header.clone()) {
                     Ok(_) => (),
                     Err(_) => (),

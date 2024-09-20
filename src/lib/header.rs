@@ -5,7 +5,7 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::config::BUFFER_SIZE;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
-pub const HEADER_SIZE: usize = 34; // Header::new_empty().to_bytes().len()
+pub const HEADER_SIZE: usize = 32; // Header::new_empty().to_bytes().len()
 // estrutura para o cabeçalho
 pub struct Header {
     pub src_addr: SocketAddr,
@@ -110,7 +110,7 @@ impl<'a> Header {
         bytes
     }
 
-    pub fn from_bytes(&mut self, mut bytes: [u8; BUFFER_SIZE+HEADER_SIZE]){
+    pub fn from_bytes(&mut self, mut bytes: [u8; BUFFER_SIZE]){
         let src_addr = SocketAddr::new(
             IpAddr::V4(Ipv4Addr::from([bytes[0], bytes[1], bytes[2], bytes[3]])),
             u16::from_be_bytes([bytes[4], bytes[5]]),
@@ -141,7 +141,7 @@ impl<'a> Header {
         self.msg = msg;
     }
 
-    pub fn create_from_bytes(bytes: [u8; BUFFER_SIZE+HEADER_SIZE]) -> Self {
+    pub fn create_from_bytes(bytes: [u8; BUFFER_SIZE]) -> Self {
         Header::new(
             SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::from([bytes[0], bytes[1], bytes[2], bytes[3]])),
