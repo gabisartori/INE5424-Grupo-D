@@ -6,7 +6,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
-use super::header::Header;
+use super::header::{Header, HEADER_SIZE};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
@@ -36,7 +36,7 @@ impl ReliableCommunication {
         let mut base: usize = 0;
         let mut next_seq_num = 0;
         let (ack_tx, ack_rx) = mpsc::channel();
-        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE).collect();
+        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
         loop {
             while next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
                 let msg: Vec<u8> = packages[next_seq_num].to_vec();
