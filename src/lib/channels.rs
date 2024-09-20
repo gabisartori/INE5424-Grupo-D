@@ -139,6 +139,31 @@ impl Channel {
                             println!("Sending message to {} with seq_num: {}",
                             header.dst_addr, header.seq_num);
                         }
+                        // Send ACK
+                        let ack = header.get_ack();
+                        if crate::config::DEBUG {
+                            println!("Sending ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
+                        }
+                        match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
+                            Ok(_) => {
+                                if crate::config::DEBUG {
+                                    println!("Sent ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
+                                }
+                            },
+                            Err(_) => {
+                                if crate::config::DEBUG {
+                                    println!("\n---------\nErro ao enviar ACK {} para {}\n--------",
+                                    ack.ack_num, ack.dst_addr);
+                                }
+                            },
+                        }
+                        if header.is_last {
+                            // If the message is the last one, remove the receiver from the hashmap
+                            if crate::config::DEBUG {
+                                println!("Removing receiver {}", header.dst_addr);
+                            }
+                            receivers.remove(&header.dst_addr);
+                        }
                     },
                     Err(_) => {
                         if crate::config::DEBUG {
@@ -147,36 +172,16 @@ impl Channel {
                         }
                     },
                 }
-                // Send ACK
-                let ack = header.get_ack();
-                if crate::config::DEBUG {
-                    println!("Sending ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
-                }
-                match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
-                    Ok(_) => {
-                        if crate::config::DEBUG {
-                            println!("Sent ACK for {} with seq_num: {}", ack.dst_addr, ack.ack_num);
-                        }
-                    },
-                    Err(_) => {
-                        if crate::config::DEBUG {
-                            println!("\n---------\nErro ao enviar ACK {} para {}\n--------",
-                            ack.ack_num, ack.dst_addr);
-                        }
-                    },
-                }
-                if header.is_last {
-                    // If the message is the last one, remove the receiver from the hashmap
-                    if crate::config::DEBUG {
-                        println!("Removing receiver {}", header.dst_addr);
-                    }
-                    receivers.remove(&header.dst_addr);
-                }
             }
             None => if crate::config::DEBUG {
                 println!("Receiver not found for {}", header.dst_addr);
             },
         }
+    }
+
+    fn validate_message(header: &Header) -> bool {
+        let c1: bool = header.checksum == Header::get_checksum(&header.msg);
+        c1
     }
 
     pub fn send(&self, header: Header) {
