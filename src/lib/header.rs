@@ -66,7 +66,7 @@ impl<'a> Header {
             msg_size: 0,
             checksum: 0,
             flags: 1,
-            is_last: false,
+            is_last: self.is_last,
             msg: Vec::new(),
         }
     }

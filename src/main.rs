@@ -40,17 +40,20 @@ impl Agent {
 
     fn listener(&self) {
         let mut file: std::fs::File;
-        if config::DEBUG {
-            println!("Agent {} is listening", self.id);
-        }
         for _ in 0..3
         {
             let mut message: Vec<u8> = Vec::new();
-            let (size, sender) = self.communication.receive(&mut message);
+            if config::DEBUG {
+                println!("\n-------------\nAGENTE {} VAI RECEBER UMA MENSAGEM\n-------------", self.id);
+                let _ = std::io::Write::flush(&mut std::io::stdout());
+            }
+            self.communication.receive(&mut message);
             let msg = String::from_utf8_lossy(&message);
-            let msf = format!("Agent {} receiving {} bytes from {}\n--> Message:\n{}", self.id, size, sender, msg);
+            let msf = format!("Agent {} recieved Message:\n-->\n{}", self.id, msg);
             // write message to a listener.txt file
             if config::DEBUG {
+                println!("\n-------------\nMENSAGEM RECEBIDA POR AGENTE {}\n-------------\n", self.id);
+                let _ = std::io::Write::flush(&mut std::io::stdout());
                 let path = format!("target/listener_{}.txt", self.id);
                 let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                                     .create(true)
@@ -81,26 +84,36 @@ impl Agent {
             // let msg: String = format!("Hello from agent {}", self.id);
             let msg: String = config::LARGE_MSG.to_string();
             let msg: Vec<u8> = msg.as_bytes().to_vec();
+            if config::DEBUG {
+                println!("\n-------------\nAGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}\n-------------",
+                self.id, destination);
+                let _ = std::io::Write::flush(&mut std::io::stdout());
+            }
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
+            if config::DEBUG {
+                println!("\n-------------\nAGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}\n-------------",
+                self.id, destination);
+                let _ = std::io::Write::flush(&mut std::io::stdout());
+            }
             // Sleep for a random amount of time
             // thread::sleep(std::time::Duration::from_secs(rand::thread_rng().gen_range(1..10)));
         }
     }
 
     pub fn run(self: Arc<Self>) {
-        let listener_clone = Arc::clone(&self);
         let sender_clone = Arc::clone(&self);
         let sender = thread::spawn(move || sender_clone.sender());
+        match sender.join() {
+            Ok(_) => (),
+            Err(_) => ()
+        }
+        let listener_clone = Arc::clone(&self);
         let listener = thread::spawn(move || listener_clone.listener());
         match listener.join() {
             Ok(_) => (),
             Err(_) => ()
         }
-        match sender.join() {
-            Ok(_) => (),
-            Err(_) => ()
-        }
-    }
+}
 }
 
 
