@@ -43,7 +43,7 @@ impl Agent {
         if config::DEBUG {
             println!("Agent {} is listening", self.id);
         }
-        // loop
+        for _ in 0..3
         {
             let mut message: Vec<u8> = Vec::new();
             let (size, sender) = self.communication.receive(&mut message);
@@ -69,7 +69,7 @@ impl Agent {
 
     fn sender(&self) {
         let mut destination: u32;
-        // loop {
+        for _ in 0..3
         {
             // Pick a random node to send a message to
             loop {

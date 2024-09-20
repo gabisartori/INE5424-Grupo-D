@@ -23,11 +23,12 @@ pub struct Header {
 impl<'a> Header {
     pub fn new(
         src_addr: SocketAddr, dst_addr: SocketAddr,
-        ack_num: u32, seq_num: u32, msg_size: usize, checksum: u16,
+        ack_num: u32, seq_num: u32, msg_size: usize,
         flags: u8,
         is_last: bool,
         msg: Vec<u8>
     ) -> Self {
+        let checksum = Header::get_checksum(&msg);
         Self {
             src_addr,
             dst_addr,
@@ -72,6 +73,15 @@ impl<'a> Header {
 
     pub fn is_ack(&self) -> bool {
         self.flags & 1 == 1
+    }
+
+    pub fn get_checksum(msg: &Vec<u8>) -> u16 {
+        let mut sum: u16 = 0;
+        for byte in msg {
+            // adds without overflow
+            sum = sum.wrapping_add(*byte as u16);
+        }
+        sum as u16
     }
 
     pub fn clone (&self) -> Self {
@@ -156,7 +166,6 @@ impl<'a> Header {
                 bytes[20], bytes[21], bytes[22], bytes[23], 
                 bytes[24], bytes[25], bytes[26], bytes[27]
             ]),
-            u16::from_be_bytes([bytes[28], bytes[29]]),
             bytes[30],
             bytes[31] == 1,
             bytes[HEADER_SIZE..].to_vec(),

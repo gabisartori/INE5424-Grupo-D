@@ -43,17 +43,16 @@ impl ReliableCommunication {
         loop {
             while next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
                 let msg: Vec<u8> = packages[next_seq_num].to_vec();
-                let header = Header {
-                    src_addr: self.host,
-                    dst_addr: *dst_addr,
-                    ack_num: 0,
-                    seq_num: next_seq_num as u32,
-                    msg_size: msg.len(),
-                    checksum: self.checksum(&msg),
-                    flags: 0,
-                    is_last: next_seq_num + 1 == packages.len(),
-                    msg: msg,
-                };
+                let header = Header::new(
+                    self.host,
+                    *dst_addr,
+                    0,
+                    next_seq_num as u32,
+                    msg.len(),
+                    0,
+                    next_seq_num + 1 == packages.len(),
+                    msg,
+                );
                 self.raw_send(ack_tx.clone(), header);
                 next_seq_num += 1;
             } 
@@ -107,15 +106,6 @@ impl ReliableCommunication {
             println!("{} is sending message with seq_num: {}", self.host, header.seq_num);
         }
         self.channel.send(header);
-    }
-
-    fn checksum(&self, msg: &Vec<u8>) -> u16 {
-        let mut sum: u16 = 0;
-        for byte in msg {
-            // adds without overflow
-            sum = sum.wrapping_add(*byte as u16);
-        }
-        sum as u16
     }
 
     // Função para receber mensagens confiáveis
