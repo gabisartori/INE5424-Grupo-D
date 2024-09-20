@@ -21,40 +21,38 @@ pub struct Channel {
 impl Channel {
     // Função para criar um novo canal
     pub fn new(
-        bind_addr: &SocketAddr,
+        bind_addr: SocketAddr,
         send_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-        receive_tx: mpsc::Sender<Vec<u8>>
+        receive_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>
         ) -> Result<Self, Error> {
         
         let socket = UdpSocket::bind(bind_addr)?;
         let skt: UdpSocket = socket.try_clone().unwrap();
-        thread::spawn(move || Channel::listener(skt, send_rx, receive_tx));
+        thread::spawn(move || Channel::listener(skt, send_rx, receive_rx));
         Ok(Self { socket })
     }
-
-    fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>, receive_tx: mpsc::Sender<Vec<u8>>) {
+    
+    fn listener(socket: UdpSocket,
+                rx_acks: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
+                receive_tx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>) {
         // a hashmap for the senders, indexed by the destination address
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
-        let mut receivers: HashMap<(SocketAddr, u32), Vec<u8>> = HashMap::new();
+        let mut receivers: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
+        let mut msgs: Vec<Header> = Vec::new();
         loop {
-            loop {
-                // Receber tx sempre que a função send for chamada
-                match rx_acks.try_recv() {
-                    // Se a função send foi chamada, armazenar o tx (unwraped)
-                    Ok((tx, key)) => sends.insert(key, tx),
-                    // Se não, quebrar o loop
-                    Err(_) => break,
-                };
-            }
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE + HEADER_SIZE];
             match socket.recv_from(&mut buffer) {
+
                 Ok((size, src_addr)) => {
-                    let header = Header::pure_from_bytes(buffer);
-                    let dst = header.dst_addr;
-                    let msg_id = header.id;
+                    // Get the senders from the channel
+                    Channel::get_txs(&rx_acks, &mut sends);
+                    Channel::get_txs(&receive_tx, &mut receivers);
+
+                    let header: Header = Header::create_from_bytes(buffer);
+                    let dst: SocketAddr = header.dst_addr;
                     // If packet read is an ACK, send it to the corresponding sender
-                    if header.flags == 1 { // ack
+                    if header.is_ack() { // ack
                         match sends.get(&dst) {
                             // Forward the ack to the corresponding sender
                             Some(tx) => {
@@ -68,36 +66,65 @@ impl Channel {
                         }
                     } else {
                         // If the packet contains a message, store it in the receivers hashmap and send an ACK
-                        if !receivers.contains_key(&(dst, msg_id)) {
-                            receivers.insert((dst, msg_id), Vec::new());
-                        }
-                        match receivers.get_mut(&(dst, msg_id)) {
-                            Some(buff) => {
-                                let ack = header.get_ack();
-                                buff.extend_from_slice(&header.msg);
-                                // DEBUG
-                                let msg = std::str::from_utf8(&header.msg).unwrap();
-                                println!("Received message from {}:\n{}", header.src_addr, msg);
-                                // Send ACK
-                                match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
-                                    Ok(_) => (),
-                                    Err(_) => (),
-                                }
-                            }
-                            None => (),
-                        }
-                        if header.is_last {
-                            match receivers.remove(&(dst, msg_id)) {
-                                Some(msg) => {
-                                    receive_tx.send(msg).unwrap();
-                                }
-                                None => (),
-                            }
-                        }
+                        Channel::prepare_send(&mut receivers, &header, &socket);
                     }
                 }
                 Err(_) => continue,
             }
+
+            // Check if there are messages waiting for the receiver
+            for header in msgs.iter() {
+                Channel::prepare_send(&mut receivers, header, &socket);
+            }
         }
+    }
+    
+
+    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
+               map: &mut HashMap<SocketAddr, mpsc::Sender<Header>> ) {
+        
+        loop {
+            match rx.try_recv() {
+                Ok((tx, key)) => {
+                    match map.get(&key) {
+                        Some(_) => continue,
+                        None => map.insert(key, tx)
+                    };
+                },
+                Err(_) => break,
+            };
+        };
+    }
+
+    fn prepare_send(receivers: &mut HashMap<SocketAddr, mpsc::Sender<Header>>,
+                    header: &Header, socket: &UdpSocket) {
+        match receivers.get_mut(&header.dst_addr) {
+            Some(tx) => {
+                // DEBUG
+                let message = std::str::from_utf8(&header.msg).unwrap();
+                println!("Received message from {}:\n{}", header.src_addr, message);
+                match tx.send(header.clone()) {
+                    Ok(_) => (),
+                    Err(_) => (),
+                }
+                // Send ACK
+                let ack = header.get_ack();
+                match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
+                    Ok(_) => (),
+                    Err(_) => (),
+                }
+                if header.is_last {
+                    // If the message is the last one, remove the receiver from the hashmap
+                    receivers.remove(&header.dst_addr);
+                }
+            }
+            None => (),
+        }
+    }
+
+    pub fn send(&self, header: Header) {
+        let dst_addr = header.dst_addr;
+        let bytes = header.to_bytes();
+        self.socket.send_to(&bytes, dst_addr).unwrap();
     }
 }

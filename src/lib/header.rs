@@ -5,7 +5,7 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::config::BUFFER_SIZE;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
-pub const HEADER_SIZE: usize = 36; // Header::new_empty().to_bytes().len()
+pub const HEADER_SIZE: usize = 34; // Header::new_empty().to_bytes().len()
 // estrutura para o cabeçalho
 pub struct Header {
     pub src_addr: SocketAddr,
@@ -16,7 +16,6 @@ pub struct Header {
     pub checksum: u16,
     pub flags: u8,
     pub is_last: bool,
-    pub id: u32,
     // um vetor mutável de bytes
     pub msg: Vec<u8>,
 }
@@ -27,7 +26,6 @@ impl<'a> Header {
         ack_num: u32, seq_num: u32, msg_size: usize, checksum: u16,
         flags: u8,
         is_last: bool,
-        id: u32,
         msg: Vec<u8>
     ) -> Self {
         Self {
@@ -39,7 +37,6 @@ impl<'a> Header {
             checksum,
             flags,
             is_last,
-            id,
             msg,
         }
     }
@@ -54,7 +51,6 @@ impl<'a> Header {
             checksum: 0,
             flags: 0,
             is_last: false,
-            id: 0,
             // a mensagem é uma array de bytes vazio
             msg: Vec::new(),
         }
@@ -70,9 +66,12 @@ impl<'a> Header {
             checksum: 0,
             flags: 1,
             is_last: false,
-            id: 0,
             msg: Vec::new(),
         }
+    }
+
+    pub fn is_ack(&self) -> bool {
+        self.flags & 1 == 1
     }
 
     pub fn clone (&self) -> Self {
@@ -85,7 +84,6 @@ impl<'a> Header {
             checksum: self.checksum,
             flags: self.flags,
             is_last: self.is_last,
-            id: self.id,
             msg: self.msg.clone(),
         }
     }
@@ -108,7 +106,6 @@ impl<'a> Header {
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
         bytes.push(self.flags);
         bytes.push(self.is_last as u8);
-        bytes.extend_from_slice(&self.id.to_be_bytes());
         bytes.extend_from_slice(self.msg.as_slice());
         bytes
     }
@@ -131,7 +128,6 @@ impl<'a> Header {
         let checksum = u16::from_be_bytes([bytes[28], bytes[29]]);
         let flags = bytes[30];
         let is_last = bytes[31] == 1;
-        let id = u32::from_be_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]);
         let mut msg = bytes[HEADER_SIZE..].to_vec();
         
         self.src_addr = src_addr;
@@ -145,7 +141,7 @@ impl<'a> Header {
         self.msg = msg;
     }
 
-    pub fn pure_from_bytes(bytes: [u8; BUFFER_SIZE+HEADER_SIZE]) -> Self {
+    pub fn create_from_bytes(bytes: [u8; BUFFER_SIZE+HEADER_SIZE]) -> Self {
         Header::new(
             SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::from([bytes[0], bytes[1], bytes[2], bytes[3]])),
@@ -163,7 +159,6 @@ impl<'a> Header {
             u16::from_be_bytes([bytes[28], bytes[29]]),
             bytes[30],
             bytes[31] == 1,
-            u32::from_be_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]),
             bytes[HEADER_SIZE..].to_vec(),
         )
     }
