@@ -23,7 +23,7 @@ impl Channel {
     pub fn new(
         bind_addr: SocketAddr,
         send_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-        receive_rx: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>
+        receive_tx: mpsc::Sender<Header>
         ) -> Result<Self, Error> {
         
         let socket = UdpSocket::bind(bind_addr)?;
@@ -36,17 +36,17 @@ impl Channel {
             println!("Incializando Listener no Agente {}", agent);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
-        thread::spawn(move || Channel::listener(skt, send_rx, receive_rx));
+        thread::spawn(move || Channel::listener(skt, send_rx, receive_tx));
         Ok(Self { socket })
     }
     
     fn listener(socket: UdpSocket,
                 rx_acks: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-                rx_msgs: mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>) {
+                tx_msgs: mpsc::Sender<Header>) {
         // a hashmap for the senders, indexed by the destination address
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
-        let mut receivers: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
-        let mut msgs: Vec<Header> = Vec::new();
+        // let mut receivers: HashMap<SocketAddr, mpsc::Sender<Header> > = HashMap::new();
+        // let mut msgs: Vec<Header> = Vec::new();
         loop {
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE];
@@ -54,7 +54,6 @@ impl Channel {
                 Ok((size, src_addr)) => {
                     // Get the senders from the channel
                     Channel::get_txs(&rx_acks, &mut sends, "Sender");
-                    Channel::get_txs(&rx_msgs, &mut receivers, "Receiver");
 
                     let header: Header = Header::create_from_bytes(buffer);
                     // If packet read is an ACK, send it to the corresponding sender
@@ -126,7 +125,24 @@ impl Channel {
                                         println!("Sent ACK {} for Agente {} through the socket sucessfully", ack.ack_num, agent);
                                         let _ = std::io::Write::flush(&mut std::io::stdout());
                                     }
-                                    msgs.push(header.clone());
+                                    // msgs.push(header.clone());
+                                    match tx_msgs.send(header.clone()) {
+                                        Ok(_) => {
+                                            if crate::config::DEBUG {
+                                                let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
+                                                println!("Delivered package {} to Agente {}", header.seq_num, agent);
+                                                let _ = std::io::Write::flush(&mut std::io::stdout());
+                                            }
+                                        },
+                                        Err(_) => {
+                                            if crate::config::DEBUG {
+                                                let agent = header.dst_addr.to_string()[header.dst_addr.to_string().len()-4..].to_string();
+                                                println!("\n---------\nErro ao entregar pacote {} para Agente {}\n--------",
+                                                header.seq_num, agent);
+                                                let _ = std::io::Write::flush(&mut std::io::stdout());
+                                            }
+                                        },
+                                    }
                                 },
                                 Err(_) => {
                                     if crate::config::DEBUG {
@@ -153,42 +169,16 @@ impl Channel {
             }
 
             // Check if there are messages waiting for the receiver
-            let mut to_keep: Vec<Header> = Vec::new();
-            for header in msgs {
-                if !Channel::prepare_receive(&mut receivers, &header) {
-                    to_keep.push(header);
-                }
-            }
-            msgs = to_keep;
+            // let mut to_keep: Vec<Header> = Vec::new();
+            // for header in msgs {
+            //     if !Channel::prepare_receive(&mut receivers, &header) {
+            //         to_keep.push(header);
+            //     }
+            // }
+            // msgs = to_keep;
         }
     }
     
-
-    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
-               map: &mut HashMap<SocketAddr, mpsc::Sender<Header>>,
-               role: &str) {
-        
-        loop {
-            match rx.try_recv() {
-                Ok((tx, key)) => {
-                    match map.get(&key) {
-                        Some(_) => {
-                            println!("Agente {} is already waiting for a message", key);
-                            let _ = std::io::Write::flush(&mut std::io::stdout());
-                        },
-                        None => {
-                            if crate::config::DEBUG {
-                                let agent = key.to_string()[key.to_string().len()-4..].to_string();
-                                println!("Subscribing Agente {} to listener as {}", agent, role);
-                                let _ = std::io::Write::flush(&mut std::io::stdout());
-                            }
-                            map.insert(key, tx);}
-                    };
-                },
-                Err(_) => break,
-            };
-        };
-    }
 
     fn prepare_receive(receivers: &mut HashMap<SocketAddr, mpsc::Sender<Header>>,
                     header: &Header) -> bool {
@@ -235,9 +225,37 @@ impl Channel {
         }
     }
 
+    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Header>, SocketAddr)>,
+               map: &mut HashMap<SocketAddr, mpsc::Sender<Header>>,
+               role: &str) {
+        
+        loop {
+            match rx.try_recv() {
+                Ok((tx, key)) => {
+                    match map.get(&key) {
+                        Some(_) => {
+                            println!("Agente {} is already waiting for a message", key);
+                            let _ = std::io::Write::flush(&mut std::io::stdout());
+                        },
+                        None => {
+                            if crate::config::DEBUG {
+                                let agent = key.to_string()[key.to_string().len()-4..].to_string();
+                                println!("Subscribing Agente {} to listener as {}", agent, role);
+                                let _ = std::io::Write::flush(&mut std::io::stdout());
+                            }
+                            map.insert(key, tx);}
+                    };
+                },
+                Err(_) => break,
+            };
+        };
+    }
+
     fn validate_message(header: &Header) -> bool {
-        let c1: bool = header.checksum == Header::get_checksum(&header.msg);
-        c1
+        // let c1: bool = header.checksum == Header::get_checksum(&header.msg);
+        // c1
+        let n = rand::random::<u8>();
+        n % 10 == 0
     }
 
     pub fn send(&self, header: Header) { 

@@ -11,13 +11,14 @@ use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 pub struct ReliableCommunication {
     pub channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
     pub send_tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
-    pub receive_tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
+    pub receive_rx: Arc<Mutex<Receiver<Header>>>
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -26,12 +27,13 @@ impl ReliableCommunication {
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = match Channel::new(host.clone(), send_rx, receive_rx) {
+        let channel = match Channel::new(host.clone(), send_rx, receive_tx) {
             Ok(c) => c,
             Err(_) => panic!("Erro ao criar o canal de comunicação"),
         };
+        let receive_rx = Arc::new(Mutex::new(receive_rx));
         
-        Self { channel, host, group, send_tx, receive_tx}
+        Self { channel, host, group, send_tx, receive_rx}
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -133,53 +135,37 @@ impl ReliableCommunication {
 
     // Função para receber mensagens confiáveis
     pub fn receive(&self, buffer: &mut Vec<u8>) {
-        let (msg_tx, msg_rx) = mpsc::channel();
         let mut next_seq_num = 0;
         if crate::config::DEBUG {
             let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-            println!("Agente {} is subscribing to listener to receive messages",
-                    agent);
+            println!("Agente {} is preparing to receive messages from listener", agent);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
-        match self.receive_tx.send((msg_tx.clone(), self.host)) {
-            Ok(_) => {
-                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                if crate::config::DEBUG {
-                    println!("Agente {} sent subscription to receive messages", agent);
-                    let _ = std::io::Write::flush(&mut std::io::stdout());
-                }
-                loop {
-                    match msg_rx.recv() {
-                        Ok(header) => {
-                            if crate::config::DEBUG {
-                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                                println!("Agente {} received package {}", agent, header.seq_num);
-                                let _ = std::io::Write::flush(&mut std::io::stdout());
-                            }
-                            if header.seq_num == next_seq_num {
-                                buffer.extend(header.msg);
-                                next_seq_num += 1;
-                                if header.is_last {
-                                    break;
-                                }
-                            } // listener already sends ack
-                        },
-                        Err(_) => {
-                            if crate::config::DEBUG {
-                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                                println!("\n---------\nAgente {} falhou ao receber o pacote {}\n--------",
-                                agent, next_seq_num);
-                                let _ = std::io::Write::flush(&mut std::io::stdout());
-                            }
+        loop {
+            match self.receive_rx.lock().unwrap().recv() {
+                Ok(header) => {
+                    if crate::config::DEBUG {
+                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                        println!("Agente {} received package {}", agent, header.seq_num);
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
+                    }
+                    if header.seq_num == next_seq_num {
+                        buffer.extend(header.msg);
+                        next_seq_num += 1;
+                        if header.is_last {
+                            break;
                         }
-                        
+                    } // listener already sends ack
+                },
+                Err(_) => {
+                    if crate::config::DEBUG {
+                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                        println!("\n---------\nAgente {} falhou ao receber o pacote {}\nThread Listener terminou--------",
+                        agent, next_seq_num);
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
                     }
                 }
-            }
-            Err(_) => if crate::config::DEBUG {
-                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                println!("\n---------\nErro no Agente {} ao inscrever-se como recebedor\n--------", agent);
-                let _ = std::io::Write::flush(&mut std::io::stdout());
+                
             }
         }
     }
