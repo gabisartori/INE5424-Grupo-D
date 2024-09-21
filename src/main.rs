@@ -39,20 +39,22 @@ impl Agent {
     }
 
     fn listener(&self) {
-        // let mut file: std::fs::File;
-        loop
+        let mut stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
+        for _ in 0..stop
         {
-            let mut message: Vec<u8> = Vec::new();
             if cfg!(debug_assertions) {
                 println!("\n-------------\nAGENTE {} VAI RECEBER UMA MENSAGEM\n-------------", self.id);
                 let _ = std::io::Write::flush(&mut std::io::stdout());
             }
-            self.communication.receive(&mut message);
+            let mut message: Vec<u8> = Vec::new();
+            if !self.communication.receive(&mut message) {
+                break;
+            }
             let msg = String::from_utf8_lossy(&message);
             let msf = format!("Agent {} recieved Message:\n-->\n{}", self.id, msg);
-            // write message to a listener.txt file
             if cfg!(debug_assertions) {
                 println!("\n-------------\nMENSAGEM RECEBIDA POR AGENTE {}\n-------------\n", self.id);
+                // write message to a listener.txt file
                 let _ = std::io::Write::flush(&mut std::io::stdout());
                 let path = format!("tests/listener_{}.txt", self.id);
                 let mut file: std::fs::File = match std::fs::OpenOptions::new()
@@ -71,13 +73,26 @@ impl Agent {
     }
 
     fn sender(&self) {
-        let mut destination: u32; //= (self.id + 1) % self.communication.group.len() as u32;
-        for _ in 0..3
+        let mut destination: u32;
+        for _ in 0..N_MSGS
         {
             // Pick a random node to send a message to
-            loop {
-                destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
-                if destination != self.id { break; }
+            destination = match cfg!(debug_assertions) {
+                true => {
+                    let dst = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
+                    if dst  == self.id {
+                        (dst + 1) % self.communication.group.len() as u32
+                    }
+                    else {
+                        dst
+                    }
+                },
+                false => (self.id + 1) % self.communication.group.len() as u32             
+            };
+            if cfg!(debug_assertions) {
+                destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);}
+            if destination == self.id || cfg!(debug_assertions) {
+                break;
             }
 
             // Send message to the selected node
