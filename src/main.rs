@@ -82,8 +82,8 @@ impl Agent {
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
-            // let msg: String = config::LARGE_MSG.to_string();
-            let msg: String = format!("Hello");
+            let msg: String = config::LARGE_MSG.to_string();
+            // let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             if config::DEBUG {
                 println!("\n-------------\nAGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}\n-------------\n",
