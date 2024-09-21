@@ -252,10 +252,8 @@ impl Channel {
     }
 
     fn validate_message(header: &Header) -> bool {
-        // let c1: bool = header.checksum == Header::get_checksum(&header.msg);
-        // c1
-        let n = rand::random::<u8>();
-        n % 10 == 0
+        let c1: bool = header.checksum == Header::get_checksum(&header.msg);
+        c1
     }
 
     pub fn send(&self, header: Header) { 

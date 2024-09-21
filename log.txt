@@ -1,0 +1,1360 @@
+Incializando Listener no Agente 3100
+Incializando Listener no Agente 3101
+Incializando Listener no Agente 3102
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+Agente 3100 is subscribing to listener to send packages
+Incializando Listener no Agente 3103
+Agente 3100 sent subscription to send packages sucessfully
+Agente 3100 is sending package 0
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3100 is preparing to receive messages from listener
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 2
+-------------
+
+Agente 3101 is subscribing to listener to send packages
+Agente 3101 sent subscription to send packages sucessfully
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+Agente 3100 is sending package 1
+Agente 3101 is sending package 0
+Incializando Listener no Agente 3104
+Subscribing Agente 3101 to listener as Sender
+Agente 3100 sent package 1 to Agente 3101 through socket sucessfully
+Agente 3100 is waiting for ACK 0
+Agente 3101 sent package 0 to Agente 3102 through socket sucessfully
+Listener read package 0 from Agente 3101 through the socket
+Listener read package 0 from Agente 3100 through the socket
+Agente 3101 is sending package 1
+Msg was validated, sending ACK 0 to Agente 3101
+Msg was validated, sending ACK 0 to Agente 3100
+Agente 3101 sent package 1 to Agente 3102 through socket sucessfully
+Agente 3101 is waiting for ACK 0
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Delivered package 0 to Agente 3102
+Delivered package 0 to Agente 3101
+Agente 3101 is preparing to receive messages from listener
+Listener read package 1 from Agente 3101 through the socket
+Agente 3101 received package 0
+Listener read package 1 from Agente 3100 through the socket
+Msg was validated, sending ACK 1 to Agente 3101
+Subscribing Agente 3100 to listener as Sender
+Msg was validated, sending ACK 1 to Agente 3100
+Sent ACK 1 for Agente 3101 through the socket sucessfully
+Delivered package 1 to Agente 3102
+Sent ACK 1 for Agente 3100 through the socket sucessfully
+Listener read ACK 0 from Agente 3101 through the socket
+Delivered package 1 to Agente 3101
+Agente 3101 received package 1
+Delivered ACK 0 for Agente 3100
+Listener read ACK 0 from Agente 3102 through the socket
+Agente 3100 received ACK 0
+Agente 3100 is waiting for ACK 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+Agente 3101 received ACK 0
+Incializando Listener no Agente 3105
+Delivered ACK 0 for Agente 3101
+Agente 3101 is waiting for ACK 1
+Listener read ACK 1 from Agente 3101 through the socket
+Listener read ACK 1 from Agente 3102 through the socket
+Delivered ACK 1 for Agente 3100
+Delivered ACK 1 for Agente 3101
+Agente 3100 received ACK 1
+Removing Agente 3101 from sender subscription
+Removing Agente 3100 from sender subscription
+Agente 3101 received ACK 1
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 2
+-------------
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 2
+-------------
+
+Agente 3100 is subscribing to listener to send packages
+Agente 3100 sent subscription to send packages sucessfully
+Agente 3101 is subscribing to listener to send packages
+Agente 3101 sent subscription to send packages sucessfully
+Agente 3100 is sending package 0
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3101 is sending package 0
+Agente 3101 is preparing to receive messages from listener
+Subscribing Agente 3101 to listener as Sender
+
+-------------
+AGENTE 3 VAI ENVIAR A MENSAGEM PARA AGENTE 4
+-------------
+
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+Agente 3103 is subscribing to listener to send packages
+Agente 3101 sent package 0 to Agente 3102 through socket sucessfully
+Agente 3100 is sending package 1
+Listener read package 0 from Agente 3100 through the socket
+Agente 3101 is sending package 1
+Listener read package 0 from Agente 3101 through the socket
+Agente 3100 sent package 1 to Agente 3101 through socket sucessfully
+Agente 3100 is waiting for ACK 0
+Msg was validated, sending ACK 0 to Agente 3101
+Agente 3101 sent package 1 to Agente 3102 through socket sucessfully
+Agente 3101 is waiting for ACK 0
+Agente 3103 sent subscription to send packages sucessfully
+Msg was validated, sending ACK 0 to Agente 3100
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Agente 3103 is sending package 0
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+Delivered package 0 to Agente 3101
+
+-------------
+AGENTE 2 VAI ENVIAR A MENSAGEM PARA AGENTE 3
+-------------
+
+Delivered package 0 to Agente 3102
+Incializando Listener no Agente 3106
+Agente 3101 received package 0
+
+-------------
+AGENTE 3 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read package 1 from Agente 3100 through the socket
+Agente 3102 is subscribing to listener to send packages
+Subscribing Agente 3100 to listener as Sender
+Listener read package 1 from Agente 3101 through the socket
+Listener read package 0 from Agente 3103 through the socket
+Agente 3102 sent subscription to send packages sucessfully
+Agente 3103 is preparing to receive messages from listener
+Agente 3103 sent package 0 to Agente 3104 through socket sucessfully
+Msg was validated, sending ACK 1 to Agente 3101
+
+-------------
+AGENTE 2 VAI RECEBER UMA MENSAGEM
+-------------
+Msg was validated, sending ACK 0 to Agente 3103
+Sent ACK 1 for Agente 3101 through the socket sucessfully
+Agente 3102 is preparing to receive messages from listener
+Delivered package 1 to Agente 3102
+Agente 3102 received package 0
+Sent ACK 0 for Agente 3103 through the socket sucessfully
+Agente 3102 received package 1
+Msg was validated, sending ACK 1 to Agente 3100
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 2
+-------------
+
+Subscribing Agente 3103 to listener as Sender
+Sent ACK 1 for Agente 3100 through the socket sucessfully
+Agente 3102 is sending package 0
+Delivered package 0 to Agente 3104
+Listener read ACK 0 from Agente 3101 through the socket
+Agente 3102 sent package 0 to Agente 3103 through socket sucessfully
+Agente 3102 is sending package 1
+Delivered package 1 to Agente 3101
+Agente 3101 received package 1
+Delivered ACK 0 for Agente 3100
+Listener read ACK 0 from Agente 3102 through the socket
+Listener read ACK 1 from Agente 3101 through the socket
+Agente 3100 received ACK 0
+
+-------------
+AGENTE 2 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3102 is preparing to receive messages from listener
+Agente 3102 received package 0
+Agente 3100 is waiting for ACK 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+Agente 3103 is sending package 1
+Delivered ACK 0 for Agente 3101
+Agente 3102 sent package 1 to Agente 3103 through socket sucessfully
+Listener read ACK 1 from Agente 3102 through the socket
+Listener read ACK 0 from Agente 3104 through the socket
+Incializando Listener no Agente 3107
+Agente 3101 received ACK 0
+Agente 3101 is waiting for ACK 1
+Agente 3103 sent package 1 to Agente 3104 through socket sucessfully
+Agente 3103 is waiting for ACK 0
+Listener read package 1 from Agente 3103 through the socket
+Msg was validated, sending ACK 1 to Agente 3103
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3101 is preparing to receive messages from listener
+Agente 3102 received package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 2
+-------------
+
+
+-------------
+AGENTE 2 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3102 is preparing to receive messages from listener
+Delivered ACK 1 for Agente 3100
+Agente 3100 received ACK 1
+Removing Agente 3100 from sender subscription
+
+-------------
+AGENTE 6 VAI ENVIAR A MENSAGEM PARA AGENTE 7
+-------------
+
+Agente 3102 is waiting for ACK 0
+
+-------------
+AGENTE 6 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3106 is subscribing to listener to send packages
+Agente 3106 is preparing to receive messages from listener
+Delivered ACK 1 for Agente 3101
+Agente 3106 sent subscription to send packages sucessfully
+Removing Agente 3101 from sender subscription
+Sent ACK 1 for Agente 3103 through the socket sucessfully
+Delivered package 1 to Agente 3104
+Agente 3101 received ACK 1
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 2
+-------------
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 2
+-------------
+
+Agente 3100 is subscribing to listener to send packages
+Agente 3101 is subscribing to listener to send packages
+Delivered ACK 0 for Agente 3103
+Agente 3103 received ACK 0
+Agente 3106 is sending package 0
+Listener read package 0 from Agente 3102 through the socket
+Agente 3100 sent subscription to send packages sucessfully
+Agente 3106 sent package 0 to Agente 3107 through socket sucessfully
+
+-------------
+AGENTE 5 VAI ENVIAR A MENSAGEM PARA AGENTE 6
+-------------
+
+Agente 3100 is sending package 0
+
+-------------
+AGENTE 4 VAI RECEBER UMA MENSAGEM
+-------------
+Incializando Listener no Agente 3108
+Agente 3101 sent subscription to send packages sucessfully
+Agente 3104 is preparing to receive messages from listener
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+Agente 3103 is waiting for ACK 1
+Agente 3106 is sending package 1
+Msg was validated, sending ACK 0 to Agente 3102
+Agente 3105 is subscribing to listener to send packages
+Agente 3105 sent subscription to send packages sucessfully
+Sent ACK 0 for Agente 3102 through the socket sucessfully
+Subscribing Agente 3102 to listener as Sender
+Subscribing Agente 3101 to listener as Sender
+Delivered package 0 to Agente 3103
+
+-------------
+AGENTE 5 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read package 1 from Agente 3102 through the socket
+Agente 3100 is sending package 1
+Msg was validated, sending ACK 1 to Agente 3102
+
+-------------
+AGENTE 4 VAI ENVIAR A MENSAGEM PARA AGENTE 5
+-------------
+
+Agente 3106 sent package 1 to Agente 3107 through socket sucessfully
+Agente 3100 sent package 1 to Agente 3101 through socket sucessfully
+Agente 3100 is waiting for ACK 0
+Agente 3104 is subscribing to listener to send packages
+Agente 3101 is sending package 0
+
+-------------
+AGENTE 7 VAI ENVIAR A MENSAGEM PARA AGENTE 8
+-------------
+
+Listener read package 0 from Agente 3106 through the socket
+Agente 3103 received package 0
+Msg was validated, sending ACK 0 to Agente 3106
+Listener read package 0 from Agente 3100 through the socket
+Listener read ACK 0 from Agente 3103 through the socket
+Agente 3105 is preparing to receive messages from listener
+Sent ACK 1 for Agente 3102 through the socket sucessfully
+Subscribing Agente 3106 to listener as Sender
+Delivered package 1 to Agente 3103
+Agente 3106 is waiting for ACK 0
+Listener read ACK 0 from Agente 3107 through the socket
+Incializando Listener no Agente 3109
+Agente 3104 received package 0
+Agente 3104 sent subscription to send packages sucessfully
+Agente 3104 received package 1
+Delivered ACK 0 for Agente 3106
+Agente 3106 received ACK 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 4
+-------------
+
+
+-------------
+AGENTE 7 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3103 received package 1
+Agente 3105 is sending package 0
+Agente 3107 is preparing to receive messages from listener
+Msg was validated, sending ACK 0 to Agente 3100
+Agente 3104 is sending package 0
+
+-------------
+AGENTE 4 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read ACK 1 from Agente 3104 through the socket
+Agente 3104 is preparing to receive messages from listener
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 3
+-------------
+
+Delivered ACK 0 for Agente 3102
+Agente 3106 is waiting for ACK 1
+Sent ACK 0 for Agente 3106 through the socket sucessfully
+Agente 3101 sent package 0 to Agente 3102 through socket sucessfully
+Agente 3107 is subscribing to listener to send packages
+Delivered package 0 to Agente 3107
+Agente 3101 is sending package 1
+
+-------------
+AGENTE 3 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3107 sent subscription to send packages sucessfully
+Agente 3103 is preparing to receive messages from listener
+Delivered ACK 1 for Agente 3103
+Subscribing Agente 3100 to listener as Sender
+Agente 3107 is sending package 0
+Agente 3102 received ACK 0
+Listener read ACK 0 from Agente 3101 through the socket
+
+-------------
+AGENTE 8 VAI ENVIAR A MENSAGEM PARA AGENTE 9
+-------------
+
+Agente 3102 is waiting for ACK 1
+Agente 3107 sent package 0 to Agente 3108 through socket sucessfully
+Delivered ACK 0 for Agente 3100
+Agente 3107 received package 0
+Agente 3103 received ACK 1
+Agente 3104 sent package 0 to Agente 3105 through socket sucessfully
+Subscribing Agente 3105 to listener as Sender
+
+-------------
+AGENTE 8 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read ACK 1 from Agente 3103 through the socket
+Agente 3105 sent package 0 to Agente 3106 through socket sucessfully
+Delivered ACK 1 for Agente 3102
+Removing Agente 3102 from sender subscription
+Listener read package 0 from Agente 3105 through the socket
+Agente 3102 received ACK 1
+
+-------------
+AGENTE 2 ENVIOU A MENSAGEM PARA AGENTE 3
+-------------
+Agente 3108 is subscribing to listener to send packages
+
+-------------
+AGENTE 2 VAI ENVIAR A MENSAGEM PARA AGENTE 3
+-------------
+
+Listener read package 0 from Agente 3101 through the socket
+Removing Agente 3103 from sender subscription
+Agente 3101 sent package 1 to Agente 3102 through socket sucessfully
+Msg was validated, sending ACK 0 to Agente 3101
+Agente 3101 is waiting for ACK 0
+Agente 3104 is sending package 1
+Agente 3108 is preparing to receive messages from listener
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Listener read package 0 from Agente 3104 through the socket
+Delivered package 0 to Agente 3102
+Agente 3104 sent package 1 to Agente 3105 through socket sucessfully
+Agente 3102 received package 0
+Listener read package 1 from Agente 3106 through the socket
+Msg was validated, sending ACK 0 to Agente 3104
+Agente 3105 is sending package 1
+Listener read package 1 from Agente 3101 through the socket
+Msg was validated, sending ACK 0 to Agente 3105
+Msg was validated, sending ACK 1 to Agente 3101
+
+-------------
+AGENTE 9 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3102 is subscribing to listener to send packages
+Sent ACK 1 for Agente 3101 through the socket sucessfully
+Agente 3108 sent subscription to send packages sucessfully
+Agente 3100 received ACK 0
+Agente 3100 is waiting for ACK 1
+Listener read package 0 from Agente 3107 through the socket
+Agente 3102 received package 1
+
+-------------
+AGENTE 3 ENVIOU A MENSAGEM PARA AGENTE 4
+-------------
+Msg was validated, sending ACK 1 to Agente 3106
+
+-------------
+AGENTE 3 VAI ENVIAR A MENSAGEM PARA AGENTE 4
+-------------
+
+Agente 3103 is subscribing to listener to send packages
+Agente 3105 sent package 1 to Agente 3106 through socket sucessfully
+Agente 3109 is preparing to receive messages from listener
+Sent ACK 1 for Agente 3106 through the socket sucessfully
+Agente 3103 sent subscription to send packages sucessfully
+Agente 3107 is sending package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 2
+-------------
+
+Agente 3108 is sending package 0
+Msg was validated, sending ACK 0 to Agente 3107
+Agente 3104 is waiting for ACK 0
+Sent ACK 0 for Agente 3104 through the socket sucessfully
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+Delivered package 1 to Agente 3102
+Agente 3108 sent package 0 to Agente 3109 through socket sucessfully
+Delivered package 0 to Agente 3101
+Sent ACK 0 for Agente 3105 through the socket sucessfully
+Agente 3101 received package 0
+Agente 3107 received package 1
+Agente 3102 sent subscription to send packages sucessfully
+Listener read package 1 from Agente 3100 through the socket
+Delivered package 0 to Agente 3106
+Agente 3106 received package 0
+Agente 3105 is waiting for ACK 0
+Subscribing Agente 3104 to listener as Sender
+Agente 3102 is sending package 0
+
+-------------
+AGENTE 9 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Agente 3109 is subscribing to listener to send packages
+Listener read ACK 0 from Agente 3105 through the socket
+Delivered package 1 to Agente 3107
+Agente 3107 sent package 1 to Agente 3108 through socket sucessfully
+Agente 3103 is sending package 0
+Agente 3107 is waiting for ACK 0
+Delivered ACK 0 for Agente 3104
+Msg was validated, sending ACK 1 to Agente 3100
+Sent ACK 1 for Agente 3100 through the socket sucessfully
+Sent ACK 0 for Agente 3107 through the socket sucessfully
+Delivered package 1 to Agente 3101
+Agente 3102 sent package 0 to Agente 3103 through socket sucessfully
+Listener read ACK 1 from Agente 3101 through the socket
+Agente 3109 sent subscription to send packages sucessfully
+Listener read package 0 from Agente 3108 through the socket
+Agente 3109 is sending package 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 7
+-------------
+
+Msg was validated, sending ACK 0 to Agente 3108
+Delivered package 0 to Agente 3108
+Agente 3109 sent package 0 to Agente 3100 through socket sucessfully
+Sent ACK 0 for Agente 3108 through the socket sucessfully
+Subscribing Agente 3107 to listener as Sender
+Delivered package 0 to Agente 3105
+Agente 3108 is sending package 1
+Agente 3108 received package 0
+Agente 3105 received package 0
+Listener read ACK 0 from Agente 3108 through the socket
+Listener read package 1 from Agente 3105 through the socket
+Listener read package 1 from Agente 3104 through the socket
+Listener read ACK 0 from Agente 3102 through the socket
+Agente 3109 is sending package 1
+Agente 3104 received ACK 0
+Msg was validated, sending ACK 1 to Agente 3104
+Agente 3102 is sending package 1
+Agente 3104 is waiting for ACK 1
+Delivered ACK 0 for Agente 3107
+Delivered ACK 0 for Agente 3101
+Delivered ACK 1 for Agente 3100
+Agente 3107 received ACK 0
+Agente 3107 is waiting for ACK 1
+Subscribing Agente 3108 to listener as Sender
+Agente 3108 sent package 1 to Agente 3109 through socket sucessfully
+Agente 3109 sent package 1 to Agente 3100 through socket sucessfully
+Agente 3108 is waiting for ACK 0
+Listener read package 1 from Agente 3107 through the socket
+Listener read ACK 1 from Agente 3105 through the socket
+Removing Agente 3100 from sender subscription
+Delivered ACK 1 for Agente 3104
+Agente 3103 sent package 0 to Agente 3104 through socket sucessfully
+Agente 3101 received ACK 0
+Listener read ACK 1 from Agente 3102 through the socket
+Agente 3100 received ACK 1
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+Agente 3101 received package 1
+Delivered ACK 1 for Agente 3101
+Agente 3109 received package 0
+Agente 3102 sent package 1 to Agente 3103 through socket sucessfully
+Agente 3102 is waiting for ACK 0
+Subscribing Agente 3103 to listener as Sender
+Msg was validated, sending ACK 1 to Agente 3107
+
+-------------
+AGENTE 7 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read package 0 from Agente 3109 through the socket
+Listener read package 0 from Agente 3102 through the socket
+Delivered package 0 to Agente 3109
+Removing Agente 3101 from sender subscription
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+Agente 3104 received ACK 1
+
+-------------
+AGENTE 4 ENVIOU A MENSAGEM PARA AGENTE 5
+-------------
+Agente 3103 is sending package 1
+
+-------------
+AGENTE 4 VAI ENVIAR A MENSAGEM PARA AGENTE 5
+-------------
+
+Sent ACK 1 for Agente 3107 through the socket sucessfully
+Msg was validated, sending ACK 1 to Agente 3105
+Removing Agente 3104 from sender subscription
+Sent ACK 1 for Agente 3104 through the socket sucessfully
+Sent ACK 1 for Agente 3105 through the socket sucessfully
+Agente 3101 is waiting for ACK 1
+Agente 3105 received package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 5
+-------------
+
+Subscribing Agente 3109 to listener as Sender
+Agente 3107 is preparing to receive messages from listener
+Listener read ACK 1 from Agente 3108 through the socket
+Msg was validated, sending ACK 0 to Agente 3109
+Agente 3108 received package 1
+Agente 3107 received ACK 1
+Delivered package 1 to Agente 3105
+Sent ACK 0 for Agente 3109 through the socket sucessfully
+Listener read ACK 0 from Agente 3106 through the socket
+Msg was validated, sending ACK 0 to Agente 3102
+Delivered package 1 to Agente 3106
+
+-------------
+AGENTE 5 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3106 received package 1
+Delivered ACK 0 for Agente 3105
+Sent ACK 0 for Agente 3102 through the socket sucessfully
+Listener read ACK 1 from Agente 3107 through the socket
+Agente 3100 received package 0
+Delivered package 1 to Agente 3108
+Delivered ACK 1 for Agente 3107
+Listener read package 0 from Agente 3103 through the socket
+Listener read ACK 0 from Agente 3109 through the socket
+Agente 3101 received ACK 1
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 2
+-------------
+Agente 3105 is preparing to receive messages from listener
+Delivered package 0 to Agente 3100
+Delivered ACK 0 for Agente 3108
+Agente 3108 received ACK 0
+Agente 3108 is waiting for ACK 1
+Subscribing Agente 3102 to listener as Sender
+Listener read ACK 1 from Agente 3106 through the socket
+Agente 3105 received ACK 0
+Agente 3106 received ACK 1
+
+-------------
+AGENTE 6 ENVIOU A MENSAGEM PARA AGENTE 7
+-------------
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 8
+-------------
+
+
+-------------
+AGENTE 6 VAI ENVIAR A MENSAGEM PARA AGENTE 7
+-------------
+
+Msg was validated, sending ACK 0 to Agente 3103
+Agente 3106 is subscribing to listener to send packages
+Agente 3103 sent package 1 to Agente 3104 through socket sucessfully
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 6
+-------------
+
+Agente 3106 sent subscription to send packages sucessfully
+Listener read package 1 from Agente 3109 through the socket
+Agente 3104 is subscribing to listener to send packages
+Listener read ACK 0 from Agente 3103 through the socket
+Delivered ACK 1 for Agente 3106
+
+-------------
+AGENTE 7 ENVIOU A MENSAGEM PARA AGENTE 8
+-------------
+
+-------------
+AGENTE 8 VAI RECEBER UMA MENSAGEM
+-------------
+Removing Agente 3107 from sender subscription
+Listener read package 1 from Agente 3108 through the socket
+Delivered package 0 to Agente 3103
+Agente 3103 is waiting for ACK 0
+Agente 3103 received package 0
+Sent ACK 0 for Agente 3103 through the socket sucessfully
+Agente 3106 is sending package 0
+Delivered package 0 to Agente 3104
+
+-------------
+AGENTE 6 VAI RECEBER UMA MENSAGEM
+-------------
+Msg was validated, sending ACK 1 to Agente 3109
+Agente 3105 is waiting for ACK 1
+Agente 3105 received ACK 1
+Agente 3104 sent subscription to send packages sucessfully
+Sent ACK 1 for Agente 3109 through the socket sucessfully
+Removing Agente 3106 from sender subscription
+Agente 3104 is sending package 0
+
+-------------
+AGENTE 7 VAI ENVIAR A MENSAGEM PARA AGENTE 8
+-------------
+
+Agente 3109 is waiting for ACK 0
+Agente 3108 is preparing to receive messages from listener
+Agente 3104 sent package 0 to Agente 3105 through socket sucessfully
+Msg was validated, sending ACK 1 to Agente 3108
+Agente 3104 is sending package 1
+Delivered ACK 1 for Agente 3105
+Removing Agente 3105 from sender subscription
+Sent ACK 1 for Agente 3108 through the socket sucessfully
+Listener read package 1 from Agente 3102 through the socket
+Agente 3104 received package 0
+Listener read ACK 1 from Agente 3109 through the socket
+Delivered package 1 to Agente 3109
+Msg was validated, sending ACK 1 to Agente 3102
+
+-------------
+AGENTE 5 ENVIOU A MENSAGEM PARA AGENTE 6
+-------------
+Agente 3106 sent package 0 to Agente 3107 through socket sucessfully
+Delivered package 1 to Agente 3100
+Agente 3102 received ACK 0
+Agente 3102 is waiting for ACK 1
+Agente 3106 is sending package 1
+Agente 3109 received package 1
+Agente 3106 is preparing to receive messages from listener
+Delivered ACK 1 for Agente 3108
+Agente 3108 received ACK 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 9
+-------------
+
+Listener read ACK 0 from Agente 3100 through the socket
+Agente 3104 sent package 1 to Agente 3105 through socket sucessfully
+Agente 3107 is subscribing to listener to send packages
+Delivered ACK 0 for Agente 3102
+Listener read package 0 from Agente 3104 through the socket
+
+-------------
+AGENTE 8 ENVIOU A MENSAGEM PARA AGENTE 9
+-------------
+Msg was validated, sending ACK 0 to Agente 3104
+Listener read ACK 1 from Agente 3103 through the socket
+
+-------------
+AGENTE 5 VAI ENVIAR A MENSAGEM PARA AGENTE 6
+-------------
+
+
+-------------
+AGENTE 9 VAI RECEBER UMA MENSAGEM
+-------------
+Subscribing Agente 3104 to listener as Sender
+Listener read package 0 from Agente 3106 through the socket
+Agente 3104 is waiting for ACK 0
+Listener read package 1 from Agente 3103 through the socket
+Sent ACK 1 for Agente 3102 through the socket sucessfully
+Agente 3107 sent subscription to send packages sucessfully
+Delivered package 1 to Agente 3103
+Agente 3103 received package 1
+Agente 3100 received package 1
+Agente 3107 is sending package 0
+
+-------------
+AGENTE 8 VAI ENVIAR A MENSAGEM PARA AGENTE 9
+-------------
+
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 3
+-------------
+
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 0
+-------------
+
+Agente 3106 sent package 1 to Agente 3107 through socket sucessfully
+Removing Agente 3108 from sender subscription
+Delivered ACK 1 for Agente 3102
+Agente 3105 is subscribing to listener to send packages
+Msg was validated, sending ACK 0 to Agente 3106
+Listener read package 0 from Agente 3107 through the socket
+Msg was validated, sending ACK 1 to Agente 3103
+Listener read ACK 0 from Agente 3104 through the socket
+Sent ACK 0 for Agente 3106 through the socket sucessfully
+Agente 3106 is waiting for ACK 0
+Sent ACK 0 for Agente 3104 through the socket sucessfully
+Delivered ACK 0 for Agente 3103
+
+-------------
+AGENTE 3 VAI RECEBER UMA MENSAGEM
+-------------
+Removing Agente 3102 from sender subscription
+Agente 3103 is preparing to receive messages from listener
+Agente 3109 is preparing to receive messages from listener
+Agente 3108 is subscribing to listener to send packages
+Msg was validated, sending ACK 0 to Agente 3107
+Sent ACK 1 for Agente 3103 through the socket sucessfully
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Delivered package 0 to Agente 3107
+Agente 3107 sent package 0 to Agente 3108 through socket sucessfully
+Subscribing Agente 3107 to listener as Sender
+Agente 3103 received ACK 0
+Delivered package 0 to Agente 3105
+Agente 3107 is sending package 1
+Listener read package 1 from Agente 3106 through the socket
+Agente 3105 received package 0
+Subscribing Agente 3105 to listener as Sender
+Agente 3102 received ACK 1
+Delivered package 1 to Agente 3104
+Sent ACK 0 for Agente 3107 through the socket sucessfully
+Subscribing Agente 3106 to listener as Sender
+Agente 3103 is waiting for ACK 1
+Agente 3104 received package 1
+Listener read ACK 1 from Agente 3104 through the socket
+Listener read ACK 0 from Agente 3107 through the socket
+Delivered ACK 0 for Agente 3109
+Delivered ACK 1 for Agente 3103
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 4
+-------------
+
+Removing Agente 3103 from sender subscription
+
+-------------
+AGENTE 2 ENVIOU A MENSAGEM PARA AGENTE 3
+-------------
+Agente 3107 received package 0
+Listener read package 1 from Agente 3104 through the socket
+
+-------------
+AGENTE 4 VAI RECEBER UMA MENSAGEM
+-------------
+Listener read ACK 0 from Agente 3105 through the socket
+Agente 3105 sent subscription to send packages sucessfully
+Delivered ACK 0 for Agente 3104
+Agente 3104 received ACK 0
+Agente 3109 received ACK 0
+Agente 3105 is sending package 0
+Agente 3103 received ACK 1
+Delivered ACK 0 for Agente 3106
+Listener read ACK 1 from Agente 3100 through the socket
+Agente 3105 sent package 0 to Agente 3106 through socket sucessfully
+Delivered ACK 1 for Agente 3109
+
+-------------
+AGENTE 2 VAI ENVIAR A MENSAGEM PARA AGENTE 3
+-------------
+
+Agente 3108 sent subscription to send packages sucessfully
+Agente 3100 is preparing to receive messages from listener
+Delivered package 0 to Agente 3108
+Agente 3108 is sending package 0
+Agente 3108 received package 0
+Subscribing Agente 3108 to listener as Sender
+Agente 3107 sent package 1 to Agente 3108 through socket sucessfully
+Agente 3104 is waiting for ACK 1
+Agente 3107 is waiting for ACK 0
+Agente 3108 sent package 0 to Agente 3109 through socket sucessfully
+Agente 3106 received ACK 0
+Agente 3108 is sending package 1
+Agente 3106 is waiting for ACK 1
+Listener read package 0 from Agente 3105 through the socket
+Msg was validated, sending ACK 1 to Agente 3106
+Agente 3105 is sending package 1
+Sent ACK 1 for Agente 3106 through the socket sucessfully
+Agente 3104 is preparing to receive messages from listener
+Delivered package 1 to Agente 3107
+Agente 3105 sent package 1 to Agente 3106 through socket sucessfully
+Listener read ACK 0 from Agente 3108 through the socket
+Agente 3105 is waiting for ACK 0
+
+-------------
+AGENTE 3 ENVIOU A MENSAGEM PARA AGENTE 4
+-------------
+Delivered ACK 0 for Agente 3107
+
+-------------
+AGENTE 3 VAI ENVIAR A MENSAGEM PARA AGENTE 4
+-------------
+
+Removing Agente 3109 from sender subscription
+Agente 3108 sent package 1 to Agente 3109 through socket sucessfully
+Agente 3108 is waiting for ACK 0
+Agente 3102 is subscribing to listener to send packages
+Listener read package 1 from Agente 3107 through the socket
+Msg was validated, sending ACK 1 to Agente 3104
+Agente 3109 is waiting for ACK 1
+Agente 3107 received package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 7
+-------------
+
+Agente 3107 received ACK 0
+Agente 3103 is subscribing to listener to send packages
+Agente 3107 is waiting for ACK 1
+Agente 3102 sent subscription to send packages sucessfully
+Agente 3103 sent subscription to send packages sucessfully
+Listener read package 0 from Agente 3108 through the socket
+Listener read ACK 1 from Agente 3105 through the socket
+Agente 3103 is sending package 0
+Agente 3102 is sending package 0
+Msg was validated, sending ACK 1 to Agente 3107
+Delivered ACK 1 for Agente 3104
+Agente 3104 received ACK 1
+Agente 3109 received ACK 1
+Sent ACK 1 for Agente 3104 through the socket sucessfully
+Subscribing Agente 3103 to listener as Sender
+Msg was validated, sending ACK 0 to Agente 3105
+Msg was validated, sending ACK 0 to Agente 3108
+Agente 3105 received package 1
+
+-------------
+AGENTE 7 VAI RECEBER UMA MENSAGEM
+-------------
+Sent ACK 0 for Agente 3108 through the socket sucessfully
+Agente 3107 is preparing to receive messages from listener
+
+-------------
+AGENTE 9 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
+Delivered package 1 to Agente 3105
+Listener read ACK 1 from Agente 3108 through the socket
+Agente 3102 sent package 0 to Agente 3103 through socket sucessfully
+Listener read package 0 from Agente 3102 through the socket
+Sent ACK 0 for Agente 3105 through the socket sucessfully
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 5
+-------------
+
+Msg was validated, sending ACK 0 to Agente 3102
+Agente 3106 received package 0
+
+-------------
+AGENTE 9 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Removing Agente 3104 from sender subscription
+Sent ACK 0 for Agente 3102 through the socket sucessfully
+Delivered package 0 to Agente 3109
+Delivered package 0 to Agente 3103
+Agente 3109 received package 0
+Agente 3103 sent package 0 to Agente 3104 through socket sucessfully
+Listener read package 1 from Agente 3108 through the socket
+
+-------------
+AGENTE 4 ENVIOU A MENSAGEM PARA AGENTE 5
+-------------
+Msg was validated, sending ACK 1 to Agente 3108
+
+-------------
+AGENTE 4 VAI ENVIAR A MENSAGEM PARA AGENTE 5
+-------------
+
+Listener read ACK 0 from Agente 3106 through the socket
+Agente 3102 is sending package 1
+Delivered ACK 1 for Agente 3107
+Sent ACK 1 for Agente 3107 through the socket sucessfully
+Delivered package 1 to Agente 3108
+Delivered package 0 to Agente 3106
+
+-------------
+AGENTE 5 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3109 is subscribing to listener to send packages
+Listener read ACK 1 from Agente 3107 through the socket
+Agente 3109 sent subscription to send packages sucessfully
+Agente 3103 received package 0
+Listener read package 0 from Agente 3103 through the socket
+Agente 3103 is sending package 1
+Sent ACK 1 for Agente 3108 through the socket sucessfully
+Msg was validated, sending ACK 0 to Agente 3103
+Agente 3103 sent package 1 to Agente 3104 through socket sucessfully
+Agente 3104 is subscribing to listener to send packages
+Agente 3109 received package 1
+Delivered ACK 0 for Agente 3105
+Sent ACK 0 for Agente 3103 through the socket sucessfully
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 9
+-------------
+
+Agente 3107 received ACK 1
+Agente 3108 received package 1
+Listener read ACK 0 from Agente 3104 through the socket
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 8
+-------------
+
+Agente 3102 sent package 1 to Agente 3103 through socket sucessfully
+Agente 3105 is preparing to receive messages from listener
+Agente 3103 is waiting for ACK 0
+Agente 3103 received ACK 0
+Agente 3103 is waiting for ACK 1
+Agente 3104 sent subscription to send packages sucessfully
+Agente 3105 received ACK 0
+Delivered package 0 to Agente 3104
+Agente 3104 received package 0
+
+-------------
+AGENTE 7 ENVIOU A MENSAGEM PARA AGENTE 8
+-------------
+
+-------------
+AGENTE 7 VAI ENVIAR A MENSAGEM PARA AGENTE 8
+-------------
+
+Delivered package 1 to Agente 3109
+Delivered ACK 0 for Agente 3103
+Listener read ACK 0 from Agente 3109 through the socket
+Removing Agente 3107 from sender subscription
+Listener read package 1 from Agente 3102 through the socket
+Delivered ACK 0 for Agente 3108
+Agente 3105 is waiting for ACK 1
+Agente 3108 received ACK 0
+Msg was validated, sending ACK 1 to Agente 3102
+Subscribing Agente 3102 to listener as Sender
+Sent ACK 1 for Agente 3102 through the socket sucessfully
+Delivered package 1 to Agente 3103
+Agente 3109 is sending package 0
+Delivered ACK 1 for Agente 3106
+Removing Agente 3106 from sender subscription
+
+-------------
+AGENTE 9 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3109 is preparing to receive messages from listener
+Listener read ACK 1 from Agente 3109 through the socket
+Agente 3108 is waiting for ACK 1
+Agente 3104 is sending package 0
+Agente 3108 received ACK 1
+Agente 3102 is waiting for ACK 0
+Agente 3107 is subscribing to listener to send packages
+Agente 3104 sent package 0 to Agente 3105 through socket sucessfully
+Agente 3107 sent subscription to send packages sucessfully
+
+-------------
+AGENTE 8 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3107 is sending package 0
+Agente 3108 is preparing to receive messages from listener
+Agente 3106 received ACK 1
+Agente 3109 sent package 0 to Agente 3100 through socket sucessfully
+Agente 3107 sent package 0 to Agente 3108 through socket sucessfully
+Listener read package 0 from Agente 3109 through the socket
+Listener read ACK 0 from Agente 3103 through the socket
+
+-------------
+AGENTE 8 ENVIOU A MENSAGEM PARA AGENTE 9
+-------------
+Msg was validated, sending ACK 0 to Agente 3109
+
+-------------
+AGENTE 8 VAI ENVIAR A MENSAGEM PARA AGENTE 9
+-------------
+
+Agente 3102 received ACK 0
+Listener read package 0 from Agente 3104 through the socket
+
+-------------
+AGENTE 6 ENVIOU A MENSAGEM PARA AGENTE 7
+-------------
+Msg was validated, sending ACK 0 to Agente 3104
+Delivered ACK 1 for Agente 3108
+Listener read package 1 from Agente 3105 through the socket
+Subscribing Agente 3104 to listener as Sender
+Msg was validated, sending ACK 1 to Agente 3105
+Listener read package 1 from Agente 3103 through the socket
+Delivered ACK 0 for Agente 3102
+Sent ACK 1 for Agente 3105 through the socket sucessfully
+Agente 3107 is sending package 1
+Agente 3104 is sending package 1
+Agente 3108 is subscribing to listener to send packages
+Agente 3109 is sending package 1
+Agente 3104 sent package 1 to Agente 3105 through socket sucessfully
+Removing Agente 3108 from sender subscription
+Agente 3103 received package 1
+Agente 3109 sent package 1 to Agente 3100 through socket sucessfully
+Agente 3109 is waiting for ACK 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 3
+-------------
+
+Sent ACK 0 for Agente 3109 through the socket sucessfully
+Delivered package 1 to Agente 3106
+Msg was validated, sending ACK 1 to Agente 3103
+Agente 3100 received package 0
+Agente 3107 sent package 1 to Agente 3108 through socket sucessfully
+
+-------------
+AGENTE 6 VAI ENVIAR A MENSAGEM PARA AGENTE 7
+-------------
+
+Agente 3104 is waiting for ACK 0
+Listener read ACK 1 from Agente 3104 through the socket
+Sent ACK 0 for Agente 3104 through the socket sucessfully
+Subscribing Agente 3108 to listener as Sender
+Delivered ACK 1 for Agente 3103
+Agente 3102 is waiting for ACK 1
+Agente 3103 received ACK 1
+Agente 3106 received package 1
+Listener read ACK 1 from Agente 3103 through the socket
+Agente 3108 sent subscription to send packages sucessfully
+Delivered ACK 1 for Agente 3102
+Agente 3106 is subscribing to listener to send packages
+Agente 3108 is sending package 0
+Removing Agente 3103 from sender subscription
+Subscribing Agente 3109 to listener as Sender
+Delivered package 0 to Agente 3105
+
+-------------
+AGENTE 3 ENVIOU A MENSAGEM PARA AGENTE 4
+-------------
+Delivered package 0 to Agente 3100
+Agente 3105 received package 0
+Listener read package 1 from Agente 3109 through the socket
+Sent ACK 1 for Agente 3103 through the socket sucessfully
+Agente 3107 is waiting for ACK 0
+Msg was validated, sending ACK 1 to Agente 3109
+Delivered package 1 to Agente 3104
+Agente 3104 received package 1
+Agente 3102 received ACK 1
+
+-------------
+AGENTE 2 ENVIOU A MENSAGEM PARA AGENTE 3
+-------------
+Listener read ACK 0 from Agente 3100 through the socket
+Listener read package 0 from Agente 3107 through the socket
+Listener read ACK 1 from Agente 3106 through the socket
+Agente 3108 sent package 0 to Agente 3109 through socket sucessfully
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 6
+-------------
+
+Delivered ACK 1 for Agente 3105
+Agente 3109 received ACK 0
+Removing Agente 3105 from sender subscription
+
+-------------
+AGENTE 6 VAI RECEBER UMA MENSAGEM
+-------------
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 4
+-------------
+
+Listener read package 1 from Agente 3104 through the socket
+Agente 3106 sent subscription to send packages sucessfully
+Msg was validated, sending ACK 1 to Agente 3104
+Listener read ACK 0 from Agente 3105 through the socket
+Agente 3106 is sending package 0
+Msg was validated, sending ACK 0 to Agente 3107
+Delivered ACK 0 for Agente 3109
+Sent ACK 1 for Agente 3104 through the socket sucessfully
+Delivered ACK 0 for Agente 3104
+Sent ACK 0 for Agente 3107 through the socket sucessfully
+Delivered package 1 to Agente 3105
+Subscribing Agente 3107 to listener as Sender
+Agente 3105 received package 1
+Agente 3105 received ACK 1
+Agente 3106 is preparing to receive messages from listener
+Listener read ACK 1 from Agente 3105 through the socket
+Listener read package 0 from Agente 3108 through the socket
+Removing Agente 3102 from sender subscription
+Agente 3108 is sending package 1
+Agente 3108 received package 0
+Msg was validated, sending ACK 0 to Agente 3108
+Agente 3109 is waiting for ACK 1
+Agente 3104 received ACK 0
+Sent ACK 1 for Agente 3109 through the socket sucessfully
+Agente 3108 sent package 1 to Agente 3109 through socket sucessfully
+Agente 3106 sent package 0 to Agente 3107 through socket sucessfully
+Delivered ACK 1 for Agente 3104
+Delivered package 0 to Agente 3108
+Listener read ACK 0 from Agente 3108 through the socket
+Listener read package 1 from Agente 3107 through the socket
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 5
+-------------
+
+Msg was validated, sending ACK 1 to Agente 3107
+Delivered ACK 0 for Agente 3107
+Agente 3107 received ACK 0
+Agente 3107 is waiting for ACK 1
+Sent ACK 1 for Agente 3107 through the socket sucessfully
+Agente 3104 is waiting for ACK 1
+Agente 3108 is waiting for ACK 0
+Removing Agente 3104 from sender subscription
+Sent ACK 0 for Agente 3108 through the socket sucessfully
+Delivered package 1 to Agente 3108
+Delivered package 0 to Agente 3109
+
+-------------
+AGENTE 5 ENVIOU A MENSAGEM PARA AGENTE 6
+-------------
+Listener read package 0 from Agente 3106 through the socket
+
+-------------
+AGENTE 5 VAI ENVIAR A MENSAGEM PARA AGENTE 6
+-------------
+
+Agente 3104 received ACK 1
+Listener read ACK 0 from Agente 3109 through the socket
+Agente 3106 is sending package 1
+Delivered ACK 0 for Agente 3108
+Agente 3108 received package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 8
+-------------
+
+Agente 3106 sent package 1 to Agente 3107 through socket sucessfully
+Agente 3100 received package 1
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 0
+-------------
+
+Agente 3109 received package 0
+Agente 3105 is subscribing to listener to send packages
+Listener read ACK 1 from Agente 3100 through the socket
+
+-------------
+AGENTE 4 ENVIOU A MENSAGEM PARA AGENTE 5
+-------------
+Delivered ACK 1 for Agente 3109
+Removing Agente 3109 from sender subscription
+Agente 3109 received ACK 1
+
+-------------
+AGENTE 9 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
+Agente 3106 is waiting for ACK 0
+Listener read package 1 from Agente 3108 through the socket
+Agente 3108 received ACK 0
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3105 sent subscription to send packages sucessfully
+Msg was validated, sending ACK 0 to Agente 3106
+Agente 3105 is sending package 0
+Delivered package 1 to Agente 3100
+
+-------------
+AGENTE 9 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Agente 3105 sent package 0 to Agente 3106 through socket sucessfully
+Subscribing Agente 3106 to listener as Sender
+Msg was validated, sending ACK 1 to Agente 3108
+Agente 3105 is sending package 1
+Sent ACK 0 for Agente 3106 through the socket sucessfully
+Agente 3100 is preparing to receive messages from listener
+Agente 3105 sent package 1 to Agente 3106 through socket sucessfully
+Agente 3105 is waiting for ACK 0
+Agente 3109 is subscribing to listener to send packages
+Agente 3108 is waiting for ACK 1
+Delivered package 0 to Agente 3107
+Listener read ACK 1 from Agente 3109 through the socket
+Agente 3107 received package 0
+Sent ACK 1 for Agente 3108 through the socket sucessfully
+Listener read ACK 1 from Agente 3108 through the socket
+Agente 3109 sent subscription to send packages sucessfully
+Delivered ACK 1 for Agente 3107
+Listener read ACK 0 from Agente 3107 through the socket
+Agente 3107 received ACK 1
+Agente 3109 received package 1
+Agente 3109 is sending package 0
+
+-------------
+AGENTE 7 ENVIOU A MENSAGEM PARA AGENTE 8
+-------------
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 9
+-------------
+
+Agente 3106 received ACK 0
+Delivered package 1 to Agente 3109
+Agente 3106 is waiting for ACK 1
+Delivered ACK 1 for Agente 3108
+Agente 3108 received ACK 1
+Removing Agente 3108 from sender subscription
+Removing Agente 3107 from sender subscription
+Agente 3109 sent package 0 to Agente 3100 through socket sucessfully
+Delivered ACK 0 for Agente 3106
+
+-------------
+AGENTE 8 ENVIOU A MENSAGEM PARA AGENTE 9
+-------------
+Agente 3109 is sending package 1
+Listener read package 0 from Agente 3109 through the socket
+Agente 3109 sent package 1 to Agente 3100 through socket sucessfully
+Agente 3109 is waiting for ACK 0
+Listener read package 0 from Agente 3105 through the socket
+Msg was validated, sending ACK 0 to Agente 3109
+Listener read package 1 from Agente 3106 through the socket
+Sent ACK 0 for Agente 3109 through the socket sucessfully
+Subscribing Agente 3109 to listener as Sender
+Msg was validated, sending ACK 0 to Agente 3105
+Delivered package 0 to Agente 3100
+Msg was validated, sending ACK 1 to Agente 3106
+Listener read ACK 0 from Agente 3100 through the socket
+Agente 3100 received package 0
+Listener read package 1 from Agente 3109 through the socket
+Delivered ACK 0 for Agente 3109
+Sent ACK 1 for Agente 3106 through the socket sucessfully
+Subscribing Agente 3105 to listener as Sender
+Delivered package 1 to Agente 3107
+Agente 3109 received ACK 0
+Agente 3109 is waiting for ACK 1
+Msg was validated, sending ACK 1 to Agente 3109
+Agente 3107 received package 1
+Sent ACK 0 for Agente 3105 through the socket sucessfully
+Listener read ACK 0 from Agente 3106 through the socket
+Delivered package 0 to Agente 3106
+Agente 3106 received package 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 7
+-------------
+
+Listener read package 1 from Agente 3105 through the socket
+Listener read ACK 1 from Agente 3100 through the socket
+Sent ACK 1 for Agente 3109 through the socket sucessfully
+Delivered ACK 0 for Agente 3105
+Delivered package 1 to Agente 3100
+Agente 3105 received ACK 0
+Agente 3100 received package 1
+Agente 3105 is waiting for ACK 1
+Msg was validated, sending ACK 1 to Agente 3105
+Delivered ACK 1 for Agente 3109
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 0
+-------------
+
+Removing Agente 3109 from sender subscription
+Agente 3109 received ACK 1
+
+-------------
+AGENTE 9 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
+Sent ACK 1 for Agente 3105 through the socket sucessfully
+Listener read ACK 1 from Agente 3106 through the socket
+Delivered package 1 to Agente 3106
+Delivered ACK 1 for Agente 3105
+Agente 3106 received package 1
+Agente 3105 received ACK 1
+Listener read ACK 1 from Agente 3107 through the socket
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 6
+-------------
+
+Removing Agente 3105 from sender subscription
+
+-------------
+AGENTE 5 ENVIOU A MENSAGEM PARA AGENTE 6
+-------------
+Delivered ACK 1 for Agente 3106
+Removing Agente 3106 from sender subscription
+Agente 3106 received ACK 1
+
+-------------
+AGENTE 6 ENVIOU A MENSAGEM PARA AGENTE 7
+-------------
