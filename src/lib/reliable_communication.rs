@@ -38,16 +38,13 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
-        let mut base: usize = 0;
-        let mut next_seq_num = 0;
-        let (ack_tx, ack_rx) = mpsc::channel();
-
         if crate::config::DEBUG {
             // get 4 last characters from self.host
             let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
             println!("Agente {agent} is subscribing to listener to send packages");
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
+        let (ack_tx, ack_rx) = mpsc::channel();
         match self.send_tx.send((ack_tx, self.host)) {
             Ok(_) => {
                 if crate::config::DEBUG {
@@ -56,68 +53,70 @@ impl ReliableCommunication {
                     agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
+                let mut base: usize = 0;
+                let mut next_seq_num = 0;
+                let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
+                loop {
+                    while next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
+                        let msg: Vec<u8> = packages[next_seq_num].to_vec();
+                        let header = Header::new(
+                            self.host,
+                            *dst_addr,
+                            0,
+                            next_seq_num as u32,
+                            packages.len(),
+                            0,
+                            next_seq_num + 1 == packages.len(),
+                            msg,
+                        );
+                        self.raw_send(header);
+                        next_seq_num += 1;
+                    } 
+                    if crate::config::DEBUG {
+                        // recovers the last character from self.host
+                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                        println!("Agente {} is waiting for ACK {}",agent, base);
+                        let _ = std::io::Write::flush(&mut std::io::stdout());                
+                    }
+                    match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
+                        Ok(header) => {
+                            if crate::config::DEBUG {
+                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                                println!("Agente {} received ACK {}", agent, header.ack_num);
+                                let _ = std::io::Write::flush(&mut std::io::stdout());
+                            }
+                            if header.ack_num == base as u32 {
+                                base += 1;
+                                if base == packages.len() {
+                                    break;
+                                }
+                            } else {
+                                if crate::config::DEBUG {
+                                    let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                                    println!("Agente {} expected ACK {} but received ACK {}",
+                                    agent, base, header.ack_num);
+                                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                                }
+                                next_seq_num = base;
+                            }
+                        },
+                        Err(_) => {
+                            if crate::config::DEBUG {
+                                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
+                                println!("Timeout for Agente {}, resending from {} to {}",
+                                    agent, base, next_seq_num);
+                                let _ = std::io::Write::flush(&mut std::io::stdout());
+                            }
+                            next_seq_num = base;
+                        }
+                    }
+                }
             },
             Err(_) => {
                 if crate::config::DEBUG {
                     let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
                     println!("\n---------\nErro em Agente {} ao inscrever-se para mandar pacotes\n--------", agent);
                     let _ = std::io::Write::flush(&mut std::io::stdout());
-                }
-            }
-        }
-        let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-        loop {
-            while next_seq_num < base + W_SIZE && next_seq_num < packages.len() {
-                let msg: Vec<u8> = packages[next_seq_num].to_vec();
-                let header = Header::new(
-                    self.host,
-                    *dst_addr,
-                    0,
-                    next_seq_num as u32,
-                    msg.len(),
-                    0,
-                    next_seq_num + 1 == packages.len(),
-                    msg,
-                );
-                self.raw_send(header);
-                next_seq_num += 1;
-            } 
-            if crate::config::DEBUG {
-                // recovers the last character from self.host
-                let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                println!("Agente {} is waiting for ACK {}",agent, base);
-                let _ = std::io::Write::flush(&mut std::io::stdout());                
-            }
-            match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
-                Ok(header) => {
-                    if crate::config::DEBUG {
-                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                        println!("Agente {} received ACK {}", agent, header.ack_num);
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
-                    }
-                    if header.ack_num == base as u32 {
-                        base += 1;
-                        if base == packages.len() {
-                            break;
-                        }
-                    } else {
-                        if crate::config::DEBUG {
-                            let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                            println!("Agente {} expected ACK {} but received ACK {}",
-                            agent, base, header.ack_num);
-                            let _ = std::io::Write::flush(&mut std::io::stdout());
-                        }
-                        next_seq_num = base;
-                    }
-                },
-                Err(_) => {
-                    if crate::config::DEBUG {
-                        let agent = self.host.to_string()[self.host.to_string().len()-4..].to_string();
-                        println!("Timeout for Agente {}, resending from {} to {}",
-                            agent, base, next_seq_num);
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
-                    }
-                    next_seq_num = base;
                 }
             }
         }
