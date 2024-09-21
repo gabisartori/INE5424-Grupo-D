@@ -89,11 +89,6 @@ impl Agent {
                 },
                 false => (self.id + 1) % self.communication.group.len() as u32             
             };
-            if cfg!(debug_assertions) {
-                destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);}
-            if destination == self.id || cfg!(debug_assertions) {
-                break;
-            }
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);

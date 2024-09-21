@@ -6,8 +6,8 @@ use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
 use std::process::Output;
 use std::sync::mpsc;
-use std::thread;
-use std::collections::HashMap;
+use std::{collections, thread};
+use std::collections::{HashMap, VecDeque};
 
 use crate::config::BUFFER_SIZE;
 use super::header::{Header, HEADER_SIZE};
@@ -45,7 +45,7 @@ impl Channel {
                 tx_msgs: mpsc::Sender<Header>) {
         // a hashmap for the senders, indexed by the destination address
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Header>> = HashMap::new();
-        let mut msgs: HashMap<SocketAddr, Vec<Header>> = HashMap::new();
+        let mut msgs: HashMap<SocketAddr, VecDeque<Header>> = HashMap::new();
         loop {
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE];
@@ -103,15 +103,24 @@ impl Channel {
                     } else {
                         // If the packet contains a message, store it in the receivers hashmap and send an ACK
                         if cfg!(debug_assertions) {
-                            let agent = header.src_addr.port() % 100;
+                            let agent: u16 = header.src_addr.port() % 100;
                             println!("Listener read package {} from Agente {} through the socket", header.seq_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
                         let mut next_seq_num: u32 = 0;
-                        if !msgs.contains_key(&header.src_addr) {
-                                msgs.insert(header.src_addr, Vec::new());
-                        } else {
-                            next_seq_num = msgs.get(&header.src_addr).unwrap().len() as u32;
+                        match msgs.get(&header.src_addr) {
+                            Some(msg) => {
+                                let last = msg.back();
+                                match last {
+                                    Some(last) => {
+                                        next_seq_num = last.seq_num + 1;
+                                    },
+                                    None => {},                                    
+                                }
+                            },
+                            None => {
+                                msgs.insert(header.src_addr, VecDeque::new());
+                            }
                         }
                         if Channel::validate_message(&header, next_seq_num) {
                             if cfg!(debug_assertions) {
@@ -129,17 +138,19 @@ impl Channel {
                                         println!("Sent ACK {} for Agente {} through the socket sucessfully", ack.ack_num, agent);
                                         let _ = std::io::Write::flush(&mut std::io::stdout());
                                     }
-                                    msgs.get_mut(&header.src_addr).unwrap().push(header.clone());
+                                    msgs.get_mut(&header.src_addr).unwrap().push_back(header.clone());
                                     if header.is_last {
                                         if cfg!(debug_assertions) {
                                             let agent = header.src_addr.port() % 100;
                                             println!("Sending complete message from {} ", agent);
                                             let _ = std::io::Write::flush(&mut std::io::stdout());
                                         }
-                                        let msg = msgs.remove(&header.src_addr).unwrap();
-                                        for pkg in msg {
-                                            Channel::receive(&tx_msgs, &pkg);
+                                        let msg = msgs.entry(header.src_addr)
+                                        .or_insert(VecDeque::new());
+                                        for pkg in &mut *msg {
+                                            Channel::receive(&tx_msgs, pkg);
                                         }
+                                        msg.clear();
                                     }
                                 },
                                 Err(_) => {
