@@ -107,21 +107,22 @@ impl Channel {
                             println!("Listener read package {} from Agente {} through the socket", header.seq_num, agent);
                             let _ = std::io::Write::flush(&mut std::io::stdout());
                         }
-                        let mut next_seq_num: u32 = 0;
-                        match msgs.get(&header.src_addr) {
+                        let next_seq_num = match msgs.get(&header.src_addr) {
                             Some(msg) => {
                                 let last = msg.back();
                                 match last {
                                     Some(last) => {
-                                        next_seq_num = last.seq_num + 1;
+                                        last.seq_num + 1
                                     },
-                                    None => {},                                    
+                                    None => 0,
                                 }
                             },
                             None => {
                                 msgs.insert(header.src_addr, VecDeque::new());
+                                0
                             }
-                        }
+                        };
+
                         if Channel::validate_message(&header, next_seq_num) {
                             if cfg!(debug_assertions) {
                                 let agent = header.src_addr.port() % 100;
@@ -145,12 +146,15 @@ impl Channel {
                                             println!("Sending complete message from {} ", agent);
                                             let _ = std::io::Write::flush(&mut std::io::stdout());
                                         }
-                                        let msg = msgs.entry(header.src_addr)
-                                        .or_insert(VecDeque::new());
+                                        let msg = msgs.entry(header.src_addr).or_insert(VecDeque::new());
+                                        if msg[0].is_last {
+                                            msg.pop_front();
+                                        }
                                         for pkg in &mut *msg {
                                             Channel::receive(&tx_msgs, pkg);
                                         }
                                         msg.clear();
+                                        msg.push_back(header.clone());
                                     }
                                 },
                                 Err(_) => {
