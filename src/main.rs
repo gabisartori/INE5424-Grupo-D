@@ -40,7 +40,7 @@ impl Agent {
 
     fn listener(&self) {
         // let mut file: std::fs::File;
-        for _ in 0..3
+        loop
         {
             let mut message: Vec<u8> = Vec::new();
             if config::DEBUG {
@@ -54,7 +54,7 @@ impl Agent {
             if config::DEBUG {
                 println!("\n-------------\nMENSAGEM RECEBIDA POR AGENTE {}\n-------------\n", self.id);
                 let _ = std::io::Write::flush(&mut std::io::stdout());
-                let path = format!("target/listener_{}.txt", self.id);
+                let path = format!("tests/listener_{}.txt", self.id);
                 let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                                     .create(true)
                                                     .append(true)
@@ -71,14 +71,14 @@ impl Agent {
     }
 
     fn sender(&self) {
-        let mut destination: u32 = (self.id + 1) % self.communication.group.len() as u32;
+        let mut destination: u32; //= (self.id + 1) % self.communication.group.len() as u32;
         for _ in 0..3
         {
             // Pick a random node to send a message to
-            // loop {
-            //     destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
-            //     if destination != self.id { break; }
-            // }
+            loop {
+                destination = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
+                if destination != self.id { break; }
+            }
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
