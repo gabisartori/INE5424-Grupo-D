@@ -1,7 +1,7 @@
 all:
 	@clear
-	@rm -f target/*.txt
-	@cargo run > log.txt
+	@rm -f tests/*.txt
+	@cargo run > tests/log.txt
 
 clean:
 	@cargo clean
