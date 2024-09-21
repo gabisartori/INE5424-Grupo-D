@@ -151,7 +151,7 @@ impl<'a> Header {
         self.msg = msg;
     }
 
-    pub fn create_from_bytes(bytes: [u8; BUFFER_SIZE]) -> Self {
+    pub fn create_from_bytes(bytes: [u8; BUFFER_SIZE], message_size: usize) -> Self {
         Header::new(
             SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::from([bytes[0], bytes[1], bytes[2], bytes[3]])),
@@ -168,7 +168,7 @@ impl<'a> Header {
             ]),
             bytes[30],
             bytes[31] == 1,
-            bytes[HEADER_SIZE..].to_vec(),
+            bytes[HEADER_SIZE..message_size].to_vec(),
         )
     }
 }
