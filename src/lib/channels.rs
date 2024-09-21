@@ -51,7 +51,7 @@ impl Channel {
             let mut buffer = [0; BUFFER_SIZE];
             match socket.recv_from(&mut buffer) {
                 Ok((size, src_addr)) => {
-                    let header: Header = Header::create_from_bytes(buffer);
+                    let header: Header = Header::create_from_bytes(buffer, size);
                     // If packet read is an ACK, send it to the corresponding sender
                     if header.is_ack() { // ack
                         if cfg!(debug_assertions) {
