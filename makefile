@@ -1,5 +1,5 @@
 all:
-	@cargo run --release > tests/log.txt
+	@cargo run --release
 
 debug:
 	@clear

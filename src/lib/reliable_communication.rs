@@ -131,17 +131,24 @@ impl ReliableCommunication {
         }
         self.channel.send(header);
     }
+    
 
     // Função para receber mensagens confiáveis
-    pub fn receive(&self, buffer: &mut Vec<u8>) {
+    pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
         let mut next_seq_num = 0;
         if cfg!(debug_assertions) {
             let agent = self.host.port() % 100;
             println!("Agente {} is preparing to receive messages from listener", agent);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
+        let rcv = || {
+            match cfg!(debug_assertions) {
+                true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(TIMEOUT)),
+                false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
+            }
+        };
         loop {
-            match self.receive_rx.lock().unwrap().recv() {
+            match rcv() {
                 Ok(header) => {
                     if cfg!(debug_assertions) {
                         let agent = self.host.port() % 100;
@@ -152,16 +159,17 @@ impl ReliableCommunication {
                         buffer.extend(header.msg);
                         next_seq_num += 1;
                         if header.is_last {
-                            break;
+                            return true;
                         }
                     } // listener already sends ack
                 },
                 Err(_) => {
                     if cfg!(debug_assertions) {
                         let agent = self.host.port() % 100;
-                        println!("\n---------\nAgente {} falhou ao receber o pacote {}\nThread Listener terminou--------",
+                        println!("\n---------\nAgente {} falhou ao receber o pacote {}\nThread Listener terminou\n--------",
                         agent, next_seq_num);
                         let _ = std::io::Write::flush(&mut std::io::stdout());
+                        return false;
                     }
                 }
                 
