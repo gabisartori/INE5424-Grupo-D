@@ -1,0 +1,220 @@
+Incializando Listener no Agente 3100
+Incializando Listener no Agente 3101
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+Agente 3100 is subscribing to listener to send packages
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3100 sent subscription to send packages sucessfully
+Agente 3100 is sending package 0
+Agente 3100 is subscribing to listener to receive messages
+Agente 3100 sent subscription to receive messages
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Agente 3100 is waiting for ACK 0
+Agente 3101 is subscribing to listener to send packages
+Agente 3101 is subscribing to listener to receive messages
+Listener read package 0 from Agente 3100 through the socket
+Agente 3101 sent subscription to receive messages
+Msg was validated, sending ACK 0 to Agente 3100
+Agente 3101 sent subscription to send packages sucessfully
+Agente 3101 is sending package 0
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+Subscribing Agente 3100 to listener as Sender
+Agente 3101 sent package 0 to Agente 3100 through socket sucessfully
+Agente 3101 is waiting for ACK 0
+Agente 3101 not found as Receiver
+Subscribing Agente 3100 to listener as Receiver
+Listener read ACK 0 from Agente 3101 through the socket
+Delivered ACK 0 for Agente 3100
+Agente 3100 received ACK 0
+Removing Agente 3100 from sender subscription
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+Agente 3100 is subscribing to listener to send packages
+Agente 3100 sent subscription to send packages sucessfully
+Listener read package 0 from Agente 3101 through the socket
+Agente 3100 is sending package 0
+Msg was validated, sending ACK 0 to Agente 3101
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+Subscribing Agente 3101 to listener as Sender
+Agente 3100 is waiting for ACK 0
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Subscribing Agente 3101 to listener as Receiver
+Listener delivered package 0 to Agente 3100
+Removing Agente 3100 from receivers subscription
+Listener read package 0 from Agente 3100 through the socket
+Agente 3100 received package 0
+Msg was validated, sending ACK 0 to Agente 3100
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 0
+-------------
+
+Subscribing Agente 3100 to listener as Sender
+Listener delivered package 0 to Agente 3101
+Listener read ACK 0 from Agente 3101 through the socket
+Removing Agente 3101 from receivers subscription
+Agente 3101 received package 0
+Delivered ACK 0 for Agente 3100
+Removing Agente 3100 from sender subscription
+Agente 3101 not found as Receiver
+Agente 3100 received ACK 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+
+-------------
+AGENTE 0 VAI ENVIAR A MENSAGEM PARA AGENTE 1
+-------------
+
+Listener read ACK 0 from Agente 3100 through the socket
+Agente 3100 is subscribing to listener to send packages
+Agente 3100 sent subscription to send packages sucessfully
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3100 is sending package 0
+Agente 3100 is subscribing to listener to receive messages
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3101 received ACK 0
+Agente 3100 sent subscription to receive messages
+Agente 3101 is subscribing to listener to receive messages
+Delivered ACK 0 for Agente 3101
+Agente 3101 sent subscription to receive messages
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Agente 3100 sent package 0 to Agente 3101 through socket sucessfully
+Agente 3100 is waiting for ACK 0
+Removing Agente 3101 from sender subscription
+Agente 3101 not found as Receiver
+Subscribing Agente 3101 to listener as Receiver
+Listener read package 0 from Agente 3100 through the socket
+Msg was validated, sending ACK 0 to Agente 3100
+Sent ACK 0 for Agente 3100 through the socket sucessfully
+Subscribing Agente 3100 to listener as Sender
+Listener delivered package 0 to Agente 3101
+Subscribing Agente 3100 to listener as Receiver
+Removing Agente 3101 from receivers subscription
+Agente 3101 received package 0
+Agente 3101 not found as Receiver
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+Agente 3101 is subscribing to listener to send packages
+Listener read ACK 0 from Agente 3101 through the socket
+Agente 3101 sent subscription to send packages sucessfully
+
+-------------
+AGENTE 1 VAI RECEBER UMA MENSAGEM
+-------------
+Agente 3100 received ACK 0
+Agente 3101 is sending package 0
+Agente 3101 is subscribing to listener to receive messages
+Delivered ACK 0 for Agente 3100
+Agente 3101 sent subscription to receive messages
+
+-------------
+AGENTE 0 ENVIOU A MENSAGEM PARA AGENTE 1
+-------------
+Removing Agente 3100 from sender subscription
+Agente 3101 sent package 0 to Agente 3100 through socket sucessfully
+Agente 3101 is waiting for ACK 0
+Listener read package 0 from Agente 3101 through the socket
+Msg was validated, sending ACK 0 to Agente 3101
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Subscribing Agente 3101 to listener as Sender
+Listener delivered package 0 to Agente 3100
+Subscribing Agente 3101 to listener as Receiver
+Removing Agente 3100 from receivers subscription
+Agente 3100 received package 0
+Listener read ACK 0 from Agente 3100 through the socket
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 0
+-------------
+
+Delivered ACK 0 for Agente 3101
+Agente 3101 received ACK 0
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
+
+-------------
+AGENTE 1 VAI ENVIAR A MENSAGEM PARA AGENTE 0
+-------------
+
+Agente 3101 is subscribing to listener to send packages
+Agente 3101 sent subscription to send packages sucessfully
+Removing Agente 3101 from sender subscription
+Agente 3101 is sending package 0
+
+-------------
+AGENTE 0 VAI RECEBER UMA MENSAGEM
+-------------
+Listener delivered package 0 to Agente 3101
+Agente 3100 is subscribing to listener to receive messages
+Agente 3101 sent package 0 to Agente 3100 through socket sucessfully
+Removing Agente 3101 from receivers subscription
+Agente 3100 sent subscription to receive messages
+Agente 3101 received package 0
+Listener read package 0 from Agente 3101 through the socket
+Agente 3101 is waiting for ACK 0
+
+-------------
+MENSAGEM RECEBIDA POR AGENTE 1
+-------------
+
+Msg was validated, sending ACK 0 to Agente 3101
+Sent ACK 0 for Agente 3101 through the socket sucessfully
+Subscribing Agente 3101 to listener as Sender
+Agente 3100 not found as Receiver
+Listener read ACK 0 from Agente 3100 through the socket
+Delivered ACK 0 for Agente 3101
+Agente 3101 received ACK 0
+Removing Agente 3101 from sender subscription
+
+-------------
+AGENTE 1 ENVIOU A MENSAGEM PARA AGENTE 0
+-------------
