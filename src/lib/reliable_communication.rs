@@ -59,13 +59,11 @@ impl ReliableCommunication {
                 }
                 let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
                 let mut start_pkg: usize = {
-                    // changes base to the current value of msg_count
-                    let mut msg_count:std::sync::MutexGuard<'_, HashMap<SocketAddr, u32>> = self.msg_count
-                    .lock().unwrap();
-                    let mut msg_count = msg_count.entry(*dst_addr).or_insert(0);
-                    let b = *msg_count as usize;
-                    *msg_count += packages.len() as u32;
-                    b
+                    let mut msg_count = self.msg_count.lock().unwrap();
+                    let count = msg_count.entry(*dst_addr).or_insert(0);
+                    let start = *count;
+                    *count += packages.len() as u32;
+                    start as usize
                 };
                 let mut base = start_pkg;
                 let mut next_seq_num = base;
