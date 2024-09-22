@@ -5,7 +5,7 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 use crate::config::BUFFER_SIZE;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
-pub const HEADER_SIZE: usize = 32; // Header::new_empty().to_bytes().len()
+pub const HEADER_SIZE: usize = 19; // Header::new_empty().to_bytes().len()
 // estrutura para o cabeçalho
 
 #[derive(Clone)]
@@ -64,11 +64,11 @@ impl Packet {
 
 #[derive(Clone)]
 pub struct Header {
-    pub src_addr: SocketAddr,
-    pub dst_addr: SocketAddr,
-    pub seq_num: u32,
-    pub flags: u8,  // ack: 1, last: 2, syn: 4, fin: 8
-    pub checksum: u16,
+    pub src_addr: SocketAddr,   // 6 bytes
+    pub dst_addr: SocketAddr,   // 12 bytes
+    pub seq_num: u32,           // 16 bytes
+    pub flags: u8,  // ack: 1, last: 2, syn: 4, fin: 8   // 17 bytes
+    pub checksum: u16,          // 19 bytes
 }
 // implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl<'a> Header {
@@ -94,7 +94,7 @@ impl<'a> Header {
     }
 
     pub fn is_ack(&self) -> bool {
-        (self.flags | 1) >= 1
+        (self.flags & 1) == 1
     }
 
     pub fn is_last(&self) -> bool {
@@ -114,8 +114,8 @@ impl<'a> Header {
         }
         bytes.extend_from_slice(&self.dst_addr.port().to_be_bytes());
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
-        bytes.extend_from_slice(&self.checksum.to_be_bytes());
         bytes.push(self.flags);
+        bytes.extend_from_slice(&self.checksum.to_be_bytes());
         bytes
     }
 
