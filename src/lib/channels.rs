@@ -9,6 +9,7 @@ use std::thread;
 use std::collections::{HashMap, VecDeque};
 
 use crate::config::BUFFER_SIZE;
+use super::flags::Flags;
 use super::packet::Packet;
 // use super::failure_detection;
 
@@ -59,7 +60,7 @@ impl Channel {
                 continue;
             }
             
-            if packet.is_ack() {
+            if packet.flag_is_set(Flags::ACK) {
                 // Verifica se há alguém esperando pelo ACK recebido
                 while let Ok((tx, key)) = rx_acks.try_recv() {
                     sends.entry(key).or_insert(tx);
@@ -71,7 +72,7 @@ impl Channel {
                     Some(tx) => {
                         match tx.send(packet.clone()) {
                             Ok(_) => {
-                                if packet.is_last() {
+                                if packet.flag_is_set(Flags::LST) {
                                     sends.remove(&packet.header.src_addr);
                                 }
                             },
@@ -117,12 +118,12 @@ impl Channel {
                 msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
                 let msg: &mut VecDeque<Packet> = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
                 // TODO: Refatorar para evitar repetição de código
-                if packet.is_last() {
-                    if msg[0].is_last() && msg.len() != 1 {
+                if packet.flag_is_set(Flags::LST) {
+                    if msg[0].flag_is_set(Flags::LST) && msg.len() != 1 {
                         msg.pop_front();
                     }
                     while let Some(pckg) = msg.pop_front() {
-                        let last = pckg.is_last();
+                        let last = pckg.flag_is_set(Flags::LST);
                         match tx_msgs.send(pckg.clone()) {
                             Ok(_) => (),
                             Err(_) => {
@@ -145,18 +146,8 @@ impl Channel {
     fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        c1 && (rand::random::<u8>() % 10 != 0)
-        // // return c1;
-        // // ok || !(packet.is_ack() && packet.is_last())
-        // if ok || !(packet.is_ack() && packet.is_last()) {
-        //     true
-        // } else {
-        //     let agent_s = packet.header.src_addr.port() % 100;
-        //     let agent_d = packet.header.dst_addr.port() % 100;
-        //     let pk = packet.header.seq_num;
-        //     debug_println!("->-> Erro ao validar o ACK {pk} vindo do Agente {agent_s} para o Agente {agent_d}");
-        //     false            
-        // }
+        let _ok = rand::random::<u8>() % 10 != 0; 
+        c1 && _ok
     }
 
     pub fn send(&self, packet: Packet) { 
