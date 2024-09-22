@@ -39,11 +39,11 @@ impl Packet {
             IpAddr::V4(ipv4) => sum += u32::from_be_bytes(ipv4.octets()),
             IpAddr::V6(ipv6) => sum += u128::from_be_bytes(ipv6.octets()) as u32,
         }
-        sum += header.src_addr.port() as u32;
         match header.dst_addr.ip() {
             IpAddr::V4(ipv4) => sum += u32::from_be_bytes(ipv4.octets()),
             IpAddr::V6(ipv6) => sum += u128::from_be_bytes(ipv6.octets()) as u32,
         }
+        sum += header.src_addr.port() as u32;
         sum += header.dst_addr.port() as u32;
         sum += header.seq_num as u32;
         sum += header.flags as u32;
@@ -88,7 +88,7 @@ impl Header {
             src_addr: self.dst_addr,
             dst_addr: self.src_addr,
             seq_num: self.seq_num,
-            flags: flags,
+            flags,
             // TODO: Fix the checksum gambiarra
             checksum: Packet::checksum(&self, &Vec::new())+1,
         }
