@@ -7,7 +7,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use super::channels::Channel;
 use super::packet::{Packet, HEADER_SIZE};
-use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
+use crate::config::{self, Node, BUFFER_SIZE, TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -71,21 +71,19 @@ impl ReliableCommunication {
                     None,
                     msg,
                 );
-                debug_println!("Agent {} Sending packet {}", agente, packet.header.seq_num);
+                // debug_println!("Agent {} Sending packet {}", agente, packet.header.seq_num);
                 self.raw_send(packet);
                 next_seq_num += 1;
             }
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
-                    debug_println!("Agent {} Waiting ACK {}, received ACK {}", agente, base+start_pkg, packet.header.seq_num);
+                    //debug_println!("Agent {} Waiting ACK {}, received ACK {}", agente, base+start_pkg, packet.header.seq_num);
                     count_timeout = 0;
                     if packet.header.seq_num == (base + start_pkg) as u32 {
                         base += 1; 
                     } else if packet.header.seq_num > (base + start_pkg) as u32 {
                         next_seq_num = base;
-                    } else {
-                        debug_println!("AAAAAA");
                     }
                 },
                 Err(e) => match e {
@@ -93,8 +91,8 @@ impl ReliableCommunication {
                         {
                             count_timeout += 1;
                             next_seq_num = base;
-                            if count_timeout == 1000 {
-                                debug_println!("->-> Abortar: Agente {agente} teve 10 Timeouts");
+                            if count_timeout == config::TIMEOUT_LIMIT {
+                                debug_println!("->-> Abortar: Agente {agente} teve {count_timeout} Timeouts");
                                 return false
                             }
                         }
