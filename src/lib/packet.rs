@@ -3,10 +3,12 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 // Tamanho do buffer
 use crate::config::BUFFER_SIZE;
+use super::flags::Flags;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
 pub const HEADER_SIZE: usize = 19; // Header::new_empty().to_bytes().len()
 // estrutura para o cabeçalho
+
 
 #[derive(Clone)]
 pub struct Packet {
@@ -15,7 +17,7 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: u8, checksum: Option<u16>, data: Vec<u8>) -> Self {
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: Flags, checksum: Option<u16>, data: Vec<u8>) -> Self {
         let checksum = checksum.or_else(|| Some(Self::checksum(&Header::new(src_addr, dst_addr, seq_num, flags, None), &data)));
         let header = Header::new(src_addr, dst_addr, seq_num, flags, checksum);
         Self { header, data }
@@ -46,19 +48,15 @@ impl Packet {
         sum += header.src_addr.port() as u32;
         sum += header.dst_addr.port() as u32;
         sum += header.seq_num as u32;
-        sum += header.flags as u32;
+        sum += header.flags.value as u32;
         for byte in data {
             sum += *byte as u32;
         }
         sum as u16
     }
 
-    pub fn is_ack(&self) -> bool {
-        self.header.is_ack()
-    }
-
-    pub fn is_last(&self) -> bool {
-        self.header.is_last()
+    pub fn flag_is_set(&self, flag: Flags) -> bool {
+        self.header.flags.is_set(flag)
     }
 }
 
@@ -67,12 +65,12 @@ pub struct Header {
     pub src_addr: SocketAddr,   // 6 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
     pub seq_num: u32,           // 16 bytes
-    pub flags: u8,  // ack: 1, last: 2, syn: 4, fin: 8   // 17 bytes
+    pub flags: Flags,  // ack: 1, last: 2, syn: 4, fin: 8   // 17 bytes
     pub checksum: u16,          // 19 bytes
 }
 // implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: u8, checksum: Option<u16>) -> Self {
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: Flags, checksum: Option<u16>) -> Self {
         Self {
             src_addr,
             dst_addr,
@@ -83,7 +81,7 @@ impl Header {
     }
 
     pub fn get_ack(&self) -> Self {
-        let flags = self.flags | 1;
+        let flags = self.flags | Flags::ACK;
         Self {
             src_addr: self.dst_addr,
             dst_addr: self.src_addr,
@@ -94,12 +92,8 @@ impl Header {
         }
     }
 
-    pub fn is_ack(&self) -> bool {
-        (self.flags & 1) == 1
-    }
-
-    pub fn is_last(&self) -> bool {
-        (self.flags & 2) == 2
+    pub fn flag_is_set(&self, flag: Flags) -> bool {
+        self.flags.is_set(flag)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -115,7 +109,7 @@ impl Header {
         }
         bytes.extend_from_slice(&self.dst_addr.port().to_be_bytes());
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
-        bytes.push(self.flags);
+        bytes.push(self.flags.value);
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
         bytes
     }
@@ -131,7 +125,7 @@ impl Header {
                 u16::from_be_bytes([bytes[10], bytes[11]]),
             ),
             u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
-            u8::from_be_bytes([bytes[16]]),
+            bytes[16].into(),
             Some(u16::from_be_bytes([bytes[17], bytes[18]])),
         )
     }

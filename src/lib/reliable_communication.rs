@@ -6,6 +6,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
+use super::flags::Flags;
 use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{self, Node, BUFFER_SIZE, TIMEOUT, W_SIZE};
 
@@ -67,7 +68,7 @@ impl ReliableCommunication {
                     self.host,
                     *dst_addr,
                     (next_seq_num + start_pkg) as u32,
-                    if next_seq_num == packets.len() - 1 { 2 } else { 0 },
+                    if next_seq_num == packets.len() - 1 { Flags::LST } else { Flags::EMP },
                     None,
                     msg,
                 );
@@ -119,7 +120,7 @@ impl ReliableCommunication {
         while let Ok(packet) = rcv() {
             let Packet { header, data, .. } = packet;
             buffer.extend(data);
-            if header.is_last() {
+            if header.flag_is_set(Flags::LST) {
                 return true;
             }
         }

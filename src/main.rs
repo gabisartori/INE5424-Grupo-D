@@ -19,6 +19,7 @@ mod lib {
     pub mod channels;
     pub mod failure_detection;
     pub mod packet;
+    pub mod flags;
 }
 use lib::reliable_communication::ReliableCommunication;
 use lib::packet::HEADER_SIZE;
@@ -96,6 +97,8 @@ impl Agent {
             // debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
             if self.communication.send(&(self.communication.group[destination as usize].addr), msg) {
                     debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
+            } else {
+                debug_println!("AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
             }
         }
     }
