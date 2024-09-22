@@ -4,6 +4,14 @@ disponibilizada pela camada de difusão confiável (Reliable Communication),
 permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        if cfg!(debug_assertions) {
+            println!($($arg)*);
+        }
+    };
+}
+
 // Importa a camada de canais
 use super::channels::Channel;
 use super::header::{Header, Packet, HEADER_SIZE};
@@ -122,12 +130,8 @@ impl ReliableCommunication {
                     if header.is_last() { return true; }
                 },
                 Err(_) => {
-                    if cfg!(debug_assertions) {
-                        let agent = self.host.port() % 100;
-                        println!("\n---------\nAgente {} falhou ao receber o pacote {}\nThread Listener terminou\n--------",
-                        agent, next_seq_num);
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
-                    }
+                    let agent = self.host.port() % 100;
+                    debug_println!("\n---------\nAgente {} falhou ao receber o pacote {}\n--------", agent, next_seq_num);
                     return false;
                 }
                 
