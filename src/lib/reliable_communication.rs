@@ -43,7 +43,8 @@ impl ReliableCommunication {
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
         // Comunicação com a camada de canais
         let (ack_tx, ack_rx) = mpsc::channel();
-        self.send_tx.send((ack_tx, *dst_addr)).expect("Erro ao inscrever-se para mandar pacotes");
+        let agente = self.host.port() % 100;
+        self.send_tx.send((ack_tx, *dst_addr)).expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
         
         // Preparar a mensagem para ser enviada
         let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
@@ -82,7 +83,10 @@ impl ReliableCommunication {
                 Err(_) => {
                     count_timeout += 1;
                     next_seq_num = base;
-                    if count_timeout == 10 { break; }
+                    debug_println!("Agente {agente} teve Timeout: {count_timeout}/10");
+                    if count_timeout == 10 {
+                        break;
+                    }
                 }
             }
         }
@@ -103,7 +107,9 @@ impl ReliableCommunication {
         while let Ok(packet) = rcv() {
             let Packet { header, data, .. } = packet;
             buffer.extend(data);
-            if header.is_last() { return true; }
+            if header.is_last() {
+                return true;
+            }
         }
         false
     }
