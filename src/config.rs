@@ -40,7 +40,7 @@ pub const W_SIZE: usize = 5;
 pub const TIMEOUT: u64 = 100; // 0.1 segundo
 pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
-pub const BUFFER_SIZE: usize = 4096;
+pub const BUFFER_SIZE: usize = 500;
 
 // Mensagem com 10240 bytes para testes
 pub const LARGE_MSG: &str = "
