@@ -3,6 +3,16 @@
 #![allow(unused_mut)]
 #![allow(dead_code)]
 
+#[macro_export]
+macro_rules! debug_println {
+    // This pattern accepts format arguments like println!
+    ($($arg:tt)*) => {
+        if cfg!(debug_assertions) {
+            println!("----------\n{}\n----------\n", format!($($arg)*));  // Add 2 line breaks before and after
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+    };
+}
 
 use std::net::SocketAddr;
 use std::thread;
@@ -39,20 +49,16 @@ impl Agent {
         let stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
         for _ in 0..stop
         {
-            if cfg!(debug_assertions) {
-                println!("\n-------------\nAGENTE {} VAI RECEBER UMA MENSAGEM\n-------------", self.id);
-                let _ = std::io::Write::flush(&mut std::io::stdout());
-            }
+            debug_println!("AGENTE {} VAI RECEBER UMA MENSAGEM", self.id);
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
             }
             let msg = String::from_utf8_lossy(&message);
             let msf = format!("Agent {} recieved Message:\n-->\n{}", self.id, msg);
+            debug_println!("MENSAGEM RECEBIDA POR AGENTE {}", self.id);
             if cfg!(debug_assertions) {
-                println!("\n-------------\nMENSAGEM RECEBIDA POR AGENTE {}\n-------------\n", self.id);
                 // write message to a listener.txt file
-                let _ = std::io::Write::flush(&mut std::io::stdout());
                 let path = format!("tests/listener_{}.txt", self.id);
                 let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                                     .create(true)
@@ -92,17 +98,9 @@ impl Agent {
             let msg: String = config::MSGS[(i%3) as usize].to_string();
             // let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
-            if cfg!(debug_assertions) {
-                println!("\n-------------\nAGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}\n-------------\n",
-                self.id, destination);
-                let _ = std::io::Write::flush(&mut std::io::stdout());
-            }
+            debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
             self.communication.send(&(self.communication.group[destination as usize].addr), msg);
-            if cfg!(debug_assertions) {
-                println!("\n-------------\nAGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}\n-------------",
-                self.id, destination);
-                let _ = std::io::Write::flush(&mut std::io::stdout());
-            }
+            debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
         }
     }
 
