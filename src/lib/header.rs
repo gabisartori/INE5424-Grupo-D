@@ -1,5 +1,5 @@
 // Importações necessárias
-use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 // Tamanho do buffer
 use crate::config::BUFFER_SIZE;
