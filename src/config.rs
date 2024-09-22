@@ -20,7 +20,7 @@ pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
 */
 
 // Quantia de agentes locais a serem criados
-pub const AGENT_NUM: u32 = 20;
+pub const AGENT_NUM: u32 = 2;
 pub const N_MSGS: u32 = 10;
 
 // Endereços de agentes externos
@@ -38,7 +38,7 @@ pub const W_SIZE: usize = 5;
 pub const TIMEOUT: u64 = 100; // 0.1 segundo
 pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
-pub const BUFFER_SIZE: usize = 1024;
+pub const BUFFER_SIZE: usize = 4096;
 
 // Mensagem com 10240 bytes para testes
 pub const LARGE_MSG: &str = "
