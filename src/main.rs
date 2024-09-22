@@ -44,7 +44,7 @@ impl Agent {
         let stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
         for _ in 0..stop
         {
-            debug_println!("AGENTE {} VAI RECEBER UMA MENSAGEM", self.id);
+            // debug_println!("AGENTE {} VAI RECEBER UMA MENSAGEM", self.id);
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
@@ -93,7 +93,7 @@ impl Agent {
             let msg: String = config::MSGS[(i%3) as usize].to_string();
             // let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
-            debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
+            // debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
             if self.communication.send(&(self.communication.group[destination as usize].addr), msg) {
                     debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
             }

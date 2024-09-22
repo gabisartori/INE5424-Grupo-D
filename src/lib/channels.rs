@@ -113,11 +113,12 @@ impl Channel {
                     },
                 }
                 // Encaminhar o pacote para a fila de mensagens
+                if packet.header.seq_num < next_seq_num { continue; }
                 msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
                 let msg: &mut VecDeque<Packet> = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
                 // TODO: Refatorar para evitar repetição de código
                 if packet.is_last() {
-                    if msg[0].is_last() {
+                    if msg[0].is_last() && msg.len() != 1 {
                         msg.pop_front();
                     }
                     while let Some(pckg) = msg.pop_front() {
@@ -144,7 +145,18 @@ impl Channel {
     fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        c1 && (rand::random::<u8>() % 10 != 0)
+        let ok: bool = c1 && (rand::random::<u8>() % 10 == 0);
+        // return c1;
+        // ok || !(packet.is_ack() && packet.is_last())
+        if ok || !(packet.is_ack() && packet.is_last()) {
+            true
+        } else {
+            let agent_s = packet.header.src_addr.port() % 100;
+            let agent_d = packet.header.dst_addr.port() % 100;
+            let pk = packet.header.seq_num;
+            debug_println!("->-> Erro ao validar o ACK {pk} vindo do Agente {agent_s} para o Agente {agent_d}");
+            false            
+        }
     }
 
     pub fn send(&self, packet: Packet) { 
