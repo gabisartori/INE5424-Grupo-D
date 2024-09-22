@@ -43,13 +43,12 @@ impl Channel {
         loop {
             // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE];
-            println!("Listener is reading from socket");
             match socket.recv_from(&mut buffer) {
                 Ok((size, src_addr)) => {
                     let packet: Packet = Packet::from_bytes(buffer, size);
                     if packet.is_ack() {
                         Channel::get_txs(&rx_acks, &mut sends);
-                        match sends.get(&packet.header.dst_addr) {
+                        match sends.get(&packet.header.src_addr) {
                             // Forward the ack to the corresponding sender
                             Some(tx) => {
                                 match tx.send(packet.clone()) {
@@ -59,13 +58,12 @@ impl Channel {
                                         if packet.is_last() {
                                             // If the message is the last one, remove the sender from the hashmap
                                             let agent = packet.header.dst_addr.port() % 100;
-                                           //debug_println!("Removing Agente {} from sender subscription", agent);
-                                            sends.remove(&packet.header.dst_addr);
+                                            sends.remove(&packet.header.src_addr);
                                         }
                                     },
-                                    Err(_) => {
+                                    Err(e) => {
                                         let agent = packet.header.dst_addr.port() % 100;
-                                       //debug_println!("Erro ao entregar ACK {} para o Agente {}", packet.header.seq_num, agent);
+                                        //debug_println!("Erro ao entregar ACK {} para o Agente {}", packet.header.seq_num, agent);
                                     },
                                 }
                             }
@@ -78,7 +76,6 @@ impl Channel {
                     } else {
                         // If the packet contains a message, store it in the receivers hashmap and send an ACK
                         let agent: u16 = packet.header.src_addr.port() % 100;
-                       //debug_println!("Listener read package {} from Agente {} through the socket", packet.header.seq_num, agent);
                         let next_seq_num = match msgs.get(&packet.header.src_addr) {
                             Some(msg) => {
                                 let last = msg.back();
@@ -97,25 +94,23 @@ impl Channel {
 
                         if Channel::validate_message(&packet, next_seq_num) {
                             let agent = packet.header.src_addr.port() % 100;
-                            // debug_println!("Msg was validated, sending ACK {} to Agente {}", packet.header.seq_num, agent);
                             // Send ACK
                             let ack = packet.header.get_ack();
                             match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                                 Ok(_) => {
                                     let agent = ack.dst_addr.port() % 100;
-                                    debug_println!("Sent ACK {} for Agente {} through the socket sucessfully", ack.seq_num, agent);
                                     msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
                                     let agent = packet.header.src_addr.port() % 100;
+                                    let msg = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
                                     if packet.is_last() {
-                                       //debug_println!("Message {} from Agente {} stored", packet.header.seq_num, agent);
-                                        let msg = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
                                         if msg[0].is_last() {
                                             msg.pop_front();
                                         }
-                                        for pkg in &mut *msg {
-                                            Channel::receive(&tx_msgs, pkg);
+                                        while let Some(packet) = msg.pop_front() {
+                                            let last = packet.is_last();
+                                            tx_msgs.send(packet).unwrap();
+                                            if last { break; }
                                         }
-                                        msg.clear();
                                         msg.push_back(packet.clone());
                                     }
                                 },
@@ -134,22 +129,6 @@ impl Channel {
                    //debug_println!("Erro ao ler pacote na listener");
                 },
             }
-        }
-    }
-    
-
-    fn receive(tx: &mpsc::Sender<Packet>, packet: &Packet) {
-        let agent = packet.header.dst_addr.port() % 100;
-       //debug_println!("Listener is delivering package {} to Agente {}", packet.header.seq_num, agent);
-        match tx.send(packet.clone()) {
-            Ok(_) => {
-                let agent = packet.header.dst_addr.port() % 100;
-               //debug_println!("Listener delivered package {} to Agente {}", packet.header.seq_num, agent);
-            },
-            Err(_) => {
-                let agent = packet.header.dst_addr.port() % 100;
-               //debug_println!("Erro ao entregar pacote {} para Agente {}", packet.header.seq_num, agent);
-            },
         }
     }
 
@@ -178,11 +157,6 @@ impl Channel {
     fn validate_message(packet: &Packet, next_seq_num:u32 ) -> bool {
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         let c2: bool = packet.header.seq_num == next_seq_num;
-        if c1 && c2 {
-            println!("Pacote {} validado com sucesso", packet.header.seq_num);
-        } else {
-            println!("Pacote {} invalidado", packet.header.seq_num);
-        }
         c1 && c2
     }
 

@@ -43,7 +43,7 @@ impl ReliableCommunication {
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
         let mut count_timeout = 0;
         let (ack_tx, ack_rx) = mpsc::channel();
-        match self.send_tx.send((ack_tx, self.host)) {
+        match self.send_tx.send((ack_tx, *dst_addr)) {
             Ok(_) => {
                 let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
                 let start_pkg: usize = {
@@ -72,13 +72,9 @@ impl ReliableCommunication {
                     match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                         Ok(packet) => {
                             count_timeout = 0;
-                            if packet.header.seq_num == (start_pkg + base) as u32 {
-                                base += 1;
-                                if base == packets.len() {
-                                    break;
-                                }
-                            } else {
-                                next_seq_num = base;
+                            base = (packet.header.seq_num as usize) + 1 - start_pkg;
+                            if base == packets.len() {
+                                break;
                             }
                         },
                         Err(_) => {
