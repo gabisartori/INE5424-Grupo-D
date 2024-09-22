@@ -1,8 +1,3 @@
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(dead_code)]
-
 #[macro_export]
 macro_rules! debug_println {
     // This pattern accepts format arguments like println!
@@ -23,14 +18,14 @@ mod lib {
     pub mod reliable_communication;
     pub mod channels;
     pub mod failure_detection;
-    pub mod header;
+    pub mod packet;
 }
 use lib::reliable_communication::ReliableCommunication;
-use lib::header::HEADER_SIZE;
+use lib::packet::HEADER_SIZE;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, BUFFER_SIZE, LOCALHOST, NODES, AGENT_NUM, N_MSGS};
+use config::{Node, BUFFER_SIZE, NODES, AGENT_NUM, N_MSGS};
 
 struct Agent {
     id: u32,
@@ -55,7 +50,7 @@ impl Agent {
                 break;
             }
             let msg = String::from_utf8_lossy(&message);
-            let msf = format!("Agent {} recieved Message:\n-->\n{}", self.id, msg);
+            let msf = format!("Agent {} received Message:\n-->\n{}", self.id, msg);
             debug_println!("MENSAGEM RECEBIDA POR AGENTE {}", self.id);
             if cfg!(debug_assertions) {
                 // write message to a listener.txt file

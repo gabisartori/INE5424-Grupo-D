@@ -6,7 +6,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
-use super::header::{Packet, HEADER_SIZE};
+use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
@@ -41,56 +41,49 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
-        let mut count_timeout = 0;
+        // Comunicação com a camada de canais
         let (ack_tx, ack_rx) = mpsc::channel();
-        match self.send_tx.send((ack_tx, *dst_addr)) {
-            Ok(_) => {
-                let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-                let start_pkg: usize = {
-                    let mut msg_count = self.msg_count.lock().unwrap();
-                    let count = msg_count.entry(*dst_addr).or_insert(0);
-                    let start = *count;
-                    *count += packets.len() as u32;
-                    start as usize
-                };
-                let mut base = 0;
-                let mut next_seq_num = 0;
-                loop {
-                    while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
-                        let msg: Vec<u8> = packets[next_seq_num].to_vec();
-                        let packet = Packet::new(
-                            self.host,
-                            *dst_addr,
-                            (next_seq_num + start_pkg) as u32,
-                            if next_seq_num == packets.len() - 1 { 2 } else { 0 },
-                            None,
-                            msg,
-                        );
-                        self.raw_send(packet);
-                        next_seq_num += 1;
-                    } 
-                    match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
-                        Ok(packet) => {
-                            count_timeout = 0;
-                            base = (packet.header.seq_num as usize) + 1 - start_pkg;
-                            if base == packets.len() {
-                                break;
-                            }
-                        },
-                        Err(_) => {
-                            count_timeout += 1;
-                            next_seq_num = base;
-                            if count_timeout == 10 {
-                                debug_println!("Timeout em Agente {} esperando ACK {}", self.host.port() % 100, start_pkg + base);
-                                break;
-                            }
-                        }
-                    }
+        self.send_tx.send((ack_tx, *dst_addr)).expect("Erro ao inscrever-se para mandar pacotes");
+        
+        // Preparar a mensagem para ser enviada
+        let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
+        let start_pkg: usize = {
+            let mut msg_count = self.msg_count.lock().unwrap();
+            let count = msg_count.entry(*dst_addr).or_insert(0);
+            let start = *count;
+            *count += packets.len() as u32;
+            start as usize
+        };
+        // Algoritmo Go-Back-N para garantia de entrega dos pacotes
+        let mut count_timeout = 0;
+        let mut base = 0;
+        let mut next_seq_num = 0;
+        while base < packets.len() {
+            // Envia todos os pacotes dentro da janela
+            while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
+                let msg: Vec<u8> = packets[next_seq_num].to_vec();
+                let packet = Packet::new(
+                    self.host,
+                    *dst_addr,
+                    (next_seq_num + start_pkg) as u32,
+                    if next_seq_num == packets.len() - 1 { 2 } else { 0 },
+                    None,
+                    msg,
+                );
+                self.raw_send(packet);
+                next_seq_num += 1;
+            }
+            // Espera por um ACK
+            match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
+                Ok(packet) => {
+                    count_timeout = 0;
+                    base = (packet.header.seq_num as usize) + 1 - start_pkg;
+                },
+                Err(_) => {
+                    count_timeout += 1;
+                    next_seq_num = base;
+                    if count_timeout == 10 { break; }
                 }
-            },
-            Err(_) => {
-                let agent = self.host.port() % 100;
-                panic!("Erro em Agente {} ao inscrever-se para mandar pacotes", agent);
             }
         }
     }
@@ -107,21 +100,12 @@ impl ReliableCommunication {
                 false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
             }
         };
-        loop {
-            match rcv() {
-                Ok(packet) => {
-                    let Packet { data, header, .. } = packet;
-                    buffer.extend(data);
-                    if header.is_last() { return true; }
-                },
-                Err(_) => {
-                    let agent = self.host.port() % 100;
-                   //debug_println!("Agente {} falhou ao receber um pacote", agent);
-                    return false;
-                }
-                
-            }
+        while let Ok(packet) = rcv() {
+            let Packet { header, data, .. } = packet;
+            buffer.extend(data);
+            if header.is_last() { return true; }
         }
+        false
     }
 }
 
