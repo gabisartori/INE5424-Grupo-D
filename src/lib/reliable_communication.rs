@@ -151,7 +151,7 @@ impl ReliableCommunication {
         }
         let rcv = || {
             match cfg!(debug_assertions) {
-                true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(TIMEOUT)),
+                true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
                 false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
             }
         };

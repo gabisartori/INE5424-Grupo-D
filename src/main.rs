@@ -64,7 +64,7 @@ impl Agent {
                     Ok(f) => f,
                     Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
                 };
-                std::io::Write::write_all(&mut file, msf.as_bytes().trim_ascii_end())
+                std::io::Write::write_all(&mut file, msf.as_bytes())
                 .expect("Erro ao escrever no arquivo");
             } else {
                 println!("{}", msf);
@@ -74,7 +74,7 @@ impl Agent {
 
     fn sender(&self) {
         let mut destination: u32;
-        for _ in 0..N_MSGS
+        for i in 0..N_MSGS
         {
             // Pick a random node to send a message to
             destination = match cfg!(debug_assertions) {
@@ -92,7 +92,7 @@ impl Agent {
 
             // Send message to the selected node
             // let msg: String = format!("Hello from agent {}", self.id);
-            let msg: String = config::LARGE_MSG.to_string();
+            let msg: String = config::MSGS[(i%3) as usize].to_string();
             // let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             if cfg!(debug_assertions) {
