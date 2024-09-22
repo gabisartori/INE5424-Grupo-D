@@ -40,7 +40,7 @@ impl ReliableCommunication {
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
-    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
+    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
         // Comunicação com a camada de canais
         let (ack_tx, ack_rx) = mpsc::channel();
         let agente = self.host.port() % 100;
@@ -78,18 +78,23 @@ impl ReliableCommunication {
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
                     count_timeout = 0;
-                    base = (packet.header.seq_num as usize) + 1 - start_pkg;
+                    if packet.header.seq_num == (base + start_pkg) as u32 {
+                        base += 1; 
+                    } else {
+                        next_seq_num = base;
+                    }
                 },
                 Err(_) => {
                     count_timeout += 1;
                     next_seq_num = base;
                     if count_timeout == 10 {
                         debug_println!("->-> Abortar: Agente {agente} teve 10 Timeouts");
-                        break;
+                        return false;
                     }
                 }
             }
         }
+        true
     }
 
     fn raw_send(&self, packet: Packet) {

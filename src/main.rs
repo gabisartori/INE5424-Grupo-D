@@ -94,8 +94,9 @@ impl Agent {
             // let msg: String = format!("Hello");
             let msg: Vec<u8> = msg.as_bytes().to_vec();
             debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
-            self.communication.send(&(self.communication.group[destination as usize].addr), msg);
-            debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
+            if self.communication.send(&(self.communication.group[destination as usize].addr), msg) {
+                    debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
+            }
         }
     }
 
