@@ -55,24 +55,17 @@ impl Channel {
             let packet: Packet = Packet::from_bytes(buffer, size);
 
             // Verifica se o pacote recebido é válido
-            let next_seq_num = match msgs.get(&packet.header.src_addr) {
-                Some(msg) => {
-                    msg.back().map_or(0, |last| last.header.seq_num + 1)
-                },
-                None => {
-                    msgs.insert(packet.header.src_addr, VecDeque::new());
-                    0
-                }
-            };
-            if !Channel::validate_message(&packet, next_seq_num) {
+            if !Channel::validate_message(&packet) {
                 continue;
             }
             
             if packet.is_ack() {
                 // Verifica se há alguém esperando pelo ACK recebido
+                while let Ok((tx, key)) = rx_acks.try_recv() {
+                    sends.entry(key).or_insert(tx);
+                }
                 // Se houver, encaminha o ACK para o remetente
                 // Senão, ignora o ACK
-                Channel::get_txs(&rx_acks, &mut sends);
                 match sends.get(&packet.header.src_addr) {
                     // Encaminha o ACK para a sender correspondente
                     Some(tx) => {
@@ -86,14 +79,27 @@ impl Channel {
                                 let agent_s = packet.header.src_addr.port() % 100;
                                 let agent_d = packet.header.dst_addr.port() % 100;
                                 let pk = packet.header.seq_num;
-                                debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
-                                continue;                             
+                                debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal. Sender não está mais esperando pelo ACK");
+                                sends.remove(&packet.header.src_addr);
+                                continue;                      
                             },
                         }
                     }
                     None => continue,
                 }
             } else {
+                let next_seq_num = match msgs.get(&packet.header.src_addr) {
+                    Some(msg) => {
+                        msg.back().map_or(0, |last| last.header.seq_num + 1)
+                    },
+                    None => {
+                        msgs.insert(packet.header.src_addr, VecDeque::new());
+                        0
+                    }
+                };
+                if packet.header.seq_num > next_seq_num {
+                    continue;
+                }
                 // Send ACK
                 let ack = packet.header.get_ack();
                 match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
@@ -135,18 +141,10 @@ impl Channel {
         }
     }
 
-    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, map: &mut HashMap<SocketAddr, mpsc::Sender<Packet>>) {
-        while let Ok((tx, key)) = rx.try_recv() {
-            map.entry(key).or_insert(tx);
-        }
-    }
-
-    fn validate_message(packet: &Packet, next_seq_num:u32 ) -> bool {
+    fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        // Se o pacote é um ACK, o número de sequência não precisa ser verificado
-        let c2: bool = packet.header.seq_num == next_seq_num || packet.is_ack();
-        c1 && c2 && (rand::random::<u8>() % 5 != 0)
+        c1 && (rand::random::<u8>() % 10 != 0)
     }
 
     pub fn send(&self, packet: Packet) { 
