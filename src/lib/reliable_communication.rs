@@ -6,7 +6,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
-use super::header::{Header, HEADER_SIZE};
+use super::header::{Header, Packet, HEADER_SIZE};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
@@ -18,8 +18,8 @@ pub struct ReliableCommunication {
     channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    send_tx: mpsc::Sender<(Sender<Header>, SocketAddr)>,
-    receive_rx: Arc<Mutex<Receiver<Header>>>,
+    send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr)>,
+    receive_rx: Arc<Mutex<Receiver<Packet>>>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
     msg_count: Arc<Mutex<HashMap<SocketAddr, u32>>>,
 }
@@ -41,84 +41,55 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) {
-        if cfg!(debug_assertions) {
-            // get 4 last characters from self.host
-            //let agent = self.host.to_string()[self.host.port() % 100;
-            let agent = self.host.port() % 100;
-            println!("Agente {agent} is subscribing to listener to send packages");
-            let _ = std::io::Write::flush(&mut std::io::stdout());
-        }
+        let mut count_timeout = 0;
         let (ack_tx, ack_rx) = mpsc::channel();
         match self.send_tx.send((ack_tx, self.host)) {
             Ok(_) => {
-                if cfg!(debug_assertions) {
-                    let agent = self.host.port() % 100;
-                    println!("Agente {} sent subscription to send packages sucessfully",
-                    agent);
-                    let _ = std::io::Write::flush(&mut std::io::stdout());
-                }
-                let packages: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-                let mut start_pkg: usize = {
+                let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
+                let start_pkg: usize = {
                     let mut msg_count = self.msg_count.lock().unwrap();
                     let count = msg_count.entry(*dst_addr).or_insert(0);
                     let start = *count;
-                    *count += packages.len() as u32;
+                    *count += packets.len() as u32;
                     start as usize
                 };
-                let mut base = start_pkg;
-                let mut next_seq_num = base;
+                let mut base = 0;
+                let mut next_seq_num = 0;
                 loop {
-                    while next_seq_num < base + W_SIZE && next_seq_num - start_pkg < packages.len() {
-                        let msg: Vec<u8> = packages[next_seq_num - start_pkg].to_vec();
-                        let header = Header::new(
+                    while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
+                        let msg: Vec<u8> = packets[next_seq_num].to_vec();
+                        let mut flags: u8 = 0;
+                        let packet = Packet::new(
                             self.host,
                             *dst_addr,
-                            0,
                             next_seq_num as u32,
-                            packages.len(),
-                            0,
-                            next_seq_num - start_pkg == packages.len() - 1,
+                            if next_seq_num == packets.len() - 1 { 2 } else { 0 },
+                            None,
                             msg,
                         );
-                        self.raw_send(header);
+                        self.raw_send(packet);
                         next_seq_num += 1;
+                        // std::thread::sleep(std::time::Duration::from_millis(50));
                     } 
-                    if cfg!(debug_assertions) {
-                        // recovers the last character from self.host
-                        let agent = self.host.port() % 100;
-                        println!("Agente {} is waiting for ACK {}",agent, base);
-                        let _ = std::io::Write::flush(&mut std::io::stdout());                
-                    }
                     match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
-                        Ok(header) => {
-                            if cfg!(debug_assertions) {
-                                let agent = self.host.port() % 100;
-                                println!("Agente {} received ACK {}", agent, header.ack_num);
-                                let _ = std::io::Write::flush(&mut std::io::stdout());
-                            }
-                            if header.ack_num == base as u32 {
+                        Ok(packet) => {
+                            count_timeout = 0;
+                            let agent = self.host.port() % 100;
+                            if packet.header.seq_num == (start_pkg + base) as u32 {
                                 base += 1;
-                                if base - start_pkg == packages.len() {
+                                if base == packets.len() {
                                     break;
                                 }
                             } else {
-                                if cfg!(debug_assertions) {
-                                    let agent = self.host.port() % 100;
-                                    println!("Agente {} expected ACK {} but received ACK {}",
-                                    agent, base, header.ack_num);
-                                    let _ = std::io::Write::flush(&mut std::io::stdout());
-                                }
                                 next_seq_num = base;
                             }
                         },
                         Err(_) => {
-                            if cfg!(debug_assertions) {
-                                let agent = self.host.port() % 100;
-                                println!("Timeout for Agente {}, resending from {} to {}",
-                                    agent, base, next_seq_num);
-                                let _ = std::io::Write::flush(&mut std::io::stdout());
-                            }
+                            count_timeout += 1;
                             next_seq_num = base;
+                            if count_timeout == 10 {
+                                break;
+                            }
                         }
                     }
                 }
@@ -130,25 +101,13 @@ impl ReliableCommunication {
         }
     }
 
-    fn raw_send(&self, header: Header) {
-        if cfg!(debug_assertions) {
-            let agent = self.host.port() % 100;
-            println!("Agente {} is sending package {}",
-            agent, header.seq_num);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
-        }
-        self.channel.send(header);
+    fn raw_send(&self, packet: Packet) {
+        self.channel.send(packet);
     }
-    
 
     // Função para receber mensagens confiáveis
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
         let mut next_seq_num = 0;
-        if cfg!(debug_assertions) {
-            let agent = self.host.port() % 100;
-            println!("Agente {} is preparing to receive messages from listener", agent);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
-        }
         let rcv = || {
             match cfg!(debug_assertions) {
                 true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
@@ -157,16 +116,10 @@ impl ReliableCommunication {
         };
         loop {
             match rcv() {
-                Ok(header) => {
-                    if cfg!(debug_assertions) {
-                        let agent = self.host.port() % 100;
-                        println!("Agente {} received package {}", agent, header.seq_num);
-                        let _ = std::io::Write::flush(&mut std::io::stdout());
-                    }
-                    buffer.extend(header.msg);
-                    if header.is_last {
-                        return true;
-                    } // listener already sends ack
+                Ok(packet) => {
+                    let Packet { data, header, .. } = packet;
+                    buffer.extend(data);
+                    if header.is_last() { return true; }
                 },
                 Err(_) => {
                     if cfg!(debug_assertions) {
@@ -174,8 +127,8 @@ impl ReliableCommunication {
                         println!("\n---------\nAgente {} falhou ao receber o pacote {}\nThread Listener terminou\n--------",
                         agent, next_seq_num);
                         let _ = std::io::Write::flush(&mut std::io::stdout());
-                        return false;
                     }
+                    return false;
                 }
                 
             }
