@@ -61,14 +61,13 @@ impl ReliableCommunication {
                         let packet = Packet::new(
                             self.host,
                             *dst_addr,
-                            next_seq_num as u32,
+                            (next_seq_num + start_pkg) as u32,
                             if next_seq_num == packets.len() - 1 { 2 } else { 0 },
                             None,
                             msg,
                         );
                         self.raw_send(packet);
                         next_seq_num += 1;
-                        // std::thread::sleep(std::time::Duration::from_millis(50));
                     } 
                     match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                         Ok(packet) => {
