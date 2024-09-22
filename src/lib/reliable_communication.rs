@@ -14,7 +14,7 @@ macro_rules! debug_println {
 
 // Importa a camada de canais
 use super::channels::Channel;
-use super::header::{Header, Packet, HEADER_SIZE};
+use super::header::{Packet, HEADER_SIZE};
 use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
@@ -66,7 +66,6 @@ impl ReliableCommunication {
                 loop {
                     while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
                         let msg: Vec<u8> = packets[next_seq_num].to_vec();
-                        let mut flags: u8 = 0;
                         let packet = Packet::new(
                             self.host,
                             *dst_addr,
@@ -82,7 +81,6 @@ impl ReliableCommunication {
                     match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                         Ok(packet) => {
                             count_timeout = 0;
-                            let agent = self.host.port() % 100;
                             if packet.header.seq_num == (start_pkg + base) as u32 {
                                 base += 1;
                                 if base == packets.len() {
@@ -115,7 +113,6 @@ impl ReliableCommunication {
 
     // Função para receber mensagens confiáveis
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        let mut next_seq_num = 0;
         let rcv = || {
             match cfg!(debug_assertions) {
                 true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
@@ -131,7 +128,7 @@ impl ReliableCommunication {
                 },
                 Err(_) => {
                     let agent = self.host.port() % 100;
-                    debug_println!("\n---------\nAgente {} falhou ao receber o pacote {}\n--------", agent, next_seq_num);
+                    debug_println!("\n---------\nAgente {} falhou ao receber um pacote\n--------", agent);
                     return false;
                 }
                 

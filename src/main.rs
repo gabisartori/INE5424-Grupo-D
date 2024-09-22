@@ -3,11 +3,10 @@
 #![allow(unused_mut)]
 #![allow(dead_code)]
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::str::FromStr;
+
+use std::net::SocketAddr;
 use std::thread;
 use std::sync::Arc;
-use std::env;
 use rand::Rng;
 
 mod lib {
@@ -25,7 +24,6 @@ use config::{Node, BUFFER_SIZE, LOCALHOST, NODES, AGENT_NUM, N_MSGS};
 
 struct Agent {
     id: u32,
-    addr: SocketAddr,
     communication: ReliableCommunication
 }
 
@@ -33,13 +31,12 @@ impl Agent {
     fn new(id: u32, addr: SocketAddr, nodes: Vec<Node>) -> Self {
         Agent {
             id,
-            addr,
             communication: ReliableCommunication::new(addr, nodes)
         }
     }
 
     fn listener(&self) {
-        let mut stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
+        let stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
         for _ in 0..stop
         {
             if cfg!(debug_assertions) {

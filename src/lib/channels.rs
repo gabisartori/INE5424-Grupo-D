@@ -4,14 +4,12 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
-use std::process::Output;
 use std::sync::mpsc;
-use std::{collections, thread};
+use std::thread;
 use std::collections::{HashMap, VecDeque};
 
 use crate::config::BUFFER_SIZE;
-use super::header::{Header, Packet, HEADER_SIZE};
-use std::sync::{Arc, Mutex};
+use super::header::Packet;
 
 macro_rules! debug_println {
     ($($arg:tt)*) => {
