@@ -71,7 +71,7 @@ pub struct Header {
     pub checksum: u16,          // 19 bytes
 }
 // implementação para que o cabeçalho seja conversível em bytes e vice-versa
-impl<'a> Header {
+impl Header {
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: u8, checksum: Option<u16>) -> Self {
         Self {
             src_addr,
@@ -89,7 +89,8 @@ impl<'a> Header {
             dst_addr: self.src_addr,
             seq_num: self.seq_num,
             flags: flags,
-            checksum: 0,
+            // TODO: Fix the checksum gambiarra
+            checksum: Packet::checksum(&self, &Vec::new())+1,
         }
     }
 

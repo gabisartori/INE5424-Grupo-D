@@ -9,7 +9,7 @@ use std::thread;
 use std::collections::{HashMap, VecDeque};
 
 use crate::config::BUFFER_SIZE;
-use super::header::Packet;
+use super::packet::Packet;
 
 // use super::failure_detection;
 // Estrutura básica para a camada de comunicação por canais
@@ -30,150 +30,81 @@ impl Channel {
             Ok(s) => s,
             Err(_) => return Err(Error::new(std::io::ErrorKind::Other, "Erro ao clonar o socket")),
         };
-        let agent = bind_addr.port() % 100;
-       //debug_println!("Incializando Listener no Agente {}", agent);
         thread::spawn(move || Channel::listener(skt, send_rx, receive_tx));
         Ok(Self { socket })
     }
     
     fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, tx_msgs: mpsc::Sender<Packet>) {
-        // a hashmap for the senders, indexed by the destination address
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Packet>> = HashMap::new();
         let mut msgs: HashMap<SocketAddr, VecDeque<Packet>> = HashMap::new();
         loop {
-            // Read packets from socket
             let mut buffer = [0; BUFFER_SIZE];
-            match socket.recv_from(&mut buffer) {
-                Ok((size, src_addr)) => {
-                    let packet: Packet = Packet::from_bytes(buffer, size);
-                    if packet.is_ack() {
-                        Channel::get_txs(&rx_acks, &mut sends);
-                        match sends.get(&packet.header.src_addr) {
-                            // Forward the ack to the corresponding sender
-                            Some(tx) => {
-                                match tx.send(packet.clone()) {
-                                    Ok(_) => {
-                                        let agent = packet.header.dst_addr.port() % 100;
-                                       //debug_println!("Delivered ACK {} for Agente {}", packet.header.seq_num, agent);
-                                        if packet.is_last() {
-                                            // If the message is the last one, remove the sender from the hashmap
-                                            let agent = packet.header.dst_addr.port() % 100;
-                                            sends.remove(&packet.header.src_addr);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        let agent = packet.header.dst_addr.port() % 100;
-                                        //debug_println!("Erro ao entregar ACK {} para o Agente {}", packet.header.seq_num, agent);
-                                    },
-                                }
-                            }
-                            // No sender is waiting for this ack, discard it
-                            None => {
-                                let agent = packet.header.dst_addr.port() % 100;
-                               //debug_println!("Sender Agent {} not found for ACK {}", agent, packet.header.seq_num);
-                            },
-                        }
-                    } else {
-                        // If the packet contains a message, store it in the receivers hashmap and send an ACK
-                        let agent: u16 = packet.header.src_addr.port() % 100;
-                        let next_seq_num = match msgs.get(&packet.header.src_addr) {
-                            Some(msg) => {
-                                let last = msg.back();
-                                match last {
-                                    Some(last) => {
-                                        last.header.seq_num + 1
-                                    },
-                                    None => 0,
-                                }
-                            },
-                            None => {
-                                msgs.insert(packet.header.src_addr, VecDeque::new());
-                                0
-                            }
-                        };
+            let (size, _src_addr) = socket.recv_from(&mut buffer).expect("Falha ao ler o socket!");
+            let packet: Packet = Packet::from_bytes(buffer, size);
 
-                        if Channel::validate_message(&packet, next_seq_num) {
-                            let agent = packet.header.src_addr.port() % 100;
-                            // Send ACK
-                            let ack = packet.header.get_ack();
-                            match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
-                                Ok(_) => {
-                                    let agent = ack.dst_addr.port() % 100;
-                                    msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
-                                    let agent = packet.header.src_addr.port() % 100;
-                                    let msg = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
-                                    if packet.is_last() {
-                                        if msg[0].is_last() {
-                                            msg.pop_front();
-                                        }
-                                        while let Some(packet) = msg.pop_front() {
-                                            let last = packet.is_last();
-                                            tx_msgs.send(packet).unwrap();
-                                            if last { break; }
-                                        }
-                                        msg.push_back(packet.clone());
-                                    }
-                                },
-                                Err(_) => {
-                                    let agent = ack.dst_addr.port() % 100;
-                                   //debug_println!("Erro ao enviar ACK {} para o Agente {} pelo socket", ack.seq_num, agent);
-                                },
-                            }
-                        } else {
-                            let agent = packet.header.src_addr.port() % 100;
-                           //debug_println!("Invalid message received from {}", agent);
-                        }
-                    }
-                }
-                Err(_) => {
-                   //debug_println!("Erro ao ler pacote na listener");
+            // Verifica se o pacote recebido é válido
+            let next_seq_num = match msgs.get(&packet.header.src_addr) {
+                Some(msg) => {
+                    msg.back().map_or(0, |last| last.header.seq_num + 1)
                 },
+                None => {
+                    msgs.insert(packet.header.src_addr, VecDeque::new());
+                    0
+                }
+            };
+            if !Channel::validate_message(&packet, next_seq_num) { continue; }
+            
+            if packet.is_ack() {
+                // Verifica se há alguém esperando pelo ACK recebido
+                // Se houver, encaminha o ACK para o remetente
+                // Senão, ignora o ACK
+                Channel::get_txs(&rx_acks, &mut sends);
+                match sends.get(&packet.header.src_addr) {
+                    // Encaminha o ACK para a sender correspondente
+                    Some(tx) => {
+                        tx.send(packet.clone()).expect("Erro ao encaminhar ACK para sender correspondente");
+                        if packet.is_last() { sends.remove(&packet.header.src_addr); }
+                    }
+                    None => (),
+                }
+            } else {
+                // Encaminhar o pacote para a fila de mensagens e enviar um ACK
+                msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
+                let msg = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
+                // TODO: Refatorar para evitar repetição de código
+                if packet.is_last() {
+                    if msg[0].is_last() {
+                        msg.pop_front();
+                    }
+                    while let Some(packet) = msg.pop_front() {
+                        let last = packet.is_last();
+                        tx_msgs.send(packet).unwrap();
+                        if last { break; }
+                    }
+                    msg.push_back(packet.clone());
+                }
+                // Send ACK
+                let ack = packet.header.get_ack();
+                socket.send_to(&ack.to_bytes(), ack.dst_addr).expect("Erro ao enviar ACK");
             }
         }
     }
 
-    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>,
-               map: &mut HashMap<SocketAddr, mpsc::Sender<Packet>>) {
-       //debug_println!("Listener is preparing to receive Senders");
-        loop {
-            match rx.try_recv() {
-                Ok((tx, key)) => {
-                    match map.get(&key) {
-                        Some(_) => {
-                           //debug_println!("Agente {} is already waiting for a message", key.port() % 100);
-                        },
-                        None => {
-                            let agent = key.port() % 100;
-                           //debug_println!("Subscribing Agente {} to listener as sender", agent);
-                            map.insert(key, tx);
-                        }
-                    };
-                },
-                Err(_) => break,
-            };
-        };
+    fn get_txs(rx: &mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, map: &mut HashMap<SocketAddr, mpsc::Sender<Packet>>) {
+        while let Ok((tx, key)) = rx.try_recv() {
+            map.entry(key).or_insert(tx);
+        }
     }
 
     fn validate_message(packet: &Packet, next_seq_num:u32 ) -> bool {
+        // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        let c2: bool = packet.header.seq_num == next_seq_num;
+        // Se o pacote é um ACK, o número de sequência não precisa ser verificado
+        let c2: bool = packet.header.seq_num == next_seq_num || packet.is_ack();
         c1 && c2
     }
 
     pub fn send(&self, packet: Packet) { 
-        let dst_addr = packet.header.dst_addr;
-        let src_addr = packet.header.src_addr;
-        let bytes = packet.to_bytes();
-        match self.socket.send_to(&bytes, dst_addr) {
-            Ok(_) => {
-                let agent_d = dst_addr.port() % 100;
-                let agent_s = src_addr.port() % 100;
-               //debug_println!("Sent package {} from Agente {} to Agente {} through socket", packet.header.seq_num, agent_s, agent_d);
-            },
-            Err(_) => {
-                let agent = dst_addr.port() % 100;
-               //debug_println!("\n---------\nErro ao enviar pacote {} para o Agente {} pelo socket\n--------",packet.header.seq_num, agent);
-            }
-        }
+        self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr).unwrap();
     }
 }
