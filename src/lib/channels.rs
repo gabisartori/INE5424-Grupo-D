@@ -48,7 +48,7 @@ impl Channel {
                 Ok((size_, _)) => { size = size_; },
                 Err(_) => {
                     let agent = socket.local_addr().unwrap().port() % 100;
-                    debug_println!("Erro no Agente {agent} ao receber pacote pelo socket");
+                    debug_println!("->-> Erro no Agente {agent} ao receber pacote pelo socket");
                     continue
                 },
             }
@@ -85,7 +85,8 @@ impl Channel {
                             Err(_) => {
                                 let agent_s = packet.header.src_addr.port() % 100;
                                 let agent_d = packet.header.dst_addr.port() % 100;
-                                debug_println!("Erro ao encaminhar ACK vindo do Agente {agent_s} para o Agente {agent_d}");
+                                let pk = packet.header.seq_num;
+                                debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
                                 continue;                             
                             },
                         }
@@ -98,14 +99,16 @@ impl Channel {
                 match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                     Ok(_) => (),
                     Err(_) => {
-                        let agent = ack.dst_addr.port() % 100;
-                        debug_println!("Erro ao enviar ACK para o Agente {agent} pelo socket");
+                        let agent_s = ack.src_addr.port() % 100;
+                        let agent_d = ack.dst_addr.port() % 100;
+                        let pk = ack.seq_num;
+                        debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
                         continue
                     },
                 }
                 // Encaminhar o pacote para a fila de mensagens
                 msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
-                let msg = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
+                let msg: &mut VecDeque<Packet> = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
                 // TODO: Refatorar para evitar repetição de código
                 if packet.is_last() {
                     if msg[0].is_last() {
@@ -116,8 +119,10 @@ impl Channel {
                         match tx_msgs.send(pckg.clone()) {
                             Ok(_) => (),
                             Err(_) => {
-                                let agent = pckg.header.dst_addr.port() % 100;
-                                debug_println!("Erro ao entregar o pacote para o Agente {agent}");
+                                let agent_s = pckg.header.src_addr.port() % 100;
+                                let agent_d = pckg.header.dst_addr.port() % 100;
+                                let pk = pckg.header.seq_num;
+                                debug_println!("->-> Erro ao entregar o pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
                                 msg.push_front(pckg.clone());
                                 break;
                             }
@@ -141,15 +146,17 @@ impl Channel {
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         // Se o pacote é um ACK, o número de sequência não precisa ser verificado
         let c2: bool = packet.header.seq_num == next_seq_num || packet.is_ack();
-        c1 && c2
+        c1 && c2 && (rand::random::<u8>() % 5 != 0)
     }
 
     pub fn send(&self, packet: Packet) { 
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => (),
             Err(_) => {
-                let agent = packet.header.dst_addr.port() % 100;
-                debug_println!("Erro ao enviar pacote para o Agente {agent}");
+                let agent_s = packet.header.src_addr.port() % 100;
+                let agent_d = packet.header.dst_addr.port() % 100;
+                let pk = packet.header.seq_num;
+                debug_println!("->-> Erro ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");
             }
         }
     }

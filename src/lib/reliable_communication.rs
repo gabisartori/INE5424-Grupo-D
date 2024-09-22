@@ -83,8 +83,8 @@ impl ReliableCommunication {
                 Err(_) => {
                     count_timeout += 1;
                     next_seq_num = base;
-                    debug_println!("Agente {agente} teve Timeout: {count_timeout}/10");
                     if count_timeout == 10 {
+                        debug_println!("->-> Abortar: Agente {agente} teve 10 Timeouts");
                         break;
                     }
                 }
