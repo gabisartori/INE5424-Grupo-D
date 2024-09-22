@@ -80,7 +80,7 @@ impl Channel {
                                 let agent_d = packet.header.dst_addr.port() % 100;
                                 let pk = packet.header.seq_num;
                                 debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal. Sender não está mais esperando pelo ACK");
-                                sends.remove(&packet.header.src_addr);
+                                // sends.remove(&packet.header.src_addr);
                                 continue;                      
                             },
                         }
@@ -145,18 +145,18 @@ impl Channel {
     fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        let ok: bool = c1 && (rand::random::<u8>() % 10 == 0);
-        // return c1;
-        // ok || !(packet.is_ack() && packet.is_last())
-        if ok || !(packet.is_ack() && packet.is_last()) {
-            true
-        } else {
-            let agent_s = packet.header.src_addr.port() % 100;
-            let agent_d = packet.header.dst_addr.port() % 100;
-            let pk = packet.header.seq_num;
-            debug_println!("->-> Erro ao validar o ACK {pk} vindo do Agente {agent_s} para o Agente {agent_d}");
-            false            
-        }
+        c1 && (rand::random::<u8>() % 10 != 0)
+        // // return c1;
+        // // ok || !(packet.is_ack() && packet.is_last())
+        // if ok || !(packet.is_ack() && packet.is_last()) {
+        //     true
+        // } else {
+        //     let agent_s = packet.header.src_addr.port() % 100;
+        //     let agent_d = packet.header.dst_addr.port() % 100;
+        //     let pk = packet.header.seq_num;
+        //     debug_println!("->-> Erro ao validar o ACK {pk} vindo do Agente {agent_s} para o Agente {agent_d}");
+        //     false            
+        // }
     }
 
     pub fn send(&self, packet: Packet) { 
