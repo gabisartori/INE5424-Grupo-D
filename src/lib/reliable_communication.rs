@@ -11,7 +11,7 @@ use crate::config::{BUFFER_SIZE, Node, TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 
 pub struct ReliableCommunication {
@@ -71,26 +71,35 @@ impl ReliableCommunication {
                     None,
                     msg,
                 );
+                debug_println!("Agent {} Sending packet {}", agente, packet.header.seq_num);
                 self.raw_send(packet);
                 next_seq_num += 1;
             }
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
+                    debug_println!("Agent {} Waiting ACK {}, received ACK {}", agente, base+start_pkg, packet.header.seq_num);
                     count_timeout = 0;
                     if packet.header.seq_num == (base + start_pkg) as u32 {
                         base += 1; 
-                    } else {
+                    } else if packet.header.seq_num > (base + start_pkg) as u32 {
                         next_seq_num = base;
+                    } else {
+                        debug_println!("AAAAAA");
                     }
                 },
-                Err(_) => {
-                    count_timeout += 1;
-                    next_seq_num = base;
-                    if count_timeout == 10 {
-                        debug_println!("->-> Abortar: Agente {agente} teve 10 Timeouts");
-                        return false;
-                    }
+                Err(e) => match e {
+                    RecvTimeoutError::Timeout => {
+                        {
+                            count_timeout += 1;
+                            next_seq_num = base;
+                            if count_timeout == 1000 {
+                                debug_println!("->-> Abortar: Agente {agente} teve 10 Timeouts");
+                                return false
+                            }
+                        }
+                    },
+                    RecvTimeoutError::Disconnected => return true,
                 }
             }
         }
