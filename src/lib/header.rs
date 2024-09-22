@@ -98,7 +98,7 @@ impl<'a> Header {
     }
 
     pub fn is_last(&self) -> bool {
-        (self.flags | 2) >= 2
+        (self.flags & 2) == 2
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
