@@ -4,14 +4,6 @@ disponibilizada pela camada de difusão confiável (Reliable Communication),
 permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
-macro_rules! debug_println {
-    ($($arg:tt)*) => {
-        if cfg!(debug_assertions) {
-            println!($($arg)*);
-        }
-    };
-}
-
 // Importa a camada de canais
 use super::channels::Channel;
 use super::header::{Packet, HEADER_SIZE};
@@ -94,6 +86,7 @@ impl ReliableCommunication {
                             count_timeout += 1;
                             next_seq_num = base;
                             if count_timeout == 10 {
+                                debug_println!("Timeout em Agente {} esperando ACK {}", self.host.port() % 100, start_pkg + base);
                                 break;
                             }
                         }
@@ -102,7 +95,7 @@ impl ReliableCommunication {
             },
             Err(_) => {
                 let agent = self.host.port() % 100;
-                panic!("\n---------\nErro em Agente {} ao inscrever-se para mandar pacotes\n--------", agent);
+                panic!("Erro em Agente {} ao inscrever-se para mandar pacotes", agent);
             }
         }
     }
@@ -128,7 +121,7 @@ impl ReliableCommunication {
                 },
                 Err(_) => {
                     let agent = self.host.port() % 100;
-                    debug_println!("\n---------\nAgente {} falhou ao receber um pacote\n--------", agent);
+                   //debug_println!("Agente {} falhou ao receber um pacote", agent);
                     return false;
                 }
                 
