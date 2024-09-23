@@ -13,6 +13,7 @@ use std::net::SocketAddr;
 use std::thread;
 use std::sync::Arc;
 use rand::Rng;
+use std::env;
 
 mod lib {
     pub mod reliable_communication;
@@ -106,10 +107,28 @@ impl Agent {
 
 
 fn main() {
-    assert!(AGENT_NUM > 0, "Número de agentes deve ser maior que 0");
-    assert!(BUFFER_SIZE > HEADER_SIZE, "Tamanho do buffer ({}) deve ser maior que o tamanho do cabeçalho ({})", BUFFER_SIZE, HEADER_SIZE);
+    let args: Vec<String> = env::args().collect();
+
+    // Verifica se o programa foi executado com argumentos (quando for rodado como um subprocesso)
+    if args.len() > 1 {
+        let agent_id: u32 = args[1].parse().expect("Falha ao converter agent_id para u32");
+        let agent = create_agent(agent_id);
+        agent.run();
+    } else { // Se não há argumentos, então está rodando o processo principal
+        assert!(AGENT_NUM > 0, "Número de agentes deve ser maior que 0");
+        assert!(BUFFER_SIZE > HEADER_SIZE, "Tamanho do buffer ({BUFFER_SIZE}) deve ser maior que o tamanho do cabeçalho ({HEADER_SIZE})");    
+        // Inicializar os agentes locais
+        for i in 0..AGENT_NUM {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .arg(i.to_string())  // Passando o ID do agente
+                .spawn()
+                .expect(format!("Falha ao spawnar processo {i}").as_str());
+        }
+    }
+}
+
+fn create_agent(id: u32) -> Arc<Agent>  {
     let mut nodes: Vec<Node> = Vec::new();
-    let mut local_agents: Vec<thread::JoinHandle<()>> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..AGENT_NUM {
@@ -121,18 +140,7 @@ fn main() {
             nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
         }
     }
+    let agent: Arc<Agent> = Arc::new(Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone()));
+    agent
 
-    // Inicializar os agentes locais
-    for i in 0..AGENT_NUM {
-        let agent: Arc<Agent> = Arc::new(Agent::new(i, SocketAddr::new(config::LOCALHOST, 3100 + i as u16), nodes.clone()));
-        let agent_handler = thread::spawn(move || agent.run());
-        local_agents.push(agent_handler);
-    }
-
-    for agent in local_agents {
-        match agent.join() {
-            Ok(_) => (),
-            Err(_) => ()
-        }
-    }
 }
