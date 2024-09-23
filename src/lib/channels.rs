@@ -6,7 +6,7 @@ use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
 use std::sync::mpsc;
 use std::thread;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use crate::config::BUFFER_SIZE;
 use super::flags::Flags;
@@ -41,7 +41,7 @@ impl Channel {
     
     fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, tx_msgs: mpsc::Sender<Packet>) {
         let mut sends: HashMap<SocketAddr, mpsc::Sender<Packet>> = HashMap::new();
-        let mut msgs: HashMap<SocketAddr, VecDeque<Packet>> = HashMap::new();
+        let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
             let mut buffer = [0; BUFFER_SIZE];
             let size;
@@ -89,15 +89,7 @@ impl Channel {
                     None => continue,
                 }
             } else {
-                let next_seq_num = match msgs.get(&packet.header.src_addr) {
-                    Some(msg) => {
-                        msg.back().map_or(0, |last| last.header.seq_num + 1)
-                    },
-                    None => {
-                        msgs.insert(packet.header.src_addr, VecDeque::new());
-                        0
-                    }
-                };
+                let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
                 if packet.header.seq_num > next_seq_num {
                     continue;
                 }
@@ -113,31 +105,18 @@ impl Channel {
                         continue
                     },
                 }
-                // Encaminhar o pacote para a fila de mensagens
+                // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                 if packet.header.seq_num < next_seq_num { continue; }
-                msgs.get_mut(&packet.header.src_addr).unwrap().push_back(packet.clone());
-                let msg: &mut VecDeque<Packet> = msgs.entry(packet.header.src_addr).or_insert(VecDeque::new());
-                // TODO: Refatorar para evitar repetição de código
-                if packet.flag_is_set(Flags::LST) {
-                    if msg[0].flag_is_set(Flags::LST) && msg.len() != 1 {
-                        msg.pop_front();
-                    }
-                    while let Some(pckg) = msg.pop_front() {
-                        let last = pckg.flag_is_set(Flags::LST);
-                        match tx_msgs.send(pckg.clone()) {
-                            Ok(_) => (),
-                            Err(_) => {
-                                let agent_s = pckg.header.src_addr.port() % 100;
-                                let agent_d = pckg.header.dst_addr.port() % 100;
-                                let pk = pckg.header.seq_num;
-                                debug_println!("->-> Erro ao entregar o pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
-                                msg.push_front(pckg.clone());
-                                break;
-                            }
-                        }
-                        if last { break; }
-                    }
-                    msg.push_back(packet.clone());
+                messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
+                match tx_msgs.send(packet.clone()) {
+                    Ok(_) => (),
+                    Err(_) => {
+                        let agent_s = packet.header.src_addr.port() % 100;
+                        let agent_d = packet.header.dst_addr.port() % 100;
+                        let pk = packet.header.seq_num;
+                        debug_println!("->-> Erro ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
+                        continue
+                    },
                 }
             }
         }

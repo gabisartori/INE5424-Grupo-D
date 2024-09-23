@@ -45,7 +45,6 @@ impl Agent {
         let stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };        
         for _ in 0..stop
         {
-            // debug_println!("AGENTE {} VAI RECEBER UMA MENSAGEM", self.id);
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
@@ -65,41 +64,33 @@ impl Agent {
                 };
                 std::io::Write::write_all(&mut file, msf.as_bytes())
                 .expect("Erro ao escrever no arquivo");
-            } else {
-                println!("{}", msf);
-            }
+            } else { println!("{}", msf); }
         }
     }
 
     fn sender(&self) {
-        let mut destination: u32;
-        for i in 0..N_MSGS
-        {
-            // Pick a random node to send a message to
-            destination = match cfg!(debug_assertions) {
-                true => {
-                    let dst = rand::thread_rng().gen_range(0..self.communication.group.len() as u32);
-                    if dst  == self.id {
-                        (dst + 1) % self.communication.group.len() as u32
-                    }
-                    else {
-                        dst
-                    }
-                },
-                false => (self.id + 1) % self.communication.group.len() as u32             
-            };
-
+        for i in 0..N_MSGS {
+            let destination = self.pick_destination();
+            let dst_addr = self.communication.group[destination as usize].addr;
             // Send message to the selected node
-            // let msg: String = format!("Hello from agent {}", self.id);
-            let msg: String = config::MSGS[(i%3) as usize].to_string();
-            // let msg: String = format!("Hello");
-            let msg: Vec<u8> = msg.as_bytes().to_vec();
-            // debug_println!("AGENTE {} VAI ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
-            if self.communication.send(&(self.communication.group[destination as usize].addr), msg) {
+            let msg = config::MSGS[(i%3) as usize].to_string().as_bytes().to_vec();
+
+            if self.communication.send(&dst_addr, msg) {
                     debug_println!("AGENTE {} ENVIOU A MENSAGEM PARA AGENTE {}", self.id, destination);
             } else {
                 debug_println!("AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM PARA AGENTE {}", self.id, destination);
             }
+        }
+    }
+
+    fn pick_destination(&self) -> u32 {
+        if cfg!(debug_assertions) {
+            let size = self.communication.group.len() as u32;
+            let dst = rand::thread_rng().gen_range(0..size);
+            if dst  == self.id { (dst + 1) % size }
+            else { dst }
+        } else {
+            (self.id + 1) % self.communication.group.len() as u32
         }
     }
 
