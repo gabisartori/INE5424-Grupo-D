@@ -42,20 +42,21 @@ impl ReliableCommunication {
 
     // Função para enviar mensagem com garantias de comunicação confiável
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-        // Comunicação com a camada de canais
-        let (ack_tx, ack_rx) = mpsc::channel();
-        let agente = self.host.port() % 100;
-        self.send_tx.send((ack_tx, *dst_addr)).expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
-        
         // Preparar a mensagem para ser enviada
         let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-        let start_pkg: usize = {
+        let start_packet: usize = {
             let mut msg_count = self.msg_count.lock().unwrap();
             let count = msg_count.entry(*dst_addr).or_insert(0);
             let start = *count;
             *count += packets.len() as u32;
             start as usize
         };
+        
+        // Comunicação com a camada de canais
+        let (ack_tx, ack_rx) = mpsc::channel();
+        let agente = self.host.port() % 100;
+        self.send_tx.send((ack_tx, *dst_addr)).expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
+        
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
         let mut count_timeout = 0;
         let mut base = 0;
@@ -63,28 +64,23 @@ impl ReliableCommunication {
         while base < packets.len() {
             // Envia todos os pacotes dentro da janela
             while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
-                let msg: Vec<u8> = packets[next_seq_num].to_vec();
                 let packet = Packet::new(
                     self.host,
                     *dst_addr,
-                    (next_seq_num + start_pkg) as u32,
+                    (next_seq_num + start_packet) as u32,
                     if next_seq_num == packets.len() - 1 { Flags::LST } else { Flags::EMP },
                     None,
-                    msg,
+                    packets[next_seq_num].to_vec(),
                 );
-                // debug_println!("Agent {} Sending packet {}", agente, packet.header.seq_num);
-                self.raw_send(packet);
+                self.channel.send(packet);
                 next_seq_num += 1;
             }
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
-                    //debug_println!("Agent {} Waiting ACK {}, received ACK {}", agente, base+start_pkg, packet.header.seq_num);
                     count_timeout = 0;
-                    if packet.header.seq_num == (base + start_pkg) as u32 {
-                        base += 1; 
-                    } else if packet.header.seq_num > (base + start_pkg) as u32 {
-                        next_seq_num = base;
+                    if packet.header.seq_num >= (base + start_packet) as u32 {
+                        base = packet.header.seq_num as usize - start_packet + 1;
                     }
                 },
                 Err(e) => match e {
@@ -93,7 +89,6 @@ impl ReliableCommunication {
                             count_timeout += 1;
                             next_seq_num = base;
                             if count_timeout == config::TIMEOUT_LIMIT {
-                                debug_println!("->-> Abortar: Agente {agente} teve {count_timeout} Timeouts");
                                 return false
                             }
                         }
@@ -103,10 +98,6 @@ impl ReliableCommunication {
             }
         }
         true
-    }
-
-    fn raw_send(&self, packet: Packet) {
-        self.channel.send(packet);
     }
 
     // Função para receber mensagens confiáveis
