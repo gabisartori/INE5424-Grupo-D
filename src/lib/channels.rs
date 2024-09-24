@@ -126,7 +126,7 @@ impl Channel {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         let _ok = rand::random::<u8>() % 10 != 0; 
-        c1 && _ok
+        c1 // && _ok
     }
 
     pub fn send(&self, packet: Packet) { 
