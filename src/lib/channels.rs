@@ -21,7 +21,7 @@ impl Channel {
     // Função para criar um novo canal
     pub fn new(
         bind_addr: SocketAddr,
-        send_rx: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>,
+        send_rx: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>,
         receive_tx: mpsc::Sender<Packet>
         ) -> Result<Self, Error> {
         
@@ -34,11 +34,13 @@ impl Channel {
                 return Err(Error::new(std::io::ErrorKind::Other, erro))
             },
         };
-        thread::spawn(move || Channel::listener(skt, send_rx, receive_tx));
+        thread::spawn(move || Channel::listener(skt, receive_tx, send_rx));
         Ok(Self { socket })
     }
     
-    fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, tx_msgs: mpsc::Sender<Packet>) {
+    fn listener(socket: UdpSocket,
+                tx_msgs: mpsc::Sender<Packet>,
+                rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>) {
         let mut sends: HashMap<SocketAddr, (mpsc::Sender<Packet>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
@@ -46,9 +48,9 @@ impl Channel {
             let size;
             match socket.recv_from(&mut buffer) {
                 Ok((size_, _)) => { size = size_; },
-                Err(_) => {
+                Err(e) => {
                     let agent = socket.local_addr().unwrap().port() % 100;
-                    debug_println!("->-> Erro no Agente {agent} ao receber pacote pelo socket");
+                    debug_println!("->-> Erro {{{e}}} no Agente {agent} ao receber pacote pelo socket");
                     continue
                 },
             }
@@ -61,8 +63,8 @@ impl Channel {
             
             if packet.is_ack() {
                 // Verifica se há alguém esperando pelo ACK recebido
-                while let Ok((tx, key)) = rx_acks.try_recv() {
-                    sends.entry(key).or_insert((tx, 0));
+                while let Ok((tx, key, start_seq)) = rx_acks.try_recv() {
+                    sends.entry(key).or_insert((tx, start_seq));
                 }
                 // Se houver, encaminha o ACK para o remetente
                 // Senão, ignora o ACK
@@ -72,15 +74,20 @@ impl Channel {
                         if packet.header.seq_num < tupla.1 {
                             continue;
                         }
-                        tupla.1 = packet.header.seq_num;
-                        let tx = &tupla.0;
+                        tupla.1 = packet.header.seq_num + 1;
+                        let tx: &mpsc::Sender<Packet> = &tupla.0;
                         match tx.send(packet.clone()) {
-                            Ok(_) => {},
-                            Err(_) => {
+                            Ok(_) => {
+                                if packet.is_last() {
+                                    sends.remove(&packet.header.src_addr);
+                                }
+                            },
+                            Err(e) => {
                                 let agent_s = packet.header.src_addr.port() % 100;
                                 let agent_d = packet.header.dst_addr.port() % 100;
                                 let pk = packet.header.seq_num;
-                                debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal. Sender não está mais esperando pelo ACK");
+                                debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk}, do Agente {agent_s} para o Agente {agent_d} pelo canal.");
+                                sends.remove(&packet.header.src_addr);
                                 continue;                      
                             },
                         }
@@ -96,11 +103,11 @@ impl Channel {
                 let ack = packet.header.get_ack();
                 match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
                     Ok(_) => (),
-                    Err(_) => {
+                    Err(e) => {
                         let agent_s = ack.src_addr.port() % 100;
                         let agent_d = ack.dst_addr.port() % 100;
                         let pk = ack.seq_num;
-                        debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
+                        debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
                         continue
                     },
                 }
@@ -109,11 +116,11 @@ impl Channel {
                 messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
                 match tx_msgs.send(packet.clone()) {
                     Ok(_) => (),
-                    Err(_) => {
+                    Err(e) => {
                         let agent_s = packet.header.src_addr.port() % 100;
                         let agent_d = packet.header.dst_addr.port() % 100;
                         let pk = packet.header.seq_num;
-                        debug_println!("->-> Erro ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
+                        debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
                         continue
                     },
                 }
