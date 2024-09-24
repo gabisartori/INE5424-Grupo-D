@@ -70,16 +70,16 @@ impl Packet {
         self.flag_is_set(Flags::ACK)
     }
 
+    pub fn is_last(&self) -> bool {
+        self.flag_is_set(Flags::LST)
+    }
+
     // pub fn is_syn(&self) -> bool {
     //     self.flag_is_set(Flags::SYN)
     // }
 
     // pub fn is_fin(&self) -> bool {
     //     self.flag_is_set(Flags::FIN)
-    // }
-
-    // pub fn is_last(&self) -> bool {
-    //     self.flag_is_set(Flags::LST)
     // }
 }
 
