@@ -23,6 +23,7 @@ pub struct ReliableCommunication {
     receive_rx: Arc<Mutex<Receiver<Packet>>>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
     msg_count: Arc<Mutex<HashMap<SocketAddr, u32>>>,
+    message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -36,8 +37,9 @@ impl ReliableCommunication {
             Err(_) => panic!("Erro ao criar o canal de comunicação"),
         };
         let receive_rx = Arc::new(Mutex::new(receive_rx));
+        let message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>> = Mutex::new(HashMap::new());
         
-        Self { channel, host, group, send_tx, receive_rx, msg_count: Arc::new(Mutex::new(HashMap::new())) }
+        Self { channel, host, group, send_tx, receive_rx, msg_count: Arc::new(Mutex::new(HashMap::new())), message_per_source }
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -74,6 +76,7 @@ impl ReliableCommunication {
                 );
                 self.channel.send(packet);
                 next_seq_num += 1;
+                debug_println!("Agente {} enviou pacote {}", agente, next_seq_num);
             }
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
@@ -108,11 +111,14 @@ impl ReliableCommunication {
                 false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
             }
         };
+        let mut messages = self.message_per_source.lock().unwrap();
         while let Ok(packet) = rcv() {
             let Packet { header, data, .. } = packet;
-            buffer.extend(data);
+            messages.entry(header.src_addr).or_insert(Vec::new()).extend(data);
             if header.flag_is_set(Flags::LST) {
-                return true;
+                let msg = messages.remove(&header.src_addr).unwrap();
+                buffer.extend(msg);
+                return true
             }
         }
         false
