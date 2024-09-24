@@ -8,21 +8,21 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 use super::channels::Channel;
 use super::flags::Flags;
 use super::packet::{Packet, HEADER_SIZE};
-use crate::config::{self, Node, BUFFER_SIZE, TIMEOUT, W_SIZE};
+use crate::config::{Node, BUFFER_SIZE, TIMEOUT, W_SIZE, TIMEOUT_LIMIT};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 pub struct ReliableCommunication {
     channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
     send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr)>,
-    receive_rx: Arc<Mutex<Receiver<Packet>>>,
+    receive_rx: Mutex<Receiver<Packet>>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
-    msg_count: Arc<Mutex<HashMap<SocketAddr, u32>>>,
+    msg_count: Mutex<HashMap<SocketAddr, u32>>,
     message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>
 }
 
@@ -36,10 +36,9 @@ impl ReliableCommunication {
             Ok(c) => c,
             Err(_) => panic!("Erro ao criar o canal de comunicação"),
         };
-        let receive_rx = Arc::new(Mutex::new(receive_rx));
-        let message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>> = Mutex::new(HashMap::new());
+        let receive_rx =Mutex::new(receive_rx);
         
-        Self { channel, host, group, send_tx, receive_rx, msg_count: Arc::new(Mutex::new(HashMap::new())), message_per_source }
+        Self { channel, host, group, send_tx, receive_rx, msg_count: Mutex::new(HashMap::new()), message_per_source: Mutex::new(HashMap::new()) }
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -91,7 +90,7 @@ impl ReliableCommunication {
                         {
                             count_timeout += 1;
                             next_seq_num = base;
-                            if count_timeout == config::TIMEOUT_LIMIT {
+                            if count_timeout == TIMEOUT_LIMIT {
                                 return false
                             }
                         }
