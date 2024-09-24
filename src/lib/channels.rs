@@ -81,7 +81,6 @@ impl Channel {
                                 let agent_d = packet.header.dst_addr.port() % 100;
                                 let pk = packet.header.seq_num;
                                 debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal. Sender não está mais esperando pelo ACK");
-                                sends.remove(&packet.header.src_addr);
                                 continue;                      
                             },
                         }
