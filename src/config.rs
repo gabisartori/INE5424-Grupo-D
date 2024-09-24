@@ -41,7 +41,7 @@ pub const TIMEOUT: u64 = 100; // 0.1 segundo
 pub const TIMEOUT_LIMIT: u32 = 100;
 pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
-pub const BUFFER_SIZE: usize = 2<<16; // 2KB
+pub const BUFFER_SIZE: usize = 2<<9; // 2KB
 
 pub const MSG: &str = "
 --------------------------------------
