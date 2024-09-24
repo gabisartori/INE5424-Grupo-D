@@ -2,18 +2,17 @@
 macro_rules! debug_println {
     // This pattern accepts format arguments like println!
     ($($arg:tt)*) => {
-        if cfg!(debug_assertions) {
-            let path = format!("tests/debug.txt");
-            let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                                .create(true)
-                                                .append(true)
-                                                .open(path) {
-                Ok(f) => f,
-                Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-            };
-            let msf = format!("----------\n{}\n----------\n", format!($($arg)*));
-            std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
-        }
+//        if cfg!(debug_assertions) {
+        let path = format!("tests/debug.txt");
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                            .create(true)
+                                            .append(true)
+                                            .open(path) {
+            Ok(f) => f,
+            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+        };
+        let msf = format!("----------\n{}\n----------\n", format!($($arg)*));
+        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     };
 }
 

@@ -80,18 +80,17 @@ impl ReliableCommunication {
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
                     count_timeout = 0;
+                    // assume que a listener está enviando o número do maior pacote que recebeu
                     if packet.header.seq_num >= (base + start_packet) as u32 {
                         base = packet.header.seq_num as usize - start_packet + 1;
                     }
                 },
                 Err(e) => match e {
                     RecvTimeoutError::Timeout => {
-                        {
-                            count_timeout += 1;
-                            next_seq_num = base;
-                            if count_timeout == TIMEOUT_LIMIT {
-                                return false
-                            }
+                        count_timeout += 1;
+                        next_seq_num = base;
+                        if count_timeout == TIMEOUT_LIMIT {
+                            return false
                         }
                     },
                     RecvTimeoutError::Disconnected => return true,

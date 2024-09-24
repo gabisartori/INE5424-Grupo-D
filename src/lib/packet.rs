@@ -78,9 +78,9 @@ impl Packet {
     //     self.flag_is_set(Flags::FIN)
     // }
 
-    pub fn is_last(&self) -> bool {
-        self.flag_is_set(Flags::LST)
-    }
+    // pub fn is_last(&self) -> bool {
+    //     self.flag_is_set(Flags::LST)
+    // }
 }
 
 #[derive(Clone)]
