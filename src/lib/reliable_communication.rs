@@ -18,7 +18,7 @@ pub struct ReliableCommunication {
     channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr)>,
+    send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr, u32)>,
     receive_rx: Mutex<Receiver<Packet>>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
     msg_count: Mutex<HashMap<SocketAddr, u32>>,
@@ -55,7 +55,8 @@ impl ReliableCommunication {
         // Comunicação com a camada de canais
         let (ack_tx, ack_rx) = mpsc::channel();
         let agente = self.host.port() % 100;
-        self.send_tx.send((ack_tx, *dst_addr)).expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
+        self.send_tx.send((ack_tx, *dst_addr, start_packet as u32))
+        .expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
         
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
         let mut count_timeout = 0;
@@ -81,9 +82,8 @@ impl ReliableCommunication {
                 Ok(packet) => {
                     count_timeout = 0;
                     // assume que a listener está enviando o número do maior pacote que recebeu
-                    if packet.header.seq_num >= (base + start_packet) as u32 {
-                        base = packet.header.seq_num as usize - start_packet + 1;
-                    }
+                    // listener também garante que o pacote seja >= base
+                    base = packet.header.seq_num as usize - start_packet + 1;
                 },
                 Err(e) => match e {
                     RecvTimeoutError::Timeout => {
