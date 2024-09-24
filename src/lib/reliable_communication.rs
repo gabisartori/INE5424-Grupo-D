@@ -6,7 +6,6 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 // Importa a camada de canais
 use super::channels::Channel;
-use super::flags::Flags;
 use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{Node, BUFFER_SIZE, TIMEOUT, W_SIZE, TIMEOUT_LIMIT};
 
@@ -69,13 +68,13 @@ impl ReliableCommunication {
                     self.host,
                     *dst_addr,
                     (next_seq_num + start_packet) as u32,
-                    if next_seq_num == packets.len() - 1 { Flags::LST } else { Flags::EMP },
                     None,
+                    next_seq_num == packets.len() - 1,
+                    false,
                     packets[next_seq_num].to_vec(),
                 );
                 self.channel.send(packet);
                 next_seq_num += 1;
-                debug_println!("Agente {} enviou pacote {}", agente, next_seq_num);
             }
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
@@ -114,7 +113,7 @@ impl ReliableCommunication {
         while let Ok(packet) = rcv() {
             let Packet { header, data, .. } = packet;
             messages.entry(header.src_addr).or_insert(Vec::new()).extend(data);
-            if header.flag_is_set(Flags::LST) {
+            if header.is_last() {
                 let msg = messages.remove(&header.src_addr).unwrap();
                 buffer.extend(msg);
                 return true

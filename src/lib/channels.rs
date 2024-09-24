@@ -9,7 +9,6 @@ use std::thread;
 use std::collections::HashMap;
 
 use crate::config::BUFFER_SIZE;
-use super::flags::Flags;
 use super::packet::Packet;
 // use super::failure_detection;
 
@@ -60,7 +59,7 @@ impl Channel {
                 continue;
             }
             
-            if packet.flag_is_set(Flags::ACK) {
+            if packet.is_ack() {
                 // Verifica se há alguém esperando pelo ACK recebido
                 while let Ok((tx, key)) = rx_acks.try_recv() {
                     sends.entry(key).or_insert(tx);
@@ -72,7 +71,7 @@ impl Channel {
                     Some(tx) => {
                         match tx.send(packet.clone()) {
                             Ok(_) => {
-                                if packet.flag_is_set(Flags::LST) {
+                                if packet.is_last() {
                                     sends.remove(&packet.header.src_addr);
                                 }
                             },
