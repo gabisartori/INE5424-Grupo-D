@@ -1,4 +1,6 @@
 all:
+	@clear
+	@rm -f tests/*.txt
 	@cargo run --release > tests/log.txt
 	@echo "------------------------------------------------------------"
 	@cat tests/log.txt
