@@ -39,7 +39,7 @@ impl Channel {
     }
     
     fn listener(socket: UdpSocket, rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr)>, tx_msgs: mpsc::Sender<Packet>) {
-        let mut sends: HashMap<SocketAddr, mpsc::Sender<Packet>> = HashMap::new();
+        let mut sends: HashMap<SocketAddr, (mpsc::Sender<Packet>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
             let mut buffer = [0; BUFFER_SIZE];
@@ -62,25 +62,26 @@ impl Channel {
             if packet.is_ack() {
                 // Verifica se há alguém esperando pelo ACK recebido
                 while let Ok((tx, key)) = rx_acks.try_recv() {
-                    sends.entry(key).or_insert(tx);
+                    sends.entry(key).or_insert((tx, 0));
                 }
                 // Se houver, encaminha o ACK para o remetente
                 // Senão, ignora o ACK
-                match sends.get(&packet.header.src_addr) {
+                match sends.get_mut(&packet.header.src_addr) {
                     // Encaminha o ACK para a sender correspondente
-                    Some(tx) => {
+                    Some(tupla) => {
+                        if packet.header.seq_num < tupla.1 {
+                            continue;
+                        }
+                        tupla.1 = packet.header.seq_num;
+                        let tx = &tupla.0;
                         match tx.send(packet.clone()) {
-                            Ok(_) => {
-                                if packet.is_last() {
-                                    sends.remove(&packet.header.src_addr);
-                                }
-                            },
+                            Ok(_) => {},
                             Err(_) => {
                                 let agent_s = packet.header.src_addr.port() % 100;
                                 let agent_d = packet.header.dst_addr.port() % 100;
                                 let pk = packet.header.seq_num;
                                 debug_println!("->-> Erro ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal. Sender não está mais esperando pelo ACK");
-                                // sends.remove(&packet.header.src_addr);
+                                sends.remove(&packet.header.src_addr);
                                 continue;                      
                             },
                         }
