@@ -1,14 +1,18 @@
 all:
-	@clear
 	@rm -f tests/*.txt
 	@cargo run --release > tests/log.txt
+	@clear
 	@echo "------------------------------------------------------------"
 	@cat tests/log.txt
+	@echo "------------------------------------------------------------"
+	@python3 src/calculate_test.py
 
 debug:
-	@clear
 	@rm -f tests/*.txt
 	@cargo run > tests/log.txt
+	@clear
+	@echo "------------------------------------------------------------"
+	@python3 src/calculate_test.py
 
 clean:
 	@cargo clean
