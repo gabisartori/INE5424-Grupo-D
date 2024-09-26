@@ -1,6 +1,7 @@
-use std::sync::{Arc, Mutex, Condvar, mpsc::RecvTimeoutError};
-use std::thread;
+use std::sync::{Mutex, Condvar, mpsc::RecvTimeoutError};
 use std::time::Duration;
+// use std::sync::Arc; 
+// use std::thread;
 
 // deriva clone
 // Define a thread-safe message queue using Mutex and Condvar
@@ -42,23 +43,23 @@ impl<T> MessageQueue<T> {
     }
 }
 
-fn delayed_send(mq: Arc<MessageQueue<String>>, delay_seconds: u64, message: String) {
-    thread::sleep(Duration::from_secs(delay_seconds)); // Simulate delay
-    mq.send(message);                                  // Send the message
-}
+// fn delayed_send(mq: Arc<MessageQueue<String>>, delay_seconds: u64, message: String) {
+//     thread::sleep(Duration::from_secs(delay_seconds)); // Simulate delay
+//     mq.send(message);                                  // Send the message
+// }
 
-fn main() {
-    let mq = Arc::new(MessageQueue::new());
+// fn main() {
+//     let mq = Arc::new(MessageQueue::new());
 
-    // Spawn a thread that will send a message after 2 seconds
-    let mq_clone = mq.clone();
-    thread::spawn(move || {
-        delayed_send(mq_clone, 1, "Hello from the thread!".to_string());
-    });
+//     // Spawn a thread that will send a message after 2 seconds
+//     let mq_clone = mq.clone();
+//     thread::spawn(move || {
+//         delayed_send(mq_clone, 1, "Hello from the thread!".to_string());
+//     });
 
-    // Try to receive a message with a timeout of 1 second
-    match mq.recv_timeout(Duration::from_secs(2)) {
-        Ok(msg) => println!("Received: {}", msg),
-        Err(err) => println!("Error: {}", err),
-    }
-}
+//     // Try to receive a message with a timeout of 1 second
+//     match mq.recv_timeout(Duration::from_secs(2)) {
+//         Ok(msg) => println!("Received: {}", msg),
+//         Err(err) => println!("Error: {}", err),
+//     }
+// }
