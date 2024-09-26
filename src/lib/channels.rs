@@ -4,12 +4,13 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::collections::HashMap;
 
 use crate::config::BUFFER_SIZE;
 use super::packet::Packet;
+use super::message_queue::MessageQueue;
 // use super::failure_detection;
 
 // Estrutura básica para a camada de comunicação por canais
@@ -21,7 +22,7 @@ impl Channel {
     // Função para criar um novo canal
     pub fn new(
         bind_addr: SocketAddr,
-        send_rx: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>,
+        send_rx: mpsc::Receiver<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>,
         receive_tx: mpsc::Sender<Packet>
         ) -> Result<Self, Error> {
         
@@ -40,8 +41,8 @@ impl Channel {
     
     fn listener(socket: UdpSocket,
                 tx_msgs: mpsc::Sender<Packet>,
-                rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>) {
-        let mut sends: HashMap<SocketAddr, (mpsc::Sender<Packet>, u32)> = HashMap::new();
+                rx_acks: mpsc::Receiver<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>) {
+        let mut sends: HashMap<SocketAddr, (Arc<MessageQueue<Packet>>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
             let mut buffer = [0; BUFFER_SIZE];
@@ -75,7 +76,7 @@ impl Channel {
                             continue;
                         }
                         tupla.1 = packet.header.seq_num + 1;
-                        let tx: &mpsc::Sender<Packet> = &tupla.0;
+                        let tx = &tupla.0;
                         match tx.send(packet.clone()) {
                             Ok(_) => {
                                 if packet.is_last() {

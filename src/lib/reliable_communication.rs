@@ -8,17 +8,18 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 use super::channels::Channel;
 use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{Node, BUFFER_SIZE, TIMEOUT, W_SIZE, TIMEOUT_LIMIT};
+use super::message_queue::MessageQueue;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Mutex, Arc};
 
 pub struct ReliableCommunication {
     channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr, u32)>,
+    send_tx: mpsc::Sender<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>,
     receive_rx: Mutex<Receiver<Packet>>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
     msg_count: Mutex<HashMap<SocketAddr, u32>>,
@@ -53,9 +54,10 @@ impl ReliableCommunication {
         };
         
         // Comunicação com a camada de canais
-        let (ack_tx, ack_rx) = mpsc::channel();
+        // let (ack_tx, ack_rx) = mpsc::channel();
+        let ack_rx = std::sync::Arc::new(MessageQueue::new());
         let agente = self.host.port() % 100;
-        self.send_tx.send((ack_tx, *dst_addr, start_packet as u32))
+        self.send_tx.send((ack_rx.clone(), *dst_addr, start_packet as u32))
         .expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
         
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
@@ -85,16 +87,14 @@ impl ReliableCommunication {
                     // listener também garante que o pacote seja >= base
                     base = packet.header.seq_num as usize - start_packet + 1;
                 },
-                Err(e) => match e {
-                    RecvTimeoutError::Timeout => {
+                Err(RecvTimeoutError::Timeout) => {
                         count_timeout += 1;
                         next_seq_num = base;
                         if count_timeout == TIMEOUT_LIMIT {
                             return false
                         }
-                    },
-                    RecvTimeoutError::Disconnected => return true,
-                }
+                },
+                Err(RecvTimeoutError::Disconnected) => return true,
             }
         }
         true

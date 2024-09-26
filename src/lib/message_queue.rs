@@ -1,15 +1,16 @@
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Mutex, Condvar, mpsc::RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
+// deriva clone
 // Define a thread-safe message queue using Mutex and Condvar
-struct MessageQueue<T> {
+pub struct MessageQueue<T> {
     queue: Mutex<Vec<T>>,         // Mutex-protected queue
     cond_var: Condvar,            // Condition variable to signal when a message is available
 }
 
 impl<T> MessageQueue<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         MessageQueue {
             queue: Mutex::new(Vec::new()),    // Initialize an empty queue
             cond_var: Condvar::new(),         // Initialize the condition variable
@@ -17,14 +18,15 @@ impl<T> MessageQueue<T> {
     }
 
     // Send a message into the queue and notify waiting threads
-    fn send(&self, msg: T) {
+    pub fn send(&self, msg: T) -> Result<(), RecvTimeoutError> {
         let mut queue = self.queue.lock().unwrap();
         queue.push(msg);
         self.cond_var.notify_one();           // Notify one waiting thread that a message is available
+        Ok(())
     }
 
     // Try to receive a message with a timeout
-    fn recv_timeout(&self, timeout: Duration) -> Result<T, &'static str> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         let mut queue = self.queue.lock().unwrap();
         
         // If the queue is empty, we will wait for the specified timeout
@@ -34,8 +36,8 @@ impl<T> MessageQueue<T> {
         // Check if we received a message or timed out
         if !queue.is_empty() {
             Ok(queue.remove(0)) // Return the message from the front of the queue
-        } else {
-            Err("Timeout occurred") // Timeout if the queue is still empty
+        } else {// Timeout if the queue is still empty
+            Err(RecvTimeoutError::Timeout)
         }
     }
 }
@@ -45,7 +47,7 @@ fn delayed_send(mq: Arc<MessageQueue<String>>, delay_seconds: u64, message: Stri
     mq.send(message);                                  // Send the message
 }
 
-pub fn main() {
+fn main() {
     let mq = Arc::new(MessageQueue::new());
 
     // Spawn a thread that will send a message after 2 seconds

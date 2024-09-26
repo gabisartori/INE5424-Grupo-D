@@ -28,6 +28,7 @@ mod lib {
     pub mod failure_detection;
     pub mod packet;
     pub mod flags;
+    pub mod message_queue;
 }
 use lib::reliable_communication::ReliableCommunication;
 use lib::packet::HEADER_SIZE;
