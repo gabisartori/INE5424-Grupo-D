@@ -59,6 +59,9 @@ impl Packet {
         for byte in data {
             sum += *byte as u32;
         }
+        if crate::config::FAIL  && rand::random::<u8>() % 10 != 0{
+            sum += 1;
+        }
         sum as u16
     }
 

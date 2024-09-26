@@ -24,6 +24,7 @@ pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
 // Quantia de agentes locais a serem criados
 pub const AGENT_NUM: u32 = 32;
 pub const N_MSGS: u32 = 10;
+pub const FAIL: bool = false;
 
 // Endereços de agentes externos
 // pub const NODES: Option<&[Node]> = Some(&[
