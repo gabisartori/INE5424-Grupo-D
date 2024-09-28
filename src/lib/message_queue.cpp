@@ -9,6 +9,10 @@
 // A thread-safe message queue
 template <typename T>
 class MessageQueue {
+private:
+    std::queue<T> queue_;             // Queue holding the messages
+    std::mutex mtx_;                  // Mutex for thread-safe access to the queue
+    std::condition_variable cond_var_; // Condition variable for blocking threads
 public:
     // Push a message into the queue
     void send(T msg) {
@@ -19,9 +23,11 @@ public:
 
     // Try to receive a message with a timeout
     std::optional<T> recv_timeout(std::chrono::milliseconds timeout) {
-        std::unique_lock<std::mutex> lock(mtx_);w
+        std::unique_lock<std::mutex> lock(mtx_);
 
-        if (!cond_var_.wait_for(lock, timeout, [this] { return !queue_.empty(); })) {
+        if (!cond_var_.wait_for(lock, timeout, [this] {
+            return !queue_.empty(); 
+        })) {
             return {};  // Timeout: return an empty optional
         }
 
@@ -29,11 +35,6 @@ public:
         queue_.pop();
         return msg;
     }
-
-private:
-    std::queue<T> queue_;             // Queue holding the messages
-    std::mutex mtx_;                  // Mutex for thread-safe access to the queue
-    std::condition_variable cond_var_; // Condition variable for blocking threads
 };
 
 // Function to simulate message sending after a delay
