@@ -4,7 +4,6 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
-use std::sync::{Arc, mpsc};
 use std::thread;
 use std::collections::HashMap;
 
@@ -22,8 +21,8 @@ impl Channel {
     // Função para criar um novo canal
     pub fn new(
         bind_addr: SocketAddr,
-        send_rx: mpsc::Receiver<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>,
-        receive_tx: mpsc::Sender<Packet>
+        send_rx: MessageQueue<(MessageQueue<Packet>, SocketAddr, u32)>,
+        receive_tx: MessageQueue<Packet>,
         ) -> Result<Self, Error> {
         
         let socket = UdpSocket::bind(bind_addr)?;
@@ -40,9 +39,9 @@ impl Channel {
     }
     
     fn listener(socket: UdpSocket,
-                tx_msgs: mpsc::Sender<Packet>,
-                rx_acks: mpsc::Receiver<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>) {
-        let mut sends: HashMap<SocketAddr, (Arc<MessageQueue<Packet>>, u32)> = HashMap::new();
+                tx_msgs: MessageQueue<Packet>,
+                rx_acks: MessageQueue<(MessageQueue<Packet>, SocketAddr, u32)>) {
+        let mut sends: HashMap<SocketAddr, (MessageQueue<Packet>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
             let mut buffer = [0; BUFFER_SIZE];

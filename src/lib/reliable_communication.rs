@@ -12,33 +12,36 @@ use super::message_queue::MessageQueue;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Mutex, Arc};
 
+#[derive(Clone)]
 pub struct ReliableCommunication {
-    channel: Channel,
+    channel: Arc<Channel>,
     pub host: SocketAddr,
     pub group: Vec<Node>,
-    send_tx: mpsc::Sender<(Arc<MessageQueue<Packet>>, SocketAddr, u32)>,
-    receive_rx: Mutex<Receiver<Packet>>,
+    send_tx: MessageQueue<(MessageQueue<Packet>, SocketAddr, u32)>,
+    receive_rx: MessageQueue<Packet>,
     // uma variável compartilhada (Arc<Mutex>) que conta quantas vezes send foi chamada
-    msg_count: Mutex<HashMap<SocketAddr, u32>>,
-    message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>
+    msg_count: Arc<Mutex<HashMap<SocketAddr, u32>>>,
+    message_per_source: Arc<Mutex<HashMap<SocketAddr, Vec<u8>>>>
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
 impl ReliableCommunication {
     // Função para inicializar a camada com um canal de comunicação
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
-        let (send_tx, send_rx) = mpsc::channel();
-        let (receive_tx, receive_rx) = mpsc::channel();
+        let send_tx = MessageQueue::new();
+        let send_rx = send_tx.clone();
+        let receive_tx = MessageQueue::new();
+        let receive_rx = receive_tx.clone();
         let channel = match Channel::new(host.clone(), send_rx, receive_tx) {
-            Ok(c) => c,
+            Ok(c) => Arc::new(c),
             Err(_) => panic!("Erro ao criar o canal de comunicação"),
         };
-        let receive_rx =Mutex::new(receive_rx);
-        
-        Self { channel, host, group, send_tx, receive_rx, msg_count: Mutex::new(HashMap::new()), message_per_source: Mutex::new(HashMap::new()) }
+        // let receive_rx = Arc::new(Mutex::new(receive_rx));        
+        Self { channel, host, group, send_tx, receive_rx,
+            msg_count: Arc::new(Mutex::new(HashMap::new())), message_per_source: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
@@ -55,7 +58,7 @@ impl ReliableCommunication {
         
         // Comunicação com a camada de canais
         // let (ack_tx, ack_rx) = mpsc::channel();
-        let ack_rx = std::sync::Arc::new(MessageQueue::new());
+        let ack_rx = MessageQueue::new();
         let agente = self.host.port() % 100;
         self.send_tx.send((ack_rx.clone(), *dst_addr, start_packet as u32))
         .expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
@@ -104,8 +107,8 @@ impl ReliableCommunication {
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
         let rcv = || {
             match cfg!(debug_assertions) {
-                true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
-                false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
+                true => self.receive_rx.recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
+                false => self.receive_rx.recv()
             }
         };
         let mut messages = self.message_per_source.lock().unwrap();
