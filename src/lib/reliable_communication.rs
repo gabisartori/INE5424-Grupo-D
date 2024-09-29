@@ -12,7 +12,6 @@ use super::message_queue::MessageQueue;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Mutex, Arc};
 
 #[derive(Clone)]
