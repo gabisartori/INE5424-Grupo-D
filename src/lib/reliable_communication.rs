@@ -90,14 +90,13 @@ impl ReliableCommunication {
                     // listener também garante que o pacote seja >= base
                     base = packet.header.seq_num as usize - start_packet + 1;
                 },
-                Err(RecvTimeoutError::Timeout) => {
+                Err(_) => {
                         count_timeout += 1;
                         next_seq_num = base;
                         if count_timeout == TIMEOUT_LIMIT {
                             return false
                         }
-                },
-                Err(RecvTimeoutError::Disconnected) => return true,
+                }
             }
         }
         true
