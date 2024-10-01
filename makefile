@@ -1,17 +1,16 @@
 all:
-	@clear
 	@rm -f tests/*.txt
-	@cargo run --release > tests/log.txt
-	@echo "------------------------------------------------------------"
-	@cat tests/log.txt
+	@cargo run --release > result.txt
+	@clear
+	@cat result.txt
+	@rm -f result.txt
 
 debug:
-	@clear
 	@rm -f tests/*.txt
-	@cargo run > tests/log.txt
+	@cargo run > result.txt
+	@clear
+	@cat result.txt
+	@rm -f result.txt
 
 clean:
 	@cargo clean
-
-test:
-	for i in {1..100};	do cargo run > tests/log.txt; done
