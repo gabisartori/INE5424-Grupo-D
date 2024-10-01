@@ -2,7 +2,7 @@
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 // Tamanho do buffer
-use crate::config::BUFFER_SIZE;
+use crate::config::{self, BUFFER_SIZE};
 use super::flags::Flags;
 
 // sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
@@ -58,6 +58,9 @@ impl Packet {
         sum += header.flags.value as u32;
         for byte in data {
             sum += *byte as u32;
+        }
+        if config::FAIL &&rand::random::<u8>() % 10 != 0 {
+            sum += 1;
         }
         sum as u16
     }
