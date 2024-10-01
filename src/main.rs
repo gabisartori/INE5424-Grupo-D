@@ -2,7 +2,6 @@
 macro_rules! debug_println {
     // This pattern accepts format arguments like println!
     ($($arg:tt)*) => {
-//        if cfg!(debug_assertions) {
         let path = format!("tests/debug.txt");
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
@@ -18,9 +17,7 @@ macro_rules! debug_println {
 
 use std::net::SocketAddr;
 use std::thread;
-use std::sync::Arc;
 use rand::Rng;
-use std::env;
 
 mod lib {
     pub mod reliable_communication;
@@ -36,6 +33,7 @@ use lib::packet::HEADER_SIZE;
 mod config;
 use config::{Node, BUFFER_SIZE, NODES, AGENT_NUM, N_MSGS};
 
+#[derive(Clone)]
 struct Agent {
     id: u32,
     communication: ReliableCommunication
@@ -86,7 +84,12 @@ impl Agent {
             // Send message to the selected node
             let msg: Vec<u8> = config::MSG.to_string().as_bytes().to_vec();
 
-            if self.communication.send(&dst_addr, msg) {
+            let func = || match config::BROADCAST {
+                true => self.communication.broadcast(msg.clone()),
+                false => self.communication.send(&dst_addr, msg.clone())
+            };
+
+            if func() {
                 acertos += 1;
             } else {
                 debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {i} PARA AGENTE {destination}", self.id);
@@ -118,9 +121,9 @@ impl Agent {
         }
     }
 
-    pub fn run(self: Arc<Self>) {
-        let sender_clone = Arc::clone(&self);
-        let listener_clone = Arc::clone(&self);
+    pub fn run(self) {
+        let sender_clone = self.clone();
+        let listener_clone = self.clone();
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
         let sender = thread::spawn(move || sender_clone.sender());
         let listener = thread::spawn(move || listener_clone.listener());
@@ -142,7 +145,7 @@ impl Agent {
 }
 
 
-fn create_agents(id: u32) -> Arc<Agent>  {
+fn create_agents(id: u32) -> Agent {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
@@ -155,7 +158,7 @@ fn create_agents(id: u32) -> Arc<Agent>  {
             nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
         }
     }
-    let agent: Arc<Agent> = Arc::new(Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone()));
+    let agent = Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone());
     agent
 
 }
@@ -168,7 +171,6 @@ fn calculate_test() {
     let mut total_sends: u32 = 0;
     let mut total_receivs: u32 = 0;
     let mut expected_sends: u32 = 0;
-    let mut expected_receivs: u32 = 0;
     let mut line = String::new();
     while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
@@ -177,16 +179,15 @@ fn calculate_test() {
         total_sends += sends[0];
         total_receivs += receivs[0];
         expected_sends += sends[1];
-        expected_receivs += receivs[1];
         line.clear();
     }
     println!("Total de Pacotes Enviados : {total_sends}/{expected_sends}");
-    println!("Total de Pacotes Recebidos: {total_receivs}/{expected_receivs}");
+    println!("Total de Pacotes Recebidos: {total_receivs}/{expected_sends}");
 }
 
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
 
     // Verifica se o programa foi executado com argumentos (quando for rodado como um subprocesso)
     if args.len() > 1 {

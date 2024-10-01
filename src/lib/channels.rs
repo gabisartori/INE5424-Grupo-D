@@ -4,7 +4,7 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::collections::HashMap;
 
@@ -13,8 +13,9 @@ use super::packet::Packet;
 // use super::failure_detection;
 
 // Estrutura básica para a camada de comunicação por canais
+#[derive(Clone)]
 pub struct Channel {
-    socket: UdpSocket,
+    socket: Arc<UdpSocket>,
 }
 
 impl Channel {
@@ -25,20 +26,13 @@ impl Channel {
         receive_tx: mpsc::Sender<Packet>
         ) -> Result<Self, Error> {
         
-        let socket = UdpSocket::bind(bind_addr)?;
-        let skt: UdpSocket = match socket.try_clone() {
-            Ok(s) => s,
-            Err(_) => {
-                let agent = bind_addr.port() % 100;
-                let erro = format!("Erro ao clonar o socket do Agente {agent}");
-                return Err(Error::new(std::io::ErrorKind::Other, erro))
-            },
-        };
+        let socket = Arc::new(UdpSocket::bind(bind_addr)?);
+        let skt = socket.clone();
         thread::spawn(move || Channel::listener(skt, receive_tx, send_rx));
         Ok(Self { socket })
     }
     
-    fn listener(socket: UdpSocket,
+    fn listener(socket: Arc<UdpSocket>,
                 tx_msgs: mpsc::Sender<Packet>,
                 rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>) {
         let mut sends: HashMap<SocketAddr, (mpsc::Sender<Packet>, u32)> = HashMap::new();
@@ -131,18 +125,17 @@ impl Channel {
     fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
-        let _ok = rand::random::<u8>() % 10 != 0; 
-        c1 // && _ok
+        c1
     }
 
     pub fn send(&self, packet: Packet) { 
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => (),
-            Err(_) => {
+            Err(e) => {
                 let agent_s = packet.header.src_addr.port() % 100;
                 let agent_d = packet.header.dst_addr.port() % 100;
                 let pk = packet.header.seq_num;
-                debug_println!("->-> Erro ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");
+                debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");
             }
         }
     }
