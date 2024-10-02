@@ -46,10 +46,8 @@ void delayed_send(MessageQueue<std::string>& mq, int delay_seconds, std::string 
 int main() {
     MessageQueue<std::string> mq;
 
-    // Start a thread that sends a message after 2 seconds
     std::thread sender_thread(delayed_send, std::ref(mq), 2, "Hello from the thread!");
 
-    // Try to receive a message with a timeout of 1 second
     auto result = mq.recv_timeout(std::chrono::milliseconds(1000));
 
     if (result) {
