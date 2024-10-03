@@ -69,25 +69,16 @@ impl Channel {
                 match sends.get_mut(&packet.header.src_addr) {
                     // Encaminha o ACK para a sender correspondente
                     Some(tupla) => {
-                        if packet.header.seq_num < tupla.1 {
+                        let (tx, seq_num) = tupla;
+                        if packet.header.seq_num < *seq_num {
                             continue;
                         }
-                        tupla.1 = packet.header.seq_num + 1;
-                        let tx: &mpsc::Sender<Packet> = &tupla.0;
-                        match tx.send(packet.clone()) {
-                            Ok(_) => {
-                                if packet.is_last() {
-                                    sends.remove(&packet.header.src_addr);
-                                }
-                            },
-                            Err(e) => {
-                                let agent_s = packet.header.src_addr.port() % 100;
-                                let agent_d = packet.header.dst_addr.port() % 100;
-                                let pk = packet.header.seq_num;
-                                debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk}, do Agente {agent_s} para o Agente {agent_d} pelo canal.");
-                                sends.remove(&packet.header.src_addr);
-                                continue;                      
-                            },
+                        *seq_num = packet.header.seq_num + 1;
+                        let is_last = packet.is_last();
+                        let src = packet.header.src_addr;
+                        Channel::deliver(tx, packet);
+                        if is_last {
+                            sends.remove(&src);
                         }
                     }
                     None => continue,
@@ -112,16 +103,7 @@ impl Channel {
                 // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                 if packet.header.seq_num < next_seq_num { continue; }
                 messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
-                match tx_msgs.send(packet.clone()) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        let agent_s = packet.header.src_addr.port() % 100;
-                        let agent_d = packet.header.dst_addr.port() % 100;
-                        let pk = packet.header.seq_num;
-                        debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
-                        continue
-                    },
-                }
+                Channel::deliver(&tx_msgs, packet);
             }
         }
     }
@@ -130,6 +112,23 @@ impl Channel {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         c1
+    }
+
+    fn deliver(tx: &mpsc::Sender<Packet>, packet: Packet) {
+        let agent_s = packet.header.src_addr.port() % 100;
+        let agent_d = packet.header.dst_addr.port() % 100;
+        let pk = packet.header.seq_num;
+        let is_ack = packet.is_ack();
+        match tx.send(packet) {
+            Ok(_) => (),
+            Err(e) => {
+                if is_ack {
+                    debug_println!("->-> Erro {{{e}}} ao entregar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
+                } else {
+                    debug_println!("->-> Erro {{{e}}} ao entregar pacote {pk} do Agente {agent_s} para o Agente {agent_d} pelo canal");
+                }
+            }
+        }
     }
 
     pub fn send(&self, packet: Packet) { 
