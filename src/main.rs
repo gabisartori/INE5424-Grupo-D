@@ -127,9 +127,59 @@ impl Agent {
         let listener = thread::spawn(move || listener_clone.listener());
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
-        let max = N_MSGS as u128;
-        println!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}", self.id);
+        let max = N_MSGS as u128;let path = format!("tests/Resultado.txt");
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                            .create(true)
+                                            .append(true)
+                                            .open(path) {
+            Ok(f) => f,
+            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+        };
+        // println!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}", self.id);
+        let msf = format!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}\n", self.id);
+        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     }
+}
+
+
+fn create_agents(id: u32) -> Agent {
+    let mut nodes: Vec<Node> = Vec::new();
+
+    // Contruir vetor unificando os nós locais e os remotos
+    for i in 0..AGENT_NUM {
+        nodes.push(Node{addr: SocketAddr::new(config::LOCALHOST, 3100 + (i as u16)), agent_number: i});
+    }
+
+    if let Some(remote_nodes) = NODES {
+        for node in remote_nodes {
+            nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
+        }
+    }
+    let agent = Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone());
+    agent
+
+}
+
+fn calculate_test() {
+    let path = format!("tests/Resultado.txt");
+    let file = std::fs::File::open(path).expect("Erro ao abrir o arquivo de log");
+    let mut reader = std::io::BufReader::new(file);
+
+    let mut total_sends: u32 = 0;
+    let mut total_receivs: u32 = 0;
+    let mut expected_sends: u32 = 0;
+    let mut line = String::new();
+    while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let sends: Vec<u32> = words[4].split("/").map(|x| x.parse().unwrap()).collect();
+        let receivs: Vec<u32> = words[7].split("/").map(|x| x.parse().unwrap()).collect();
+        total_sends += sends[0];
+        total_receivs += receivs[0];
+        expected_sends += sends[1];
+        line.clear();
+    }
+    println!("Total de Pacotes Enviados : {total_sends}/{expected_sends}");
+    println!("Total de Pacotes Recebidos: {total_receivs}/{expected_sends}");
 }
 
 
@@ -157,23 +207,6 @@ fn main() {
         for mut c in childs {
             c.wait().expect("Falha ao esperar processo filho");
         }
+        calculate_test();
     }
-}
-
-fn create_agents(id: u32) -> Agent  {
-    let mut nodes: Vec<Node> = Vec::new();
-
-    // Contruir vetor unificando os nós locais e os remotos
-    for i in 0..AGENT_NUM {
-        nodes.push(Node{addr: SocketAddr::new(config::LOCALHOST, 3100 + (i as u16)), agent_number: i});
-    }
-
-    if let Some(remote_nodes) = NODES {
-        for node in remote_nodes {
-            nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
-        }
-    }
-    let agent = Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone());
-    agent
-
 }

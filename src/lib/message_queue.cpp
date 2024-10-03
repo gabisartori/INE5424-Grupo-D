@@ -1,63 +1,109 @@
 #include <iostream>
 #include <queue>
+#include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <thread>
 #include <chrono>
 #include <optional>
 
-// A thread-safe message queue
+class my_timespec {
+public:
+    time_t tv_sec;
+    long tv_nsec;
+};
+
+void my_nanosleep(const my_timespec* req, my_timespec*) {
+    std::this_thread::sleep_for(std::chrono::seconds(req->tv_sec) + std::chrono::nanoseconds(req->tv_nsec));
+}
+
 template <typename T>
 class MessageQueue {
 private:
-    std::queue<T> queue_;             // Queue holding the messages
-    std::mutex mtx_;                  // Mutex for thread-safe access to the queue
-    std::condition_variable cond_var_; // Condition variable for blocking threads
+    std::queue<T> queue;
+    std::mutex queue_mutex;
+    std::condition_variable cond_var;
+
 public:
-    // Push a message into the queue
-    void send(T msg) {
-        std::lock_guard<std::mutex> lock(mtx_);
-        queue_.push(std::move(msg));
-        cond_var_.notify_one();
+    // Add a message to the queue and notify waiting threads
+    void send(const T& msg) {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            queue.push(msg);
+        }
+        cond_var.notify_one();
     }
 
-    // Try to receive a message with a timeout
-    std::optional<T> recv_timeout(std::chrono::milliseconds timeout) {
-        std::unique_lock<std::mutex> lock(mtx_);
+    // Receive a message with a timeout
+    std::optional<T> recv_timeout(std::chrono::seconds timeout) {
+        std::unique_lock<std::mutex> lock(queue_mutex);
 
-        if (!cond_var_.wait_for(lock, timeout, [this] {
-            return !queue_.empty(); 
-        })) {
-            return {};  // Timeout: return an empty optional
+        // Timer thread to handle timeout
+        std::thread timer_thread([&]() {
+            my_timespec ts;
+            ts.tv_sec = timeout.count();
+            ts.tv_nsec = 0;
+            my_nanosleep(&ts, nullptr);
+            cond_var.notify_one();
+        });
+
+        // Wait for either a message or the timeout
+        if (cond_var.wait_for(lock, timeout, [&] { return !queue.empty(); })) {
+            T msg = queue.front();
+            queue.pop();
+            timer_thread.detach();
+            return msg; // Return the message
+        } else {
+            timer_thread.detach();
+            return std::nullopt; // Timeout occurred, no message
         }
+    }
 
-        T msg = std::move(queue_.front());
-        queue_.pop();
-        return msg;
+    // Receive a message without timeout (blocking until a message is available)
+    T recv() {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        cond_var.wait(lock, [&] { return !queue.empty(); });
+        T msg = queue.front();
+        queue.pop();
+        return msg; // Return the message
+    }
+
+    // Try to receive a message without blocking
+    std::optional<T> try_recv() {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        if (!queue.empty()) {
+            T msg = queue.front();
+            queue.pop();
+            return msg; // Return the message
+        } else {
+            return std::nullopt; // No message available
+        }
     }
 };
 
-// Function to simulate message sending after a delay
-void delayed_send(MessageQueue<std::string>& mq, int delay_seconds, std::string message) {
-    std::this_thread::sleep_for(std::chrono::seconds(delay_seconds));
-    mq.send(std::move(message));
-}
+// receive the timeouts from the args
+int main (int argc, char *argv[]) {
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <timeout_send_in_seconds> <timeout_recv_in_seconds>" << std::endl;
+        return 1;
+    }
 
-int main() {
+    int t1 = std::stoi(argv[1]);
+    int t2 = std::stoi(argv[2]);
+    
     MessageQueue<std::string> mq;
 
-    std::thread sender_thread(delayed_send, std::ref(mq), 2, "Hello from the thread!");
+    std::thread sender([&mq, t1]() {
+        std::this_thread::sleep_for(std::chrono::seconds(t1));
+        mq.send("Hello from C++ thread!");
+    });
 
-    auto result = mq.recv_timeout(std::chrono::milliseconds(1000));
-
+    auto result = mq.recv_timeout(std::chrono::seconds(t2));
     if (result) {
         std::cout << "Received: " << *result << std::endl;
     } else {
-        std::cout << "Error: Timeout occurred" << std::endl;
+        std::cout << "Timeout occurred." << std::endl;
     }
 
-    // Wait for the sender thread to finish
-    sender_thread.join();
-
+    sender.join();
     return 0;
 }
