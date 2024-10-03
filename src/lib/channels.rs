@@ -4,7 +4,7 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::{UdpSocket, SocketAddr};
 use std::io::Error;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 use std::collections::HashMap;
 
@@ -13,34 +13,35 @@ use super::packet::Packet;
 // use super::failure_detection;
 
 // Estrutura básica para a camada de comunicação por canais
-#[derive(Clone)]
 pub struct Channel {
-    socket: Arc<UdpSocket>,
+    socket: UdpSocket,
 }
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(
-        bind_addr: SocketAddr,
-        send_rx: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>,
-        receive_tx: mpsc::Sender<Packet>
-        ) -> Result<Self, Error> {
-        
-        let socket = Arc::new(UdpSocket::bind(bind_addr)?);
-        let skt = socket.clone();
-        thread::spawn(move || Channel::listener(skt, receive_tx, send_rx));
+    pub fn new(bind_addr: SocketAddr) -> Result<Self, Error> {
+        let socket = UdpSocket::bind(bind_addr)?;
         Ok(Self { socket })
     }
     
-    fn listener(socket: Arc<UdpSocket>,
-                tx_msgs: mpsc::Sender<Packet>,
-                rx_acks: mpsc::Receiver<(mpsc::Sender<Packet>, SocketAddr, u32)>) {
-        let mut sends: HashMap<SocketAddr, (mpsc::Sender<Packet>, u32)> = HashMap::new();
+    pub fn run(&self,
+                tx_msgs: Sender<Packet>,
+                send_rx: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
+        let skt = self.socket.try_clone().unwrap();
+        thread::spawn(move || {
+            Channel::listener(skt, tx_msgs, send_rx);
+        });
+    }
+
+    fn listener(socket: UdpSocket,
+                tx_msgs: Sender<Packet>,
+                rx_acks: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
+        let mut sends: HashMap<SocketAddr, (Sender<Packet>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
             let mut buffer = [0; BUFFER_SIZE];
             let size;
-            match socket.recv_from(&mut buffer) {
+            match socket.recv_from(&mut buffer) {   
                 Ok((size_, _)) => { size = size_; },
                 Err(e) => {
                     let agent = socket.local_addr().unwrap().port() % 100;
@@ -114,7 +115,7 @@ impl Channel {
         c1
     }
 
-    fn deliver(tx: &mpsc::Sender<Packet>, packet: Packet) {
+    fn deliver(tx: &Sender<Packet>, packet: Packet) {
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;
         let pk = packet.header.seq_num;

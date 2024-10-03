@@ -12,17 +12,16 @@ use crate::config::{Node, BUFFER_SIZE, TIMEOUT, W_SIZE, TIMEOUT_LIMIT};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-#[derive(Clone)]
 pub struct ReliableCommunication {
     channel: Channel,
     pub host: SocketAddr,
     pub group: Vec<Node>,
     send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr, u32)>,
-    receive_rx: Arc<Mutex<Receiver<Packet>>>,
-    msg_count: Arc<Mutex<HashMap<SocketAddr, u32>>>,
-    message_per_source: Arc<Mutex<HashMap<SocketAddr, Vec<u8>>>>,
+    receive_rx: Mutex<Receiver<Packet>>,
+    msg_count: Mutex<HashMap<SocketAddr, u32>>,
+    message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -31,15 +30,16 @@ impl ReliableCommunication {
     pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = match Channel::new(host.clone(), send_rx, receive_tx) {
+        let channel = match Channel::new(host.clone()) {
             Ok(c) => c,
             Err(e) => panic!("Erro {{{e}}} ao criar o canal de comunicação"),
         };
-        let receive_rx = Arc::new(Mutex::new(receive_rx));
+        channel.run(receive_tx, send_rx);
+        let receive_rx = Mutex::new(receive_rx);
         
         Self { channel, host, group, send_tx, receive_rx,
-            msg_count: Arc::new(Mutex::new(HashMap::new())),
-            message_per_source: Arc::new(Mutex::new(HashMap::new())) }
+            msg_count: Mutex::new(HashMap::new()),
+            message_per_source: Mutex::new(HashMap::new()) }
     }
 
     fn prepare_to_send(&self, dst_addr: &SocketAddr, packets_len: u32)

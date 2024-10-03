@@ -15,7 +15,7 @@ macro_rules! debug_println {
     };
 }
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use std::thread;
 use rand::Rng;
 
@@ -33,7 +33,6 @@ use lib::packet::HEADER_SIZE;
 mod config;
 use config::{Node, BUFFER_SIZE, NODES, AGENT_NUM, N_MSGS};
 
-#[derive(Clone)]
 struct Agent {
     id: u32,
     communication: ReliableCommunication
@@ -121,9 +120,9 @@ impl Agent {
         }
     }
 
-    pub fn run(self) {
-        let sender_clone = self.clone();
-        let listener_clone = self.clone();
+    pub fn run(self: Arc<Self>) {
+        let sender_clone = Arc::clone(&self);
+        let listener_clone = Arc::clone(&self);
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
         let sender = thread::spawn(move || sender_clone.sender());
         let listener = thread::spawn(move || listener_clone.listener());
@@ -145,7 +144,7 @@ impl Agent {
 }
 
 
-fn create_agents(id: u32) -> Agent {
+fn create_agents(id: u32) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
@@ -158,7 +157,7 @@ fn create_agents(id: u32) -> Agent {
             nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
         }
     }
-    let agent = Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone());
+    let agent = Arc::new(Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone()));
     agent
 
 }
