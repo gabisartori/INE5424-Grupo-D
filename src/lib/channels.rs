@@ -48,6 +48,10 @@ impl Channel {
                     continue
                 },
             }
+            // Simula perda de pacotes
+            if rand::random::<f32>() < crate::config::LOSS_RATE {
+                continue;
+            }
             let packet: Packet = Packet::from_bytes(buffer, size);
 
             // Verifica se o pacote recebido é válido
