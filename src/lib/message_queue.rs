@@ -1,7 +1,7 @@
 use std::sync::{Mutex, Condvar, mpsc::RecvTimeoutError};
 use std::time::Duration;
-use std::sync::Arc; 
-// use std::thread;
+use std::sync::Arc;
+use std::thread;
 
 // Define a thread-safe message queue using Mutex and Condvar
 #[derive(Clone)]
@@ -33,19 +33,25 @@ impl<T> MessageQueue<T> {
         Ok(())
     }
 
-    // Try to receive a message with a timeout
+    // Try to receive a message with a custom timer
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         let mut queue = self.queue.lock().unwrap();
-        
-        // If the queue is empty, we will wait for the specified timeout
-        let result: (std::sync::MutexGuard<'_, Vec<T>>, std::sync::WaitTimeoutResult) = self.cond_var.wait_timeout(queue, timeout).unwrap();
-        queue = result.0;  // Re-acquire the lock after waiting
 
-        // Check if we received a message or timed out
+        // Start a separate timer thread to handle the timeout
+        let cond_var_clone = self.cond_var.clone();
+        thread::spawn(move || {
+            thread::sleep(timeout);
+            // Notify that the timer has expired
+            cond_var_clone.notify_one(); // Notify the main thread about the timeout
+        });
+
+        // Wait for either a message or the timeout notification
+        queue = self.cond_var.wait(queue).unwrap();
+        
         if !queue.is_empty() {
             Ok(queue.remove(0)) // Return the message from the front of the queue
-        } else {// Timeout if the queue is still empty
-            Err(RecvTimeoutError::Timeout)
+        } else {
+            Err(RecvTimeoutError::Timeout) // Timeout if the queue is still empty
         }
     }
     pub fn recv(&self) -> Result<T, RecvTimeoutError> {
@@ -68,24 +74,3 @@ impl<T> MessageQueue<T> {
         }
     }
 }
-
-// fn delayed_send(mq: Arc<MessageQueue<String>>, delay_seconds: u64, message: String) {
-//     thread::sleep(Duration::from_secs(delay_seconds)); // Simulate delay
-//     mq.send(message);                                  // Send the message
-// }
-
-// fn main() {
-//     let mq = Arc::new(MessageQueue::new());
-
-//     // Spawn a thread that will send a message after 2 seconds
-//     let mq_clone = mq.clone();
-//     thread::spawn(move || {
-//         delayed_send(mq_clone, 1, "Hello from the thread!".to_string());
-//     });
-
-//     // Try to receive a message with a timeout of 1 second
-//     match mq.recv_timeout(Duration::from_secs(2)) {
-//         Ok(msg) => println!("Received: {}", msg),
-//         Err(err) => println!("Error: {}", err),
-//     }
-// }
