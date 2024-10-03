@@ -59,7 +59,7 @@ impl Packet {
         for byte in data {
             sum += *byte as u32;
         }
-        if config::FAIL &&rand::random::<u8>() % 10 != 0 {
+        if rand::random::<f32>() < config::CORRUPTION_RATE {
             sum += 1;
         }
         sum as u16
