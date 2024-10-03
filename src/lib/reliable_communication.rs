@@ -42,15 +42,13 @@ impl ReliableCommunication {
             message_per_source: Arc::new(Mutex::new(HashMap::new())) }
     }
 
-    // Função para enviar mensagem com garantias de comunicação confiável
-    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-        // Preparar a mensagem para ser enviada
-        let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-        let start_packet: usize = {
+    fn prepare_to_send(&self, dst_addr: &SocketAddr, packets_len: u32)
+                        -> (usize, Receiver<Packet>) {
+        let start_packet = {
             let mut msg_count = self.msg_count.lock().unwrap();
             let count = msg_count.entry(*dst_addr).or_insert(0);
             let start = *count;
-            *count += packets.len() as u32;
+            *count += packets_len;
             start as usize
         };
         
@@ -59,6 +57,34 @@ impl ReliableCommunication {
         let agente = self.host.port() % 100;
         self.send_tx.send((ack_tx, *dst_addr, start_packet as u32))
         .expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
+        (start_packet, ack_rx)        
+    }
+
+    fn send_window(&self, next_seq_num: &mut usize, base: usize,
+                    packets: &Vec<&[u8]>, start_packet: usize,
+                    dst_addr: &SocketAddr ) {
+        while *next_seq_num < base + W_SIZE && *next_seq_num < packets.len() {
+            let packet = Packet::new(
+                self.host,
+                *dst_addr,
+                (*next_seq_num + start_packet) as u32,
+                None,
+                *next_seq_num == packets.len() - 1,
+                false,
+                packets[*next_seq_num].to_vec(),
+            );
+            self.channel.send(packet);
+            *next_seq_num += 1;
+        }
+    }
+
+    // Função para enviar mensagem com garantias de comunicação confiável
+    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
+        // Preparar a mensagem para ser enviada
+        let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
+
+        let (start_packet, ack_rx) = self.prepare_to_send(dst_addr,
+            packets.len() as u32);
         
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
         let mut count_timeout = 0;
@@ -66,19 +92,7 @@ impl ReliableCommunication {
         let mut next_seq_num = 0;
         while base < packets.len() {
             // Envia todos os pacotes dentro da janela
-            while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
-                let packet = Packet::new(
-                    self.host,
-                    *dst_addr,
-                    (next_seq_num + start_packet) as u32,
-                    None,
-                    next_seq_num == packets.len() - 1,
-                    false,
-                    packets[next_seq_num].to_vec(),
-                );
-                self.channel.send(packet);
-                next_seq_num += 1;
-            }
+            self.send_window(&mut next_seq_num, base, &packets, start_packet, dst_addr);
             // Espera por um ACK
             match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
@@ -104,8 +118,10 @@ impl ReliableCommunication {
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
         let rcv = || {
             match cfg!(debug_assertions) {
-                true => self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(10*TIMEOUT)),
-                false => self.receive_rx.lock().unwrap().recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
+                true => self.receive_rx.lock().unwrap()
+                .recv_timeout(std::time::Duration::from_millis(TIMEOUT*(TIMEOUT_LIMIT as u64))),
+                false => self.receive_rx.lock().unwrap()
+                .recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
             }
         };
         let mut messages = self.message_per_source.lock().unwrap();
