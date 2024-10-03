@@ -1,82 +1,119 @@
-#include <iostream>
-#include <queue>
-#include <thread>
+#include <atomic>
 #include <mutex>
-#include <condition_variable>
+#include <vector>
 #include <chrono>
+#include <sys/syscall.h>
+#include <linux/futex.h>
+#include <unistd.h>
+#include <time.h>
+#include <iostream>
+#include <thread>
+#include <cerrno>
 #include <optional>
-
-class my_timespec {
-public:
-    time_t tv_sec;
-    long tv_nsec;
-};
-
-void my_nanosleep(const my_timespec* req, my_timespec*) {
-    std::this_thread::sleep_for(std::chrono::seconds(req->tv_sec) + std::chrono::nanoseconds(req->tv_nsec));
-}
 
 template <typename T>
 class MessageQueue {
 private:
-    std::queue<T> queue;
-    std::mutex queue_mutex;
-    std::condition_variable cond_var;
+    std::vector<T> queue;          // Queue for messages
+    std::mutex queue_mutex;        // Mutex for queue protection
+    std::atomic<int32_t> futex_var; // Futex variable for synchronization
+
+    // Futex helper functions
+    static int futex_wait(std::atomic<int32_t>* addr, int32_t val, const struct timespec* timeout) {
+        return syscall(SYS_futex, addr, FUTEX_WAIT, val, timeout, nullptr, 0);
+    }
+
+    static int futex_wake(std::atomic<int32_t>* addr, int32_t count) {
+        return syscall(SYS_futex, addr, FUTEX_WAKE, count);
+    }
 
 public:
-    // Add a message to the queue and notify waiting threads
+    MessageQueue() : futex_var(0) {}  // Initialize futex to 0 (wait state)
+
+    // Send a message to the queue
     void send(const T& msg) {
         {
             std::lock_guard<std::mutex> lock(queue_mutex);
-            queue.push(msg);
+            queue.push_back(msg);  // Push the message into the queue
         }
-        cond_var.notify_one();
+
+        futex_var.store(1, std::memory_order_seq_cst);  // Set futex to signal state
+        futex_wake(&futex_var, 1);  // Wake up one waiting thread
     }
 
-    // Receive a message with a timeout
-    std::optional<T> recv_timeout(std::chrono::seconds timeout) {
-        std::unique_lock<std::mutex> lock(queue_mutex);
+    // Try to receive a message with a timeout, returns an optional
+    std::optional<T> recv_timeout(std::chrono::milliseconds timeout) {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            if (!queue.empty()) {
+                T msg = queue.front();
+                queue.erase(queue.begin());  // Remove the message from the queue
+                futex_var.store(0, std::memory_order_seq_cst);  // Reset futex after message is consumed
+                return msg;
+            }
+        }
 
-        // Timer thread to handle timeout
-        std::thread timer_thread([&]() {
-            my_timespec ts;
-            ts.tv_sec = timeout.count();
-            ts.tv_nsec = 0;
-            my_nanosleep(&ts, nullptr);
-            cond_var.notify_one();
-        });
+        // Set up timespec for timeout
+        struct timespec ts;
+        ts.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout).count();
+        ts.tv_nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(timeout).count() % 1000000000;
 
-        // Wait for either a message or the timeout
-        if (cond_var.wait_for(lock, timeout, [&] { return !queue.empty(); })) {
+        int32_t futex_val = futex_var.load(std::memory_order_seq_cst);
+        if (futex_wait(&futex_var, futex_val, &ts) == -1) {
+            if (errno == ETIMEDOUT) {
+                return std::nullopt;  // Timeout, return null optional
+            }
+        }
+
+        // Re-acquire the lock and check the queue again
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        if (!queue.empty()) {
             T msg = queue.front();
-            queue.pop();
-            timer_thread.detach();
-            return msg; // Return the message
-        } else {
-            timer_thread.detach();
-            return std::nullopt; // Timeout occurred, no message
+            queue.erase(queue.begin());  // Remove the message from the queue
+            futex_var.store(0, std::memory_order_seq_cst);  // Reset futex after message is consumed
+            return msg;
         }
+
+        return std::nullopt;  // Timeout, return null optional
     }
 
-    // Receive a message without timeout (blocking until a message is available)
-    T recv() {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        cond_var.wait(lock, [&] { return !queue.empty(); });
-        T msg = queue.front();
-        queue.pop();
-        return msg; // Return the message
+    // Receive a message, blocking indefinitely until one is available
+    std::optional<T> recv() {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            if (!queue.empty()) {
+                T msg = queue.front();
+                queue.erase(queue.begin());  // Remove the message from the queue
+                futex_var.store(0, std::memory_order_seq_cst);  // Reset futex after message is consumed
+                return msg;
+            }
+        }
+
+        int32_t futex_val = futex_var.load(std::memory_order_seq_cst);
+        futex_wait(&futex_var, futex_val, nullptr);  // Wait indefinitely on futex
+
+        // Re-acquire the lock and check the queue
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        if (!queue.empty()) {
+            T msg = queue.front();
+            queue.erase(queue.begin());  // Remove the message from the queue
+            futex_var.store(0, std::memory_order_seq_cst);  // Reset futex after message is consumed
+            return msg;
+        }
+
+        return std::nullopt;  // No message available
     }
 
-    // Try to receive a message without blocking
+    // Non-blocking receive attempt
     std::optional<T> try_recv() {
         std::lock_guard<std::mutex> lock(queue_mutex);
         if (!queue.empty()) {
             T msg = queue.front();
-            queue.pop();
-            return msg; // Return the message
-        } else {
-            return std::nullopt; // No message available
+            queue.erase(queue.begin());  // Remove the message from the queue
+            futex_var.store(0, std::memory_order_seq_cst);  // Reset futex after message is consumed
+            return msg;
         }
+        return std::nullopt;  // No message available
     }
 };
 
