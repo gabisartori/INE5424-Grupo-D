@@ -1,73 +1,117 @@
-use std::sync::{Mutex, Condvar, mpsc::RecvTimeoutError};
-use std::time::Duration;
+use std::sync::{Mutex, mpsc::RecvTimeoutError};
 use std::sync::Arc;
-use std::thread;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::time::Duration;
+use libc::{timespec, syscall, SYS_futex, FUTEX_WAIT, FUTEX_WAKE};
+use std::ptr;
 
-// Define a thread-safe message queue using Mutex and Condvar
 #[derive(Clone)]
 pub struct MessageQueue<T> {
-    // Mutex-protected queue
     queue: Arc<Mutex<Vec<T>>>,
-    // Condition variable to signal when a message is available
-    cond_var: Arc<Condvar>,
+    futex_var: Arc<AtomicI32>,  // Use futex for synchronization
 }
 
 impl<T> MessageQueue<T> {
     pub fn new() -> Self {
         MessageQueue {
-            // Initialize an empty queue
             queue: Arc::new(Mutex::new(Vec::new())),
-            // Initialize the condition variable
-            cond_var: Arc::new(Condvar::new()),
+            futex_var: Arc::new(AtomicI32::new(0)),  // Initialize futex to 0 (wait state)
         }
     }
 
-    // Send a message into the queue and notify waiting threads
     pub fn send(&self, msg: T) -> Result<(), RecvTimeoutError> {
         {
             let mut queue = self.queue.lock().unwrap();
-            queue.push(msg);
+            queue.push(msg);  // Push the message into the queue
         }
-        // Notify one waiting thread that a message is available
-        self.cond_var.notify_one();
+        
+        self.futex_var.store(1, Ordering::SeqCst);  // Set futex value to 1 (signal state)
+        unsafe {
+            syscall(SYS_futex, self.futex_var.as_ptr(), FUTEX_WAKE, 1, ptr::null::<libc::timespec>());
+        }
         Ok(())
     }
 
-    // Try to receive a message with a custom timer
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let mut queue = self.queue.lock().unwrap();
-
-        // Start a separate timer thread to handle the timeout
-        let cond_var_clone = self.cond_var.clone();
-        thread::spawn(move || {
-            thread::sleep(timeout);
-            // Notify that the timer has expired
-            cond_var_clone.notify_one(); // Notify the main thread about the timeout
-        });
-
-        // Wait for either a message or the timeout notification
-        queue = self.cond_var.wait(queue).unwrap();
-        
-        if !queue.is_empty() {
-            Ok(queue.remove(0)) // Return the message from the front of the queue
-        } else {
-            Err(RecvTimeoutError::Timeout) // Timeout if the queue is still empty
+        {
+            let mut queue = self.queue.lock().unwrap();
+            // If there's already a message, return it immediately
+            if !queue.is_empty() {
+                return Ok(queue.remove(0));
+            }
         }
-    }
-    pub fn recv(&self) -> Result<T, RecvTimeoutError> {
+
+        // Set up timespec structure for timeout
+        let timeout_sec = timeout.as_secs() as i64;
+        let timeout_nsec = timeout.subsec_nanos() as i64;
+        let ts = timespec {
+            tv_sec: timeout_sec,
+            tv_nsec: timeout_nsec,
+        };
+
+        let futex_val = self.futex_var.load(Ordering::SeqCst);
+
+        // Wait using futex
+        unsafe {
+            let res = syscall(
+                SYS_futex,
+                self.futex_var.as_ptr(),
+                FUTEX_WAIT,
+                futex_val,
+                &ts as *const _
+            );
+
+            if res == -1 {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::ETIMEDOUT) {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+                // Handle other errors if needed
+            }
+        }
+
+        // After waking up, check the queue again
         let mut queue = self.queue.lock().unwrap();
-        let result: std::sync::MutexGuard<'_, Vec<T>> = self.cond_var.wait_while(queue, |queue| queue.is_empty()).unwrap();
-        queue = result;
         if !queue.is_empty() {
+            self.futex_var.store(0, Ordering::SeqCst);  // Reset futex after consuming the message
+            return Ok(queue.remove(0));
+        }
+
+        // If queue is still empty, return timeout error
+        Err(RecvTimeoutError::Timeout)
+    }
+
+    pub fn recv(&self) -> Result<T, RecvTimeoutError> {
+        {
+            let mut queue = self.queue.lock().unwrap();    
+            // If the queue is not empty, return the first message
+            if !queue.is_empty() {
+                self.futex_var.store(0, Ordering::SeqCst);  // Reset futex after consuming the message
+                return Ok(queue.remove(0));
+            }
+        }
+
+        let futex_val = self.futex_var.load(Ordering::SeqCst);
+
+        // Wait on the futex until a message is available
+        unsafe {
+            syscall(SYS_futex, self.futex_var.as_ptr(), FUTEX_WAIT, futex_val, ptr::null::<libc::timespec>());
+        }
+
+        // Re-acquire the lock and return the message once available
+        let mut queue = self.queue.lock().unwrap();
+        if !queue.is_empty() {
+            self.futex_var.store(0, Ordering::SeqCst);  // Reset futex after consuming the message
             Ok(queue.remove(0))
         } else {
             Err(RecvTimeoutError::Timeout)
         }
     }
-    // Try to receive a message without waiting
+
     pub fn try_recv(&self) -> Result<T, RecvTimeoutError> {
         let mut queue = self.queue.lock().unwrap();
         if !queue.is_empty() {
+            self.futex_var.store(0, Ordering::SeqCst);  // Reset futex after consuming the message
             Ok(queue.remove(0))
         } else {
             Err(RecvTimeoutError::Timeout)
