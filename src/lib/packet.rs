@@ -45,22 +45,22 @@ impl Packet {
     pub fn checksum(header: &Header, data: &Vec<u8>) -> u16 {
         let mut sum: u32 = 0;
         match header.src_addr.ip() {
-            IpAddr::V4(ipv4) => sum += u32::from_be_bytes(ipv4.octets()),
-            IpAddr::V6(ipv6) => sum += u128::from_be_bytes(ipv6.octets()) as u32,
+            IpAddr::V4(ipv4) => sum = sum.wrapping_add(u32::from_be_bytes(ipv4.octets())),
+            IpAddr::V6(ipv6) => sum = sum.wrapping_add(u128::from_be_bytes(ipv6.octets()) as u32),
         }
         match header.dst_addr.ip() {
-            IpAddr::V4(ipv4) => sum += u32::from_be_bytes(ipv4.octets()),
-            IpAddr::V6(ipv6) => sum += u128::from_be_bytes(ipv6.octets()) as u32,
+            IpAddr::V4(ipv4) => sum = sum.wrapping_add(u32::from_be_bytes(ipv4.octets())),
+            IpAddr::V6(ipv6) => sum = sum.wrapping_add(u128::from_be_bytes(ipv6.octets()) as u32),
         }
-        sum += header.src_addr.port() as u32;
-        sum += header.dst_addr.port() as u32;
-        sum += header.seq_num as u32;
-        sum += header.flags.value as u32;
+        sum = sum.wrapping_add(header.src_addr.port() as u32);
+        sum = sum.wrapping_add(header.dst_addr.port() as u32);
+        sum = sum.wrapping_add(header.seq_num as u32);
+        sum = sum.wrapping_add(header.flags.value as u32);
         for byte in data {
-            sum += *byte as u32;
+            sum = sum.wrapping_add(*byte as u32);
         }
         if rand::random::<f32>() < config::CORRUPTION_RATE {
-            sum += 1;
+            sum = sum.wrapping_add(1);
         }
         sum as u16
     }
