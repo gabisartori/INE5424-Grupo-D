@@ -30,6 +30,11 @@ impl Packet {
         Self { header, data }
     }
 
+    pub fn get_ack(&self) -> Self {
+        let ack_header = self.header.get_ack();
+        Self {header: ack_header, data: Vec::new()}  
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
         bytes.extend_from_slice(&self.data);
