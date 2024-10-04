@@ -13,27 +13,28 @@ use super::packet::Packet;
 // use super::failure_detection;
 
 // Estrutura básica para a camada de comunicação por canais
+#[derive(Clone)]
 pub struct Channel {
-    socket: UdpSocket,
+    socket: std::sync::Arc<UdpSocket>,
 }
 
 impl Channel {
     // Função para criar um novo canal
     pub fn new(bind_addr: SocketAddr) -> Result<Self, Error> {
-        let socket = UdpSocket::bind(bind_addr)?;
+        let socket = std::sync::Arc::new(UdpSocket::bind(bind_addr)?);
         Ok(Self { socket })
     }
     
     pub fn run(&self,
                 tx_msgs: Sender<Packet>,
                 send_rx: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
-        let skt = self.socket.try_clone().unwrap();
+        let clone = self.clone();
         thread::spawn(move || {
-            Channel::listener(skt, tx_msgs, send_rx);
+            Channel::listener(&clone, tx_msgs, send_rx);
         });
     }
 
-    fn listener(socket: UdpSocket,
+    fn listener(&self,
                 tx_msgs: Sender<Packet>,
                 rx_acks: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
         let mut sends: HashMap<SocketAddr, (Sender<Packet>, u32)> = HashMap::new();
@@ -41,10 +42,10 @@ impl Channel {
         loop {
             let mut buffer = [0; BUFFER_SIZE];
             let size;
-            match socket.recv_from(&mut buffer) {   
+            match self.socket.recv_from(&mut buffer) {
                 Ok((size_, _)) => { size = size_; },
                 Err(e) => {
-                    let agent = socket.local_addr().unwrap().port() % 100;
+                    let agent = self.socket.local_addr().unwrap().port() % 100;
                     debug_println!("->-> Erro {{{e}}} no Agente {agent} ao receber pacote pelo socket");
                     continue
                 },
@@ -90,16 +91,10 @@ impl Channel {
                     continue;
                 }
                 // Send ACK
-                let ack = packet.header.get_ack();
-                match socket.send_to(&ack.to_bytes(), ack.dst_addr) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        let agent_s = ack.src_addr.port() % 100;
-                        let agent_d = ack.dst_addr.port() % 100;
-                        let pk = ack.seq_num;
-                        debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
-                        continue
-                    },
+                let ack = packet.get_ack();
+                // creates an Packet from he header
+                if !self.send(ack) {
+                    continue;
                 }
                 // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                 if packet.header.seq_num < next_seq_num { continue; }
@@ -132,14 +127,20 @@ impl Channel {
         }
     }
 
-    pub fn send(&self, packet: Packet) { 
+    pub fn send(&self, packet: Packet) -> bool { 
+        let agent_s = packet.header.src_addr.port() % 100;
+        let agent_d = packet.header.dst_addr.port() % 100;
+        let pk = packet.header.seq_num;
+        let is_ack = packet.is_ack();
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
-            Ok(_) => (),
+            Ok(_) => true,
             Err(e) => {
-                let agent_s = packet.header.src_addr.port() % 100;
-                let agent_d = packet.header.dst_addr.port() % 100;
-                let pk = packet.header.seq_num;
-                debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");
+                if is_ack {
+                    debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
+                }
+                else {
+                    debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
+                false
             }
         }
     }
