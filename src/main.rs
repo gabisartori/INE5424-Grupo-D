@@ -15,7 +15,8 @@ macro_rules! debug_println {
     };
 }
 
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::thread;
 use rand::Rng;
 
@@ -27,11 +28,10 @@ mod lib {
     pub mod flags;
 }
 use lib::reliable_communication::ReliableCommunication;
-use lib::packet::HEADER_SIZE;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, BUFFER_SIZE, NODES, AGENT_NUM, N_MSGS};
+use config::{Node, NODES, AGENT_NUM, N_MSGS};
 
 struct Agent {
     id: u32,
@@ -195,7 +195,6 @@ fn main() {
         agent.run();
     } else { // Se não há argumentos, então está rodando o processo principal
         assert!(AGENT_NUM > 0, "Número de agentes deve ser maior que 0");
-        assert!(BUFFER_SIZE > HEADER_SIZE, "Tamanho do buffer ({BUFFER_SIZE}) deve ser maior que o tamanho do cabeçalho ({HEADER_SIZE})");  
         let mut childs = Vec::new();  
         // Inicializar os agentes locais
         for i in 0..AGENT_NUM {

@@ -8,7 +8,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 use std::collections::HashMap;
 
-use crate::config::BUFFER_SIZE;
+use crate::config::{BUFFER_SIZE, LOSS_RATE};
 use super::packet::Packet;
 // use super::failure_detection;
 
@@ -128,7 +128,7 @@ impl Channel {
             },
         }
         // Simula perda de pacotes
-        if rand::random::<f32>() < crate::config::LOSS_RATE {
+        if rand::random::<f32>() < LOSS_RATE {
             return None;
         }
         Some(Packet::from_bytes(buffer, size))
