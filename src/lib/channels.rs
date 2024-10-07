@@ -49,7 +49,7 @@ impl Channel {
             if !Channel::validate_message(&packet) {continue;}
             
             if packet.is_ack() {
-                if !self.process_acks(packet, &mut sends, &rx_acks) {continue;};
+                Channel::process_acks(packet, &mut sends, &rx_acks);
             } else {
                 let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
                 if packet.header.seq_num > next_seq_num {continue;}
@@ -69,33 +69,26 @@ impl Channel {
         c1
     }
 
-    fn process_acks(&self,
-                    packet: Packet,
+    fn process_acks(packet: Packet,
                     sends: &mut HashMap<SocketAddr, (Sender<Packet>, u32)>,
-                    rx_acks: &Receiver<(Sender<Packet>, SocketAddr, u32)>) -> bool {
+                    rx_acks: &Receiver<(Sender<Packet>, SocketAddr, u32)>) {
         // Verifica se há alguém esperando pelo ACK recebido
         while let Ok((tx, key, start_seq)) = rx_acks.try_recv() {
             sends.entry(key).or_insert((tx, start_seq));
         }
         // Se houver, encaminha o ACK para o remetente
         // Senão, ignora o ACK
-        match sends.get_mut(&packet.header.src_addr) {
-            // Encaminha o ACK para a sender correspondente
-            Some(tupla) => {
-                let (tx, seq_num) = tupla;
-                if packet.header.seq_num < *seq_num {
-                    return false
-                }
-                *seq_num = packet.header.seq_num + 1;
-                let is_last = packet.is_last();
-                let src = packet.header.src_addr;
-                Channel::deliver(tx, packet);
-                if is_last {
-                    sends.remove(&src);
-                }
-                return true
+        if let Some((tx, seq_num)) = sends.get_mut(&packet.header.src_addr) {
+            if packet.header.seq_num < *seq_num {
+                return;
             }
-            None => return false,
+            *seq_num = packet.header.seq_num + 1;
+            let is_last = packet.is_last();
+            let src = packet.header.src_addr;
+            Channel::deliver(tx, packet);
+            if is_last {
+                sends.remove(&src);
+            }
         }
     }
 
@@ -116,7 +109,7 @@ impl Channel {
         }
     }
 
-    fn receive(&self, ) -> Option<Packet> {
+    fn receive(&self) -> Option<Packet> {
         let mut buffer = [0; BUFFER_SIZE];
         let size;
         match self.socket.recv_from(&mut buffer) {
