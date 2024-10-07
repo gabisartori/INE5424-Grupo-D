@@ -163,14 +163,15 @@ fn create_agents(id: u32) -> Arc<Agent> {
 }
 
 fn calculate_test() {
-    let path = format!("tests/Resultado.txt");
-    let file = std::fs::File::open(path).expect("Erro ao abrir o arquivo de log");
+    let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
     let mut reader = std::io::BufReader::new(file);
 
     let mut total_sends: u32 = 0;
     let mut total_receivs: u32 = 0;
     let mut expected_sends: u32 = 0;
     let mut line = String::new();
+    // a vector to store the results, with a preset size
+    let mut resultados: Vec<String> = vec![String::new(); AGENT_NUM as usize];
     while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
         let sends: Vec<u32> = words[4].split("/").map(|x| x.parse().unwrap()).collect();
@@ -178,7 +179,21 @@ fn calculate_test() {
         total_sends += sends[0];
         total_receivs += receivs[0];
         expected_sends += sends[1];
+        let idx = words[1].parse::<u32>().unwrap() as usize;
+        // saves the line as str on the correct index in resultados
+        resultados[idx] = line.clone();
         line.clear();
+    }
+    // clear the file and rewrite the results in order
+    let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                        .write(true)
+                                        .truncate(true)
+                                        .open("tests/Resultado.txt") {
+        Ok(f) => f,
+        Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+    };
+    for a in resultados {
+        std::io::Write::write_all(&mut file, a.as_bytes()).expect("Erro ao escrever no arquivo");
     }
     println!("Total de Pacotes Enviados : {total_sends}/{expected_sends}");
     println!("Total de Pacotes Recebidos: {total_receivs}/{expected_sends}");
