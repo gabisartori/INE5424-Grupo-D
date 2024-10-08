@@ -1,16 +1,14 @@
 all:
 	@rm -f tests/*.txt
-	@cargo run --release > result.txt
+	@cargo run --release > tests/result.txt
 	@clear
-	@cat result.txt
-	@rm -f result.txt
+	@cat tests/result.txt
 
 debug:
 	@rm -f tests/*.txt
-	@cargo run > result.txt
+	@cargo run > tests/result.txt
 	@clear
-	@cat result.txt
-	@rm -f result.txt
+	@cat tests/result.txt
 
 clean:
 	@cargo clean
