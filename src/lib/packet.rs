@@ -108,9 +108,9 @@ impl Header {
         }
     }
 
-    // pub fn is_last(&self) -> bool {
-    //     self.flags.is_set(Flags::LST)
-    // }
+    pub fn is_last(&self) -> bool {
+        self.flags.is_set(Flags::LST)
+    }
 
     pub fn is_ack(&self) -> bool {
         self.flags.is_set(Flags::ACK) && !self.flags.is_set(Flags::DLV)

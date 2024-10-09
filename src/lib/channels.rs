@@ -60,7 +60,7 @@ impl Channel {
                     let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
                     if packet.header.seq_num > next_seq_num {continue;}
                     // Send ACK
-                    if !self.send(packet.get_ack()) {continue;}
+                    if !self.send(&packet.get_ack()) {continue;}
                     // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                     if packet.header.seq_num < next_seq_num { continue; }
                     messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
@@ -147,7 +147,7 @@ impl Channel {
 
     }
 
-    pub fn send(&self, packet: Packet) -> bool { 
+    pub fn send(&self, packet: &Packet) -> bool { 
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;
         let pk = packet.header.seq_num;
