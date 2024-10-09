@@ -69,26 +69,6 @@ impl Packet {
         }
         sum as u16
     }
-
-    fn flag_is_set(&self, flag: Flags) -> bool {
-        self.header.flags.is_set(flag)
-    }
-
-    pub fn is_ack(&self) -> bool {
-        self.flag_is_set(Flags::ACK)
-    }
-
-    pub fn is_last(&self) -> bool {
-        self.flag_is_set(Flags::LST)
-    }
-
-    // pub fn is_syn(&self) -> bool {
-    //     self.flag_is_set(Flags::SYN)
-    // }
-
-    // pub fn is_fin(&self) -> bool {
-    //     self.flag_is_set(Flags::FIN)
-    // }
 }
 
 #[derive(Clone)]
@@ -125,6 +105,10 @@ impl Header {
 
     pub fn is_last(&self) -> bool {
         self.flags.is_set(Flags::LST)
+    }
+
+    pub fn is_ack(&self) -> bool {
+        self.flags.is_set(Flags::ACK)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
