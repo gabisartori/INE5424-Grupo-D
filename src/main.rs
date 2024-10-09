@@ -31,7 +31,7 @@ use lib::reliable_communication::ReliableCommunication;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, NODES, AGENT_NUM, N_MSGS};
+use config::{Node, AGENT_NUM, BROADCAST, NODES, N_MSGS, MSG, LOCALHOST};
 
 struct Agent {
     id: u32,
@@ -46,16 +46,16 @@ impl Agent {
         }
     }
 
-    fn listener(&self) -> u128 {
-        let mut acertos: u128 = 0;
-        let stop = if !cfg!(debug_assertions) { N_MSGS } else { N_MSGS*AGENT_NUM };
+    fn listener(&self) -> u32 {
+        let mut acertos = 0;
+        let stop = if !cfg!(debug_assertions) { N_MSGS*AGENT_NUM } else { N_MSGS*AGENT_NUM*AGENT_NUM };
         for i in 0..stop
         {
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
             }
-            let gabarito: Vec<u8> = config::MSG.to_string().as_bytes().to_vec();
+            let gabarito: Vec<u8> = MSG.to_string().as_bytes().to_vec();
             if self.compare_msg(&message, &gabarito) {
                 acertos += 1;
             } else {
@@ -75,21 +75,21 @@ impl Agent {
         return acertos;
     }
 
-    fn sender(&self) -> u128 {
-        let mut acertos: u128 = 0;
+    fn sender(&self) -> u32 {
+        let mut acertos= 0;
         for i in 0..N_MSGS {
             let destination: u32 = self.pick_destination();
             let dst_addr: SocketAddr = self.communication.group[destination as usize].addr;
             // Send message to the selected node
-            let msg: Vec<u8> = config::MSG.to_string().as_bytes().to_vec();
+            let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
-            let func = || match config::BROADCAST {
-                true => self.communication.broadcast(msg.clone()),
-                false => self.communication.send(&dst_addr, msg.clone())
+            let func = || match BROADCAST {
+                true => self.communication.broadcast(msg),
+                false => self.communication.send(&dst_addr, msg)
             };
 
             if func() {
-                acertos += 1;
+                acertos += if !BROADCAST {1} else {AGENT_NUM};
             } else {
                 debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {i} PARA AGENTE {destination}", self.id);
             }
@@ -110,13 +110,13 @@ impl Agent {
     }
 
     fn pick_destination(&self) -> u32 {
+        let size = self.communication.group.len() as u32;
         if cfg!(debug_assertions) {
-            let size = self.communication.group.len() as u32;
             let dst = rand::thread_rng().gen_range(0..size);
             if dst  == self.id { (dst + 1) % size }
             else { dst }
         } else {
-            (self.id + 1) % self.communication.group.len() as u32
+            (self.id + 1) % size
         }
     }
 
@@ -128,7 +128,7 @@ impl Agent {
         let listener = thread::spawn(move || listener_clone.listener());
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
-        let max = N_MSGS as u128;
+        let max = if !BROADCAST {N_MSGS} else {N_MSGS*AGENT_NUM};
         let path = format!("tests/Resultado.txt");
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
@@ -149,7 +149,7 @@ fn create_agents(id: u32) -> Arc<Agent> {
 
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..AGENT_NUM {
-        nodes.push(Node{addr: SocketAddr::new(config::LOCALHOST, 3100 + (i as u16)), agent_number: i});
+        nodes.push(Node{addr: SocketAddr::new(LOCALHOST, 3100 + (i as u16)), agent_number: i});
     }
 
     if let Some(remote_nodes) = NODES {
@@ -157,7 +157,7 @@ fn create_agents(id: u32) -> Arc<Agent> {
             nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
         }
     }
-    let agent = Arc::new(Agent::new(id, SocketAddr::new(config::LOCALHOST, 3100 + id as u16), nodes.clone()));
+    let agent = Arc::new(Agent::new(id, SocketAddr::new(LOCALHOST, 3100 + id as u16), nodes.clone()));
     agent
 
 }
@@ -195,8 +195,8 @@ fn calculate_test() {
     for a in resultados {
         std::io::Write::write_all(&mut file, a.as_bytes()).expect("Erro ao escrever no arquivo");
     }
-    println!("Total de Pacotes Enviados : {total_sends}/{expected_sends}");
-    println!("Total de Pacotes Recebidos: {total_receivs}/{expected_sends}");
+    println!("Total de Mensagens Enviadas : {total_sends}/{expected_sends}");
+    println!("Total de Mensagens Recebidas: {total_receivs}/{expected_sends}");
 }
 
 
