@@ -7,6 +7,7 @@ use std::io::Error;
 use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::config::{BUFFER_SIZE, LOSS_RATE};
 use super::packet::Packet;
@@ -48,7 +49,7 @@ impl Channel {
             // Verifica se o pacote recebido é válido
             if !Channel::validate_message(&packet) {continue;}
             
-            if packet.is_ack() {
+            if packet.header.is_ack() {
                 Channel::process_acks(packet, &mut sends, &rx_acks);
             } else {
                 let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
@@ -74,7 +75,19 @@ impl Channel {
                     rx_acks: &Receiver<(Sender<Packet>, SocketAddr, u32)>) {
         // Verifica se há alguém esperando pelo ACK recebido
         while let Ok((tx, key, start_seq)) = rx_acks.try_recv() {
-            sends.entry(key).or_insert((tx, start_seq));
+            match sends.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    let (tx_, seq_num) = entry.get_mut();
+                    if *seq_num == start_seq {
+                        *tx_ = tx;
+                    } else {
+                        *tx_ = tx;
+                    }
+                },
+                Entry::Vacant(entry) => {
+                    entry.insert((tx, start_seq));
+                }
+            }
         }
         // Se houver, encaminha o ACK para o remetente
         // Senão, ignora o ACK
@@ -83,12 +96,12 @@ impl Channel {
                 return;
             }
             *seq_num = packet.header.seq_num + 1;
-            let is_last = packet.is_last();
-            let src = packet.header.src_addr;
             Channel::deliver(tx, packet);
-            if is_last {
-                sends.remove(&src);
-            }
+            // let is_last = packet.is_last();
+            // let src = packet.header.src_addr;
+            // if is_last {
+            //     sends.remove(&src);
+            // }
         }
     }
 
@@ -96,7 +109,7 @@ impl Channel {
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;
         let pk = packet.header.seq_num;
-        let is_ack = packet.is_ack();
+        let is_ack = packet.header.is_ack();
         match tx.send(packet) {
             Ok(_) => (),
             Err(e) => {
@@ -132,7 +145,7 @@ impl Channel {
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;
         let pk = packet.header.seq_num;
-        let is_ack = packet.is_ack();
+        let is_ack = packet.header.is_ack();
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => true,
             Err(e) => {
