@@ -21,7 +21,8 @@ pub struct ReliableCommunication {
     send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr, u32)>,
     receive_rx: Mutex<Receiver<Packet>>,
     msg_count: Mutex<HashMap<SocketAddr, u32>>,
-    message_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
+    pkts_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
+    msgs_per_source: Mutex<HashMap<SocketAddr, Vec<Vec<u8>>>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -39,7 +40,8 @@ impl ReliableCommunication {
         
         Self { channel, host, group, send_tx, receive_rx,
             msg_count: Mutex::new(HashMap::new()),
-            message_per_source: Mutex::new(HashMap::new()) }
+            pkts_per_source: Mutex::new(HashMap::new()),
+            msgs_per_source: Mutex::new(HashMap::new()),}
     }
 
     fn prepare_to_send(&self, dst_addr: &SocketAddr, packets_len: u32)
@@ -74,7 +76,7 @@ impl ReliableCommunication {
                 false,
                 packets[*next_seq_num].to_vec(),
             );
-            self.channel.send(packet);
+            self.channel.send(&packet);
             *next_seq_num += 1;
         }
     }
@@ -112,33 +114,34 @@ impl ReliableCommunication {
                 Err(RecvTimeoutError::Disconnected) => return true,
             }
         }
-        if BROADCAST == Broadcast::NONE || BROADCAST == Broadcast::BEB {
-            self.send_dlv(dst_addr);
-        }
         true
     }
 
     // Função para receber mensagens confiáveis
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        let rcv = || {
-            match cfg!(debug_assertions) {
-                true => self.receive_rx.lock().unwrap()
-                .recv_timeout(std::time::Duration::from_millis(TIMEOUT*100)),
-                false => self.receive_rx.lock().unwrap()
-                .recv().map_err(|_| mpsc::RecvTimeoutError::Timeout)
-            }
-        };
-        let mut messages = self.message_per_source.lock().unwrap();
+        let rcv = ||  self.receive_rx.lock().unwrap()
+                .recv_timeout(std::time::Duration::from_millis(TIMEOUT*100));
+        let mut pkts = self.pkts_per_source.lock().unwrap();
+        let mut msgs = self.msgs_per_source.lock().unwrap();
         while let Ok(packet) = rcv() {
             if !packet.header.is_dlv() {
                 let Packet { header, data, .. } = packet;
-                messages.entry(header.src_addr).or_insert(Vec::new()).extend(data);
-                // if header.is_last() {
-                //     buffer.extend(messages.remove(&header.src_addr).unwrap());
-                // }
+                pkts.entry(header.src_addr).or_insert(Vec::new()).extend(data);
+                if header.is_last() {
+                    let msg = pkts.remove(&header.src_addr).unwrap();
+                    if BROADCAST == Broadcast::NONE || BROADCAST == Broadcast::BEB {
+                        buffer.extend(msg);
+                        return true
+                    }
+                    msgs.entry(header.src_addr).or_insert(Vec::new()).push(msg);
+                }
             } else {
-                buffer.extend(messages.remove(&packet.header.src_addr).unwrap());
-                return true
+                // pops a message from the buffer
+                if let Some(msgs) = msgs.get_mut(&packet.header.src_addr) {
+                    let msg = msgs.remove(0);
+                    buffer.extend(msg);
+                    return true
+                }
             }
         }
         false
@@ -188,7 +191,7 @@ impl ReliableCommunication {
             true,
             Vec::new(),
         );
-        self.channel.send(packet)
+        self.channel.send(&packet)
     }
 }
 

@@ -49,7 +49,7 @@ impl Agent {
     fn listener(&self) -> u32 {
         let mut acertos = 0;
         let stop = if BROADCAST == Broadcast::NONE { N_MSGS } else { N_MSGS*AGENT_NUM };
-        for i in 0..stop
+        for i in 0..(stop+1)
         {
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
@@ -59,7 +59,6 @@ impl Agent {
             if self.compare_msg(&message, &gabarito) {
                 acertos += 1;
             } else {
-                debug_println!("ERRO -> AGENTE {} RECEBEU A MENSAGEM {i} INCORRETA", self.id);
                 let path = format!("tests/erros{}_{i}.txt", self.id);
                 let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                                     .create(true)
@@ -77,21 +76,23 @@ impl Agent {
 
     fn sender(&self) -> u32 {
         let mut acertos= 0;
-        let destination: u32 = (self.id + 1) % self.communication.group.len() as u32;
         for i in 0..N_MSGS {
-            let dst_addr: SocketAddr = self.communication.group[destination as usize].addr;
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
             let func = || match BROADCAST {
-                Broadcast::NONE => self.communication.send(&dst_addr, msg),
+                Broadcast::NONE => {
+                    let destination = (self.id as usize + 1) % self.communication.group.len();
+                    let dst_addr: SocketAddr = self.communication.group[destination].addr;
+                    self.communication.send(&dst_addr, msg)
+                },
                 _ => self.communication.broadcast(msg),
             };
 
             if func() {
                 acertos += if BROADCAST == Broadcast::NONE {1} else {AGENT_NUM};
             } else {
-                debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {i} PARA AGENTE {destination}", self.id);
+                debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, i);
             }
         }
         return acertos;
