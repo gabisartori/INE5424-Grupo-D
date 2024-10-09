@@ -52,14 +52,20 @@ impl Channel {
             if packet.header.is_ack() {
                 Channel::process_acks(packet, &mut sends, &rx_acks);
             } else {
-                let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
-                if packet.header.seq_num > next_seq_num {continue;}
-                // Send ACK
-                if !self.send(packet.get_ack()) {continue;}
-                // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
-                if packet.header.seq_num < next_seq_num { continue; }
-                messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
-                Channel::deliver(&tx_msgs, packet);
+                if packet.header.is_dlv() {
+                    // Encaminhar o pacote para a fila de mensagens
+                    Channel::deliver(&tx_msgs, packet);
+                } else {
+                    // Verificar se o pacote é o próximo esperado
+                    let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
+                    if packet.header.seq_num > next_seq_num {continue;}
+                    // Send ACK
+                    if !self.send(packet.get_ack()) {continue;}
+                    // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
+                    if packet.header.seq_num < next_seq_num { continue; }
+                    messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
+                    Channel::deliver(&tx_msgs, packet);
+                }
             }
         }
     }

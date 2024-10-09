@@ -18,7 +18,7 @@ macro_rules! debug_println {
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
-use rand::Rng;
+// use rand::Rng;
 
 mod lib {
     pub mod reliable_communication;
@@ -31,7 +31,7 @@ use lib::reliable_communication::ReliableCommunication;
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Node, AGENT_NUM, BROADCAST, NODES, N_MSGS, MSG, LOCALHOST};
+use config::{Broadcast, Node, AGENT_NUM, BROADCAST, LOCALHOST, MSG, NODES, N_MSGS};
 
 struct Agent {
     id: u32,
@@ -48,7 +48,7 @@ impl Agent {
 
     fn listener(&self) -> u32 {
         let mut acertos = 0;
-        let stop = if !cfg!(debug_assertions) { N_MSGS*AGENT_NUM } else { N_MSGS*AGENT_NUM*AGENT_NUM };
+        let stop = if BROADCAST == Broadcast::NONE { N_MSGS } else { N_MSGS*AGENT_NUM };
         for i in 0..stop
         {
             let mut message: Vec<u8> = Vec::new();
@@ -77,19 +77,19 @@ impl Agent {
 
     fn sender(&self) -> u32 {
         let mut acertos= 0;
+        let destination: u32 = (self.id + 1) % self.communication.group.len() as u32;
         for i in 0..N_MSGS {
-            let destination: u32 = self.pick_destination();
             let dst_addr: SocketAddr = self.communication.group[destination as usize].addr;
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
             let func = || match BROADCAST {
-                true => self.communication.broadcast(msg),
-                false => self.communication.send(&dst_addr, msg)
+                Broadcast::NONE => self.communication.send(&dst_addr, msg),
+                _ => self.communication.broadcast(msg),
             };
 
             if func() {
-                acertos += if !BROADCAST {1} else {AGENT_NUM};
+                acertos += if BROADCAST == Broadcast::NONE {1} else {AGENT_NUM};
             } else {
                 debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {i} PARA AGENTE {destination}", self.id);
             }
@@ -109,16 +109,16 @@ impl Agent {
         true
     }
 
-    fn pick_destination(&self) -> u32 {
-        let size = self.communication.group.len() as u32;
-        if cfg!(debug_assertions) {
-            let dst = rand::thread_rng().gen_range(0..size);
-            if dst  == self.id { (dst + 1) % size }
-            else { dst }
-        } else {
-            (self.id + 1) % size
-        }
-    }
+    // fn pick_destination(&self) -> u32 {
+    //     let size = self.communication.group.len() as u32;
+    //     if cfg!(debug_assertions) {
+    //         let dst = rand::thread_rng().gen_range(0..size);
+    //         if dst  == self.id { (dst + 1) % size }
+    //         else { dst }
+    //     } else {
+    //         (self.id + 1) % size
+    //     }
+    // }
 
     pub fn run(self: Arc<Self>) {
         let sender_clone = Arc::clone(&self);
@@ -128,7 +128,7 @@ impl Agent {
         let listener = thread::spawn(move || listener_clone.listener());
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
-        let max = if !BROADCAST {N_MSGS} else {N_MSGS*AGENT_NUM};
+        let max = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*AGENT_NUM};
         let path = format!("tests/Resultado.txt");
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)

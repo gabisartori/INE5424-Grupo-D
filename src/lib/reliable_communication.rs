@@ -7,7 +7,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use super::channels::Channel;
 use super::packet::{Packet, HEADER_SIZE};
-use crate::config::{Node, BUFFER_SIZE, TIMEOUT, W_SIZE, TIMEOUT_LIMIT};
+use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, TIMEOUT_LIMIT, W_SIZE};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -71,6 +71,7 @@ impl ReliableCommunication {
                 None,
                 *next_seq_num == packets.len() - 1,
                 false,
+                false,
                 packets[*next_seq_num].to_vec(),
             );
             self.channel.send(packet);
@@ -79,12 +80,12 @@ impl ReliableCommunication {
     }
 
     // Função para enviar mensagem com garantias de comunicação confiável
+    // tem também um parâmetro com valor default 0 para identificar o tipo de transmissão
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
         // Preparar a mensagem para ser enviada
         let packets: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
 
-        let (start_packet, ack_rx) = self.prepare_to_send(dst_addr,
-            packets.len() as u32);
+        let (start_packet, ack_rx) = self.prepare_to_send(dst_addr, packets.len() as u32);
         
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
         let mut count_timeout = 0;
@@ -111,6 +112,9 @@ impl ReliableCommunication {
                 Err(RecvTimeoutError::Disconnected) => return true,
             }
         }
+        if BROADCAST == Broadcast::NONE || BROADCAST == Broadcast::BEB {
+            self.send_dlv(dst_addr);
+        }
         true
     }
 
@@ -126,11 +130,14 @@ impl ReliableCommunication {
         };
         let mut messages = self.message_per_source.lock().unwrap();
         while let Ok(packet) = rcv() {
-            let Packet { header, data, .. } = packet;
-            messages.entry(header.src_addr).or_insert(Vec::new()).extend(data);
-            if header.is_last() {
-                let msg = messages.remove(&header.src_addr).unwrap();
-                buffer.extend(msg);
+            if !packet.header.is_dlv() {
+                let Packet { header, data, .. } = packet;
+                messages.entry(header.src_addr).or_insert(Vec::new()).extend(data);
+                // if header.is_last() {
+                //     buffer.extend(messages.remove(&header.src_addr).unwrap());
+                // }
+            } else {
+                buffer.extend(messages.remove(&packet.header.src_addr).unwrap());
                 return true
             }
         }
@@ -144,12 +151,44 @@ impl ReliableCommunication {
                 success += 1;
             }
         }
-        let max = self.group.len();
-        success >= max*(2/3)
+        success >= self.group.len()*(2/3)
+    }
+
+    fn urb(&self, message: Vec<u8>) -> bool {
+        if self.beb(message) {
+            for node in &self.group {     
+                self.send_dlv(&node.addr);
+            }
+            return true
+        }
+        false        
+    }
+
+    fn ab(&self, message: Vec<u8>) -> bool {
+        message.len() == 0
     }
 
     pub fn broadcast(&self, message: Vec<u8>) -> bool {
-        self.beb(message)
+        match BROADCAST {
+            Broadcast::NONE => self.send(&self.group[0].addr, message),
+            Broadcast::BEB => self.beb(message),
+            Broadcast::URB => self.urb(message),
+            Broadcast::AB => self.ab(message),
+        }
+    }
+
+    fn send_dlv(&self, dst_addr: &SocketAddr) -> bool {
+        let packet = Packet::new(
+            self.host,
+            *dst_addr,
+            0,
+            None,
+            true,
+            false,
+            true,
+            Vec::new(),
+        );
+        self.channel.send(packet)
     }
 }
 

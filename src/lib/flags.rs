@@ -10,6 +10,7 @@ impl Flags {
     pub const LST: Flags = Flags { value: 2 };
     pub const SYN: Flags = Flags { value: 4 };
     pub const FIN: Flags = Flags { value: 8 };
+    pub const DLV: Flags = Flags { value: 16 };
 
     pub fn is_set(&self, flag: Flags) -> bool {
         self.value & flag.value != 0
@@ -28,6 +29,9 @@ impl Flags {
         }
         if self.is_set(Flags::FIN) {
             result.push_str("FIN ");
+        }
+        if self.is_set(Flags::DLV) {
+            result.push_str("DLV ");
         }
         result
     }

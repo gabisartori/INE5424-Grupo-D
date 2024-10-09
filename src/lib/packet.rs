@@ -17,13 +17,18 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, checksum: Option<u16>, is_last: bool, is_ack: bool, data: Vec<u8>) -> Self {
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32,
+            checksum: Option<u16>, is_last: bool, is_ack: bool, is_dlv: bool,
+            data: Vec<u8>) -> Self {
         let mut flags = Flags::EMP;
         if is_last {
             flags = flags | Flags::LST;
         }
         if is_ack {
             flags = flags | Flags::ACK;
+        }
+        if is_dlv {
+            flags = flags | Flags::DLV;
         }
         let checksum = checksum.or_else(|| Some(Self::checksum(&Header::new(src_addr, dst_addr, seq_num, flags, None), &data)));
         let header = Header::new(src_addr, dst_addr, seq_num, flags, checksum);
@@ -103,12 +108,16 @@ impl Header {
         }
     }
 
-    pub fn is_last(&self) -> bool {
-        self.flags.is_set(Flags::LST)
-    }
+    // pub fn is_last(&self) -> bool {
+    //     self.flags.is_set(Flags::LST)
+    // }
 
     pub fn is_ack(&self) -> bool {
-        self.flags.is_set(Flags::ACK)
+        self.flags.is_set(Flags::ACK) && !self.flags.is_set(Flags::DLV)
+    }
+
+    pub fn is_dlv(&self) -> bool {
+        self.flags.is_set(Flags::DLV)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
