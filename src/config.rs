@@ -26,7 +26,7 @@ pub const AGENT_NUM: u32 = 32;
 pub const N_MSGS: u32 = 10;
 pub const CORRUPTION_RATE: f32 = 0.;
 pub const LOSS_RATE: f32 = 0.;
-pub const BROADCAST: bool = false;
+pub const BROADCAST: bool = true;
 
 // Endereços de agentes externos
 // pub const NODES: Option<&[Node]> = Some(&[

@@ -137,14 +137,19 @@ impl ReliableCommunication {
         false
     }
 
-    pub fn broadcast(&self, message: Vec<u8>) -> bool {
-        let mut success = true;
+    fn beb(&self, message: Vec<u8>) -> bool {
+        let mut success = 0;
         for node in &self.group {
             if !self.send(&node.addr, message.clone()) {
-                success = false;
+                success += 1;
             }
         }
-        success
+        let max = self.group.len();
+        success >= max*(2/3)
+    }
+
+    pub fn broadcast(&self, message: Vec<u8>) -> bool {
+        self.beb(message)
     }
 }
 
