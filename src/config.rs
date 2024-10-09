@@ -9,11 +9,29 @@ pub struct Node {
     pub agent_number: u32
 }
 
-// Endereços IP úteis
-pub const LOCALHOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-pub const MAYKON: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 208));
-pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
+#[derive(PartialEq)]
+pub enum Broadcast {
+    NONE,
+    BEB,
+    URB,
+    AB
+}
 
+// Quantia de agentes locais a serem criados
+pub const AGENT_NUM: u32 = 32;
+pub const N_MSGS: u32 = 10;
+
+// Configurações da comunicação
+pub const CORRUPTION_RATE: f32 = 0.;
+pub const LOSS_RATE: f32 = 0.;
+pub const BROADCAST: Broadcast = Broadcast::URB;
+
+pub const W_SIZE: usize = 5;
+pub const TIMEOUT: u64 = 1;
+pub const TIMEOUT_LIMIT: u64 = 0;
+pub const HEARTBEAT_INTERVAL: u64 = 500;
+pub const FAILURE_DETECTION_INTERVAL: u64 = 1000;
+pub const BUFFER_SIZE: usize = 2<<9;
 
 /*
     Existem dois estados principais para os valores de AGENT_NUM e NODES
@@ -21,12 +39,10 @@ pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
     2. Cenário que imita um ambiente distribuído: AGENT_NUM é 1 (apenas a própria máquina) e NODES é um vetor com os vários endereços de outras máquinas pertencentes ao grupo
 */
 
-// Quantia de agentes locais a serem criados
-pub const AGENT_NUM: u32 = 32;
-pub const N_MSGS: u32 = 10;
-pub const CORRUPTION_RATE: f32 = 0.;
-pub const LOSS_RATE: f32 = 0.;
-pub const BROADCAST: bool = true;
+// Endereços IP úteis
+pub const LOCALHOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+pub const MAYKON: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 208));
+pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
 
 // Endereços de agentes externos
 // pub const NODES: Option<&[Node]> = Some(&[
@@ -36,15 +52,6 @@ pub const BROADCAST: bool = true;
 //     Node { addr: SocketAddr::new(MAYKON, 8083), agent_number: 4 }
 // ]);
 pub const NODES: Option<&[Node]> = None;
-
-
-// Configurações da comunicação
-pub const W_SIZE: usize = 5;
-pub const TIMEOUT: u64 = 1; // 0.001 segundo
-pub const TIMEOUT_LIMIT: u64 = 0;
-pub const HEARTBEAT_INTERVAL: u64 = 500; // 500 milissegundos
-pub const FAILURE_DETECTION_INTERVAL: u64 = 1000; // 1 segundo
-pub const BUFFER_SIZE: usize = 2<<9; // 2KB
 
 pub const MSG: &str = "
 --------------------------------------
