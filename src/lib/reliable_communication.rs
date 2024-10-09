@@ -12,36 +12,47 @@ use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, TIMEOUT_LI
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc}; //, Condvar};
+// use std::thread;
 
 pub struct ReliableCommunication {
     channel: Channel,
-    pub host: SocketAddr,
-    pub group: Vec<Node>,
-    send_tx: mpsc::Sender<(Sender<Packet>, SocketAddr, u32)>,
+    pub host: Node,
+    pub group: Arc<Vec<Node>>,
+    send_tx: Sender<(Sender<Packet>, SocketAddr, u32)>,
     receive_rx: Mutex<Receiver<Packet>>,
     msg_count: Mutex<HashMap<SocketAddr, u32>>,
     pkts_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
     msgs_per_source: Mutex<HashMap<SocketAddr, Vec<Vec<u8>>>>,
+    // token: Arc<(Mutex<bool>, Condvar)>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
 impl ReliableCommunication {
     // Função para inicializar a camada com um canal de comunicação
-    pub fn new(host: SocketAddr, group: Vec<Node>) -> Self {
+    pub fn new(host: Node, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = match Channel::new(host.clone()) {
+        let channel = match Channel::new(host.addr.clone()) {
             Ok(c) => c,
             Err(e) => panic!("Erro {{{e}}} ao criar o canal de comunicação"),
         };
         channel.run(receive_tx, send_rx);
         let receive_rx = Mutex::new(receive_rx);
-        
-        Self { channel, host, group, send_tx, receive_rx,
+        let group = Arc::new(group);
+        // let token = Arc::new((Mutex::new(host.agent_number == 0), Condvar::new()));
+        // let group_clone = Arc::clone(&group);
+        // let token_clone = Arc::clone(&token);
+        // thread::spawn(move ||{
+        //     ReliableCommunication::set_token(&group_clone, token_clone, host.agent_number as usize);
+        // });
+        Self {
+            channel, host, group, send_tx, receive_rx,
             msg_count: Mutex::new(HashMap::new()),
             pkts_per_source: Mutex::new(HashMap::new()),
-            msgs_per_source: Mutex::new(HashMap::new()),}
+            msgs_per_source: Mutex::new(HashMap::new()),
+            // token, 
+        }
     }
 
     fn prepare_to_send(&self, dst_addr: &SocketAddr, packets_len: u32)
@@ -56,9 +67,8 @@ impl ReliableCommunication {
         
         // Comunicação com a camada de canais
         let (ack_tx, ack_rx) = mpsc::channel();
-        let agente = self.host.port() % 100;
         self.send_tx.send((ack_tx, *dst_addr, start_packet as u32))
-        .expect(format!("Erro ao inscrever o Agente {agente} para mandar pacotes").as_str());
+        .expect(format!("Erro ao inscrever o Agente {} para mandar pacotes", self.host.agent_number).as_str());
         (start_packet, ack_rx)        
     }
 
@@ -67,7 +77,7 @@ impl ReliableCommunication {
                     dst_addr: &SocketAddr ) {
         while *next_seq_num < base + W_SIZE && *next_seq_num < packets.len() {
             let packet = Packet::new(
-                self.host,
+                self.host.addr,
                 *dst_addr,
                 (*next_seq_num + start_packet) as u32,
                 None,
@@ -149,8 +159,8 @@ impl ReliableCommunication {
 
     fn beb(&self, message: Vec<u8>) -> bool {
         let mut success = 0;
-        for node in &self.group {
-            if !self.send(&node.addr, message.clone()) {
+        for node in self.group.iter() {
+            if self.send(&node.addr, message.clone()) {
                 success += 1;
             }
         }
@@ -159,7 +169,7 @@ impl ReliableCommunication {
 
     fn urb(&self, message: Vec<u8>) -> bool {
         if self.beb(message) {
-            for node in &self.group {     
+            for node in self.group.iter() {     
                 self.send_dlv(&node.addr);
             }
             return true
@@ -168,12 +178,16 @@ impl ReliableCommunication {
     }
 
     fn ab(&self, message: Vec<u8>) -> bool {
-        message.len() == 0
+        // let (tk, cvar) = &*self.token;
+        // let _unused = cvar.wait(tk.lock().unwrap()).unwrap();
+        self.urb(message)
     }
 
     pub fn broadcast(&self, message: Vec<u8>) -> bool {
         match BROADCAST {
-            Broadcast::NONE => self.send(&self.group[0].addr, message),
+            Broadcast::NONE => {
+                self.send(&self.group[(self.host.agent_number + 1) as usize].addr, message)
+            },
             Broadcast::BEB => self.beb(message),
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
@@ -182,7 +196,7 @@ impl ReliableCommunication {
 
     fn send_dlv(&self, dst_addr: &SocketAddr) -> bool {
         let packet = Packet::new(
-            self.host,
+            self.host.addr,
             *dst_addr,
             0,
             None,
@@ -193,5 +207,22 @@ impl ReliableCommunication {
         );
         self.channel.send(&packet)
     }
+
+    // fn set_token(group: &Arc<Vec<Node>>, token: Arc<(Mutex<bool>, Condvar)>, id: usize) {            
+    //     loop {
+    //         let (lock, cvar) = &*token;
+    //         {
+    //             let mut token = lock.lock().unwrap();
+    //             if *token {
+    //                 cvar.notify_all();
+    //                 thread::sleep(std::time::Duration::from_millis(100));
+    //                 *token = false;
+                    
+    //             } else {
+    //                 token = cvar.wait(token).unwrap();
+    //             }
+    //         }
+    //     }
+    // }
 }
 

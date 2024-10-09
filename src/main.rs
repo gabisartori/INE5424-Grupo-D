@@ -34,23 +34,22 @@ mod config;
 use config::{Broadcast, Node, AGENT_NUM, BROADCAST, LOCALHOST, MSG, NODES, N_MSGS};
 
 struct Agent {
-    id: u32,
+    id: usize,
     communication: ReliableCommunication
 }
 
 impl Agent {
-    fn new(id: u32, addr: SocketAddr, nodes: Vec<Node>) -> Self {
+    fn new(id: usize, nodes: Vec<Node>) -> Self {
         Agent {
             id,
-            communication: ReliableCommunication::new(addr, nodes)
+            communication: ReliableCommunication::new(nodes[id].clone(), nodes)
         }
     }
 
     fn listener(&self) -> u32 {
         let mut acertos = 0;
-        let stop = if BROADCAST == Broadcast::NONE { N_MSGS } else { N_MSGS*AGENT_NUM };
-        for i in 0..(stop+1)
-        {
+        let stop = N_MSGS*AGENT_NUM + 1;
+        for i in 0..stop {
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
@@ -80,16 +79,7 @@ impl Agent {
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
-            let func = || match BROADCAST {
-                Broadcast::NONE => {
-                    let destination = (self.id as usize + 1) % self.communication.group.len();
-                    let dst_addr: SocketAddr = self.communication.group[destination].addr;
-                    self.communication.send(&dst_addr, msg)
-                },
-                _ => self.communication.broadcast(msg),
-            };
-
-            if func() {
+            if self.communication.broadcast(msg) {
                 acertos += if BROADCAST == Broadcast::NONE {1} else {AGENT_NUM};
             } else {
                 debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, i);
@@ -145,7 +135,7 @@ impl Agent {
 }
 
 
-fn create_agents(id: u32) -> Arc<Agent> {
+fn create_agents(id: usize) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
@@ -158,7 +148,7 @@ fn create_agents(id: u32) -> Arc<Agent> {
             nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
         }
     }
-    let agent = Arc::new(Agent::new(id, SocketAddr::new(LOCALHOST, 3100 + id as u16), nodes.clone()));
+    let agent = Arc::new(Agent::new(id, nodes));
     agent
 
 }
@@ -206,7 +196,7 @@ fn main() {
 
     // Verifica se o programa foi executado com argumentos (quando for rodado como um subprocesso)
     if args.len() > 1 {
-        let agent_id: u32 = args[1].parse().expect("Falha ao converter agent_id para u32");
+        let agent_id: usize = args[1].parse().expect("Falha ao converter agent_id para u32");
         let agent = create_agents(agent_id);
         agent.run();
     } else { // Se não há argumentos, então está rodando o processo principal
