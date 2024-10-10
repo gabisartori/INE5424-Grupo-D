@@ -79,9 +79,9 @@ impl Agent {
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
-            if self.communication.broadcast(msg) {
-                acertos += if BROADCAST == Broadcast::NONE {1} else {AGENT_NUM};
-            } else {
+            let tot = self.communication.broadcast(msg);
+            acertos += tot;
+            if tot == 0 {
                 debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, i);
             }
         }
