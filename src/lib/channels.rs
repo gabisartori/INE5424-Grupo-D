@@ -52,9 +52,6 @@ impl Channel {
             
             if packet.header.is_ack() {
                 Channel::process_acks(packet, &mut sends, &rx_acks);
-            } else if packet.header.is_dlv() {
-                // Encaminhar o pacote para a fila de mensagens
-                Channel::deliver(&tx_msgs, packet);
             } else {
                 // Verificar se o pacote é o próximo esperado
                 let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
@@ -63,6 +60,7 @@ impl Channel {
                 if !self.send(&packet.get_ack()) {continue;}
                 // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                 if packet.header.seq_num < next_seq_num { continue; }
+                
                 messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
                 Channel::deliver(&tx_msgs, packet);
             }
@@ -87,11 +85,8 @@ impl Channel {
             match sends.entry(key) {
                 Entry::Occupied(mut entry) => {
                     let (tx_, seq_num) = entry.get_mut();
-                    if *seq_num == start_seq {
-                        *tx_ = tx;
-                    } else {
-                        *tx_ = tx;
-                    }
+                    *tx_ = tx;
+                    *seq_num = start_seq;
                 },
                 Entry::Vacant(entry) => {
                     entry.insert((tx, start_seq));

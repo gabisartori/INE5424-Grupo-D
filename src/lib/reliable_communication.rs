@@ -47,9 +47,9 @@ impl ReliableCommunication {
     }
 
     /// Send a message to a specific destination
-    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-        let packets = self.prepare_to_send(dst_addr, &message);
-        self.send_msg(packets)
+    pub fn send(&self, dst_addr: &SocketAddr, message: &Vec<u8>) -> bool {
+        let packets = self.get_packets(dst_addr, message, false);
+        self.send_msg(packets) > 0
     }
 
     /// Read one already received message or wait for a message to arrive
@@ -63,7 +63,7 @@ impl ReliableCommunication {
                 pkts.entry(header.src_addr).or_insert(Vec::new()).extend(data);
                 if header.is_last() {
                     let msg = pkts.remove(&header.src_addr).unwrap();
-                    if BROADCAST == Broadcast::NONE || BROADCAST == Broadcast::BEB {
+                    if !header.r_dlv() {
                         buffer.extend(msg);
                         return true
                     }
@@ -86,22 +86,22 @@ impl ReliableCommunication {
         match BROADCAST {
             Broadcast::NONE => {
                 let idx = (self.host.agent_number + 1) as usize % self.group.len();
-                self.send(&self.group[idx].addr, message) as u32
+                self.send(&self.group[idx].addr, &message) as u32
             },
-            Broadcast::BEB => self.beb(message, &self.group).len() as u32,
+            Broadcast::BEB => self.beb(message, &self.group, false).0.len() as u32,
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
         }
     }
 
     /// Fragments a message into packets
-    fn prepare_to_send(&self, dst_addr: &SocketAddr, message: &Vec<u8>) -> Vec<Packet> {
+    fn get_packets(&self, dst_addr: &SocketAddr, message: &Vec<u8>, r_dlv: bool) -> Vec<Packet> {
         let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
         let start_packet = {
             let mut msg_count = self.msg_count.lock().unwrap();
             let count = msg_count.entry(*dst_addr).or_insert(0);
             let start = *count;
-            *count += chunks.len();
+            *count += chunks.len() + (if r_dlv {1} else {0});
             start
         };
 
@@ -114,6 +114,7 @@ impl ReliableCommunication {
                 i == (chunks.len() - 1),
                 false,
                 false,
+                r_dlv,
                 pkt.to_vec(),
             )
         }).collect()     
@@ -128,11 +129,11 @@ impl ReliableCommunication {
 
     /// Algorithm for reliable 1:1 communication
     // tem também um parâmetro com valor default 0 para identificar o tipo de transmissão
-    fn send_msg(&self, packets: Vec<Packet>) -> bool {
+    fn send_msg(&self, packets: Vec<Packet>) -> u32 {
         // Comunicação com a camada de canais
-        let start_packet = packets[0].header.seq_num as usize;
+        let start_packet = packets[0].header.seq_num;
         let (ack_tx, ack_rx) = mpsc::channel();
-        self.send_tx.send((ack_tx, packets[0].header.dst_addr, start_packet as u32))
+        self.send_tx.send((ack_tx, packets[0].header.dst_addr, start_packet))
         .expect(format!("Erro ao inscrever o Agente {} para mandar pacotes", self.host.agent_number).as_str());
 
         // Algoritmo Go-Back-N para garantia de entrega dos pacotes
@@ -146,34 +147,37 @@ impl ReliableCommunication {
                 Ok(packet) => {
                     // assume que a listener está enviando o número do maior pacote que recebeu
                     // listener também garante que o pacote seja >= base
-                    base = packet.header.seq_num as usize - start_packet + 1;
+                    base = (packet.header.seq_num - start_packet + 1) as usize;
                 },
                 Err(RecvTimeoutError::Timeout) => {next_seq_num = base;},
-                Err(RecvTimeoutError::Disconnected) => return true,
+                Err(RecvTimeoutError::Disconnected) => return start_packet + next_seq_num as u32,
             }
         }
-        true
+        start_packet + next_seq_num as u32
     }
 
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
-    fn beb(&self, message: Vec<u8>, group: &Vec<Node>) -> Vec<Node> {
-        group.iter()
+    fn beb(&self, message: Vec<u8>, group: &Vec<Node>, r_dlv: bool) -> (Vec<Node>, Vec<u32>) {
+        let mut lst_seq_num = Vec::new();
+        let new_group = group.iter()
             .filter(|node| {
-                let packets = self.prepare_to_send(&node.addr, &message);
-                self.send_msg(packets)
+                let pkts = self.get_packets(&node.addr, &message, r_dlv);
+                lst_seq_num.push(self.send_msg(pkts));
+                *lst_seq_num.last().unwrap() > 0
             })
             .cloned()
-            .collect()
+            .collect();
+        (new_group, lst_seq_num)
     }
 
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        let group = self.beb(message, &self.group);
+        let (group, lst_seq) = self.beb(message, &self.group, true);
         if group.len() >= self.group.len()*2 / 3 {
-            for node in group.iter() {
-                self.send_dlv(&node.addr);
+            for (i, node) in group.iter().enumerate() {
+                self.send_dlv(&node.addr, lst_seq[i]);
             }
             return group.len() as u32
         }
@@ -186,19 +190,20 @@ impl ReliableCommunication {
         self.urb(message)
     }
 
-    fn send_dlv(&self, dst_addr: &SocketAddr) -> bool {
+    fn send_dlv(&self, dst_addr: &SocketAddr, lst_seq: u32) -> bool {
         let packet = Packet::new(
             self.host.addr,
             *dst_addr,
-            0,
+            lst_seq,
             None,
             true,
             false,
             true,
+            false,
             Vec::new(),
         );
-        self.channel.send(&packet)
-        // self.send_msg(vec![packet], 0)
+        // self.channel.send(&packet)
+        self.send_msg(vec![packet]) as u32 > 0
     }
 }
 
