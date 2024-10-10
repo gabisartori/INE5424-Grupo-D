@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::clone::Clone;
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Node {
     pub addr: SocketAddr,
     pub agent_number: u32
@@ -18,7 +19,7 @@ pub enum Broadcast {
 }
 
 // Quantia de agentes locais a serem criados
-pub const AGENT_NUM: u32 = 32;
+pub const AGENT_NUM: u32 = 50;
 pub const N_MSGS: u32 = 10;
 
 // Configurações da comunicação
@@ -28,7 +29,6 @@ pub const BROADCAST: Broadcast = Broadcast::URB;
 
 pub const W_SIZE: usize = 5;
 pub const TIMEOUT: u64 = 1;
-pub const TIMEOUT_LIMIT: u64 = 0;
 pub const HEARTBEAT_INTERVAL: u64 = 500;
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000;
 pub const BUFFER_SIZE: usize = 2<<9;
