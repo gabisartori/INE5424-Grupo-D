@@ -48,7 +48,7 @@ impl Agent {
 
     fn listener(&self) -> u32 {
         let mut acertos = 0;
-        let stop = N_MSGS*AGENT_NUM + 1;
+        let stop = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*AGENT_NUM};
         for i in 0..stop {
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
