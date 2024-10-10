@@ -20,7 +20,7 @@ pub struct ReliableCommunication {
     pub group: Vec<Node>,
     send_tx: Sender<(Sender<Packet>, SocketAddr, u32)>,
     receive_rx: Mutex<Receiver<Packet>>,
-    msg_count: Mutex<HashMap<SocketAddr, u32>>,
+    msg_count: Mutex<HashMap<SocketAddr, usize>>,
     pkts_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
     msgs_per_source: Mutex<HashMap<SocketAddr, Vec<Vec<u8>>>>,
 }
@@ -32,7 +32,7 @@ impl ReliableCommunication {
     pub fn new(host: Node, group: Vec<Node>) -> Self {
         let (send_tx, send_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
-        let channel = match Channel::new(host.addr.clone()) {
+        let channel = match Channel::new(&host.addr) {
             Ok(c) => c,
             Err(e) => panic!("Erro {{{e}}} ao criar o canal de comunicação"),
         };
@@ -48,14 +48,13 @@ impl ReliableCommunication {
 
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-        let packets = self.prepare_to_send(dst_addr, message);
+        let packets = self.prepare_to_send(dst_addr, &message);
         self.send_msg(packets)
     }
 
     /// Read one already received message or wait for a message to arrive
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        let rcv = ||  self.receive_rx.lock().unwrap()
-                .recv_timeout(std::time::Duration::from_millis(TIMEOUT*100));
+        let rcv = ||  self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(TIMEOUT*100));
         let mut pkts = self.pkts_per_source.lock().unwrap();
         let mut msgs = self.msgs_per_source.lock().unwrap();
         while let Ok(packet) = rcv() {
@@ -89,46 +88,40 @@ impl ReliableCommunication {
                 let idx = (self.host.agent_number + 1) as usize % self.group.len();
                 self.send(&self.group[idx].addr, message) as u32
             },
-            Broadcast::BEB => {
-                self.beb(message, self.group.clone()).len() as u32
-            },
+            Broadcast::BEB => self.beb(message, &self.group).len() as u32,
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
         }
     }
 
     /// Fragments a message into packets
-    fn prepare_to_send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Vec<Packet> {
+    fn prepare_to_send(&self, dst_addr: &SocketAddr, message: &Vec<u8>) -> Vec<Packet> {
         let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
-        let packets_len = chunks.len();
         let start_packet = {
             let mut msg_count = self.msg_count.lock().unwrap();
             let count = msg_count.entry(*dst_addr).or_insert(0);
             let start = *count;
-            *count += packets_len as u32;
-            start as usize
+            *count += chunks.len();
+            start
         };
-        let mut packets: Vec<Packet> = Vec::new();
-        let mut i = 0;
-        for pkt in chunks {
-            packets.push(Packet::new(
+
+        chunks.iter().enumerate().map(|(i, pkt)| {
+            Packet::new(
                 self.host.addr,
                 *dst_addr,
-                (i + start_packet) as u32,
+                (start_packet + i) as u32,
                 None,
-                i == (packets_len - 1),
+                i == (chunks.len() - 1),
                 false,
                 false,
                 pkt.to_vec(),
-            ));
-            i += 1;
-        }
-        packets       
+            )
+        }).collect()     
     }
 
     fn send_window(&self, next_seq_num: &mut usize, base: usize, packets: &Vec<Packet>) {
         while *next_seq_num < base + W_SIZE && *next_seq_num < packets.len() {
-            self.channel.send(&packets[*next_seq_num].clone());
+            self.channel.send(&packets[*next_seq_num]);
             *next_seq_num += 1;
         }
     }
@@ -164,22 +157,20 @@ impl ReliableCommunication {
 
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
-    fn beb(&self, message: Vec<u8>, group: Vec<Node>) -> Vec<Node> {
-        let mut success = Vec::new();
-        
-        for node in group {
-            let pkts = self.prepare_to_send(&node.addr, message.clone());
-            if self.send_msg(pkts) {
-                success.push(node.clone());
-            }
-        }
-        success
+    fn beb(&self, message: Vec<u8>, group: &Vec<Node>) -> Vec<Node> {
+        group.iter()
+            .filter(|node| {
+                let packets = self.prepare_to_send(&node.addr, &message);
+                self.send_msg(packets)
+            })
+            .cloned()
+            .collect()
     }
 
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        let group = self.beb(message, self.group.clone());
+        let group = self.beb(message, &self.group);
         if group.len() >= self.group.len()*2 / 3 {
             for node in group.iter() {
                 self.send_dlv(&node.addr);

@@ -21,7 +21,7 @@ pub struct Channel {
 
 impl Channel {
     // Função para criar um novo canal
-    pub fn new(bind_addr: SocketAddr) -> Result<Self, Error> {
+    pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
         let socket = std::sync::Arc::new(UdpSocket::bind(bind_addr)?);
         Ok(Self { socket })
     }
