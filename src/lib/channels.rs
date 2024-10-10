@@ -20,24 +20,25 @@ pub struct Channel {
 }
 
 impl Channel {
-    // Função para criar um novo canal
+    /// Constructor
     pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
         let socket = std::sync::Arc::new(UdpSocket::bind(bind_addr)?);
         Ok(Self { socket })
     }
     
-    pub fn run(&self,
-                tx_msgs: Sender<Packet>,
-                send_rx: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
+    /// Spawns the thread that listens for incoming messages
+    pub fn run(&self, tx_msgs: Sender<Packet>, send_rx: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
         let clone = self.clone();
         thread::spawn(move || {
             Channel::listener(&clone, tx_msgs, send_rx);
         });
     }
 
-    fn listener(&self,
-                tx_msgs: Sender<Packet>,
-                rx_acks: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
+    /// Listener for incoming messages
+    /// This function will be responsible for routing and filtering the received packets to the correct destination
+    /// Routing is done using the channels stablished by those who are waiting for something
+    /// Filtering is done by checking the checksum and sequence number of the received packet
+    fn listener(&self, tx_msgs: Sender<Packet>, rx_acks: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
         let mut sends: HashMap<SocketAddr, (Sender<Packet>, u32)> = HashMap::new();
         let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
         loop {
@@ -68,12 +69,16 @@ impl Channel {
         }
     }
 
+    /// Validates the received message
+    /// For now, only validates the checksum
     fn validate_message(packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         c1
     }
 
+    /// Checks for senders waiting for the ACK received
+    /// If there is someone waiting, forwards the ACK to the sender
     fn process_acks(packet: Packet,
                     sends: &mut HashMap<SocketAddr, (Sender<Packet>, u32)>,
                     rx_acks: &Receiver<(Sender<Packet>, SocketAddr, u32)>) {
@@ -93,22 +98,34 @@ impl Channel {
                 }
             }
         }
-        // Se houver, encaminha o ACK para o remetente
-        // Senão, ignora o ACK
+        // Encaminha o ACK para o destinatário se houver um
         if let Some((tx, seq_num)) = sends.get_mut(&packet.header.src_addr) {
-            if packet.header.seq_num < *seq_num {
-                return;
-            }
+            if packet.header.seq_num < *seq_num { return; }
             *seq_num = packet.header.seq_num + 1;
             Channel::deliver(tx, packet);
-            // let is_last = packet.is_last();
-            // let src = packet.header.src_addr;
-            // if is_last {
-            //     sends.remove(&src);
-            // }
         }
     }
 
+    /// Reads a packet from the socket or waits for a packet to arrive
+    fn receive(&self) -> Option<Packet> {
+        let mut buffer = [0; BUFFER_SIZE];
+        let size;
+        match self.socket.recv_from(&mut buffer) {
+            Ok((size_, _)) => { size = size_; },
+            Err(e) => {
+                let agent = self.socket.local_addr().unwrap().port() % 100;
+                debug_println!("->-> Erro {{{e}}} no Agente {agent} ao receber pacote pelo socket");
+                return None;
+            },
+        }
+        // Simula perda de pacotes
+        if rand::random::<f32>() < LOSS_RATE {
+            return None;
+        }
+        Some(Packet::from_bytes(buffer, size))
+    }
+
+    /// Wrapper for Sender::send, with some print statements
     fn deliver(tx: &Sender<Packet>, packet: Packet) {
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;
@@ -126,25 +143,7 @@ impl Channel {
         }
     }
 
-    fn receive(&self) -> Option<Packet> {
-        let mut buffer = [0; BUFFER_SIZE];
-        let size;
-        match self.socket.recv_from(&mut buffer) {
-            Ok((size_, _)) => { size = size_; },
-            Err(e) => {
-                let agent = self.socket.local_addr().unwrap().port() % 100;
-                debug_println!("->-> Erro {{{e}}} no Agente {agent} ao receber pacote pelo socket");
-                return None;
-            },
-        }
-        // Simula perda de pacotes
-        if rand::random::<f32>() < LOSS_RATE {
-            return None;
-        }
-        Some(Packet::from_bytes(buffer, size))
-
-    }
-
+    /// Wrapper for UdpSocket::send_to, with some print statements
     pub fn send(&self, packet: &Packet) -> bool { 
         let agent_s = packet.header.src_addr.port() % 100;
         let agent_d = packet.header.dst_addr.port() % 100;

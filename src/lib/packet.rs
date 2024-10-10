@@ -5,11 +5,6 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 use crate::config::{CORRUPTION_RATE, BUFFER_SIZE};
 use super::flags::Flags;
 
-// sempre deve-se alterar o tamanho do cabeçalho se alterar o Header
-pub const HEADER_SIZE: usize = 19; // Header::new_empty().to_bytes().len()
-// estrutura para o cabeçalho
-
-
 #[derive(Clone)]
 pub struct Packet {
     pub header: Header,
@@ -84,7 +79,11 @@ pub struct Header {
     pub flags: Flags,  // ack: 1, last: 2, syn: 4, fin: 8   // 17 bytes
     pub checksum: u16,          // 19 bytes
 }
-// implementação para que o cabeçalho seja conversível em bytes e vice-versa
+
+// Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
+pub const HEADER_SIZE: usize = 19;
+
+// Implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: Flags, checksum: Option<u16>) -> Self {
         Self {
