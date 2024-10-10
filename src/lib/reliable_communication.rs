@@ -163,7 +163,7 @@ impl ReliableCommunication {
 
     fn urb(&self, message: Vec<u8>) -> bool {
         let group = self.beb(message, self.group.clone());
-        if group.len() >= self.group.len()*(2 / 3) {
+        if group.len() >= self.group.len()*2 / 3 {
             for node in group {
                 self.send_dlv(&node.addr);
             }
@@ -184,7 +184,7 @@ impl ReliableCommunication {
             },
             Broadcast::BEB => {
                 let suc = self.beb(message, self.group.clone());
-                suc.len() >= self.group.len()*(2 / 3)
+                suc.len() >= self.group.len()*2 / 3
             },
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
