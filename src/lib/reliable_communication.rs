@@ -161,30 +161,30 @@ impl ReliableCommunication {
         success
     }
 
-    fn urb(&self, message: Vec<u8>) -> bool {
+    fn urb(&self, message: Vec<u8>) -> u32 {
         let group = self.beb(message, self.group.clone());
         if group.len() >= self.group.len()*2 / 3 {
-            for node in group {
+            for node in group.iter() {
                 self.send_dlv(&node.addr);
             }
-            return true
+            return group.len() as u32
         }
-        false        
+        0
     }
 
-    fn ab(&self, message: Vec<u8>) -> bool {
+    fn ab(&self, message: Vec<u8>) -> u32 {
         self.urb(message)
     }
 
-    pub fn broadcast(&self, message: Vec<u8>) -> bool {
+    pub fn broadcast(&self, message: Vec<u8>) -> u32 {
         match BROADCAST {
             Broadcast::NONE => {
                 let idx = (self.host.agent_number + 1) as usize % self.group.len();
-                self.send(&self.group[idx].addr, message)
+                self.send(&self.group[idx].addr, message) as u32
             },
             Broadcast::BEB => {
                 let suc = self.beb(message, self.group.clone());
-                suc.len() >= self.group.len()*2 / 3
+                suc.len() as u32
             },
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
