@@ -48,10 +48,8 @@ impl ReliableCommunication {
 
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-
-        // Preparar a mensagem para ser enviada
-        let (start_packet, packets) = self.prepare_to_send(dst_addr, message);
-        self.send_msg(packets, start_packet)
+        let packets = self.prepare_to_send(dst_addr, message);
+        self.send_msg(packets)
     }
 
     /// Read one already received message or wait for a message to arrive
@@ -100,7 +98,7 @@ impl ReliableCommunication {
     }
 
     /// Fragments a message into packets
-    fn prepare_to_send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> (usize, Vec<Packet>) {
+    fn prepare_to_send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Vec<Packet> {
         let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE-HEADER_SIZE).collect();
         let packets_len = chunks.len();
         let start_packet = {
@@ -125,7 +123,7 @@ impl ReliableCommunication {
             ));
             i += 1;
         }
-        (start_packet, packets)        
+        packets       
     }
 
     fn send_window(&self, next_seq_num: &mut usize, base: usize, packets: &Vec<Packet>) {
@@ -137,9 +135,9 @@ impl ReliableCommunication {
 
     /// Algorithm for reliable 1:1 communication
     // tem também um parâmetro com valor default 0 para identificar o tipo de transmissão
-    fn send_msg(&self, packets: Vec<Packet>, start_packet: usize) -> bool {
+    fn send_msg(&self, packets: Vec<Packet>) -> bool {
         // Comunicação com a camada de canais
-
+        let start_packet = packets[0].header.seq_num as usize;
         let (ack_tx, ack_rx) = mpsc::channel();
         self.send_tx.send((ack_tx, packets[0].header.dst_addr, start_packet as u32))
         .expect(format!("Erro ao inscrever o Agente {} para mandar pacotes", self.host.agent_number).as_str());
@@ -170,9 +168,8 @@ impl ReliableCommunication {
         let mut success = Vec::new();
         
         for node in group {
-            let (start_packet,
-                pkts) = self.prepare_to_send(&node.addr, message.clone());
-            if self.send_msg(pkts, start_packet) {
+            let pkts = self.prepare_to_send(&node.addr, message.clone());
+            if self.send_msg(pkts) {
                 success.push(node.clone());
             }
         }
