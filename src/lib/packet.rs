@@ -1,5 +1,6 @@
 // Importações necessárias
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
 // Tamanho do buffer
 use crate::config::{CORRUPTION_RATE, BUFFER_SIZE};
@@ -13,11 +14,16 @@ pub struct Packet {
 
 impl Packet {
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32,
-            checksum: Option<u16>, is_last: bool, is_ack: bool,is_dlv: bool,
+            checksum: Option<u32>, is_last: bool, is_ack: bool,is_dlv: bool,
             req_dlv: bool, data: Vec<u8>) -> Self {
         let mut flags = Flags::EMP;
+        let mut timestamp = None;
+        
         if is_last {
             flags = flags | Flags::LST;
+            if req_dlv {
+                timestamp = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap());
+            }
         }
         if is_ack {
             flags = flags | Flags::ACK;
@@ -28,8 +34,8 @@ impl Packet {
         if req_dlv {
             flags = flags | Flags::RDLV;
         }
-        let checksum = checksum.or_else(|| Some(Self::checksum(&Header::new(src_addr, dst_addr, seq_num, flags, None), &data)));
-        let header = Header::new(src_addr, dst_addr, seq_num, flags, checksum);
+        let checksum = checksum.or_else(|| Some(Self::checksum(&Header::new(src_addr, dst_addr, seq_num, flags, None, timestamp), &data)));
+        let header = Header::new(src_addr, dst_addr, seq_num, flags, checksum, timestamp);
         Self { header, data }
     }
 
@@ -50,7 +56,7 @@ impl Packet {
         Self { header, data }
     }
 
-    pub fn checksum(header: &Header, data: &Vec<u8>) -> u16 {
+    pub fn checksum(header: &Header, data: &Vec<u8>) -> u32 {
         let mut sum: u32 = 0;
         match header.src_addr.ip() {
             IpAddr::V4(ipv4) => sum = sum.wrapping_add(u32::from_be_bytes(ipv4.octets())),
@@ -70,7 +76,7 @@ impl Packet {
         if rand::random::<f32>() < CORRUPTION_RATE {
             sum = sum.wrapping_add(1);
         }
-        sum as u16
+        sum
     }
 }
 
@@ -80,21 +86,26 @@ pub struct Header {
     pub dst_addr: SocketAddr,   // 12 bytes
     pub seq_num: u32,           // 16 bytes
     pub flags: Flags,  // ack: 1, last: 2, syn: 4, fin: 8, dlv: 16, rdlv: 32  // 17 bytes
-    pub checksum: u16,          // 19 bytes
+    pub checksum: u32,          // 21 bytes
+    pub timestamp: Option<Duration>,    // 33 bytes
 }
 
 // Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
-pub const HEADER_SIZE: usize = 19;
+pub const HEADER_SIZE: usize = 33;
 
 // Implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, seq_num: u32, flags: Flags, checksum: Option<u16>) -> Self {
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
+            seq_num: u32, flags: Flags, checksum: Option<u32>,
+            timestamp: Option<Duration>) -> Self {
+        // Gera um timestamp usando o relógio local
         Self {
             src_addr,
             dst_addr,
             seq_num,
             flags,
             checksum: checksum.unwrap_or(0),
+            timestamp,
         }
     }
 
@@ -107,6 +118,7 @@ impl Header {
             flags,
             // TODO: Fix the checksum gambiarra
             checksum: Packet::checksum(&self, &Vec::new())+1,
+            timestamp: self.timestamp,
         }
     }
 
@@ -141,6 +153,7 @@ impl Header {
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.push(self.flags.value);
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
+        bytes.extend_from_slice(&Header::timestamp_to_bytes(self.timestamp));
         bytes
     }
 
@@ -156,7 +169,31 @@ impl Header {
             ),
             u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
             bytes[16].into(),
-            Some(u16::from_be_bytes([bytes[17], bytes[18]])),
+            Some(u32::from_be_bytes([bytes[17], bytes[18], bytes[19], bytes[20]])),
+            Header::bytes_to_timestamp(bytes[21..].try_into().unwrap() ),
         )
+    }
+
+    fn timestamp_to_bytes(time_stamp: Option<Duration>) -> [u8; 12] {
+        if time_stamp.is_none() {
+            return [0u8; 12];
+        }
+        let time_stamp = time_stamp.unwrap();
+        let secs = time_stamp.as_secs();
+        let nanos = time_stamp.subsec_nanos();
+
+        let mut bytes = [0u8; 12];
+        bytes[..8].copy_from_slice(&secs.to_be_bytes());
+        bytes[8..].copy_from_slice(&nanos.to_be_bytes());
+        bytes
+    }
+
+    fn bytes_to_timestamp(bytes: [u8; 12]) -> Option<Duration> {
+        if bytes.iter().all(|&b| b == 0) {
+            return None;
+        }
+        let secs = u64::from_be_bytes(bytes[..8].try_into().unwrap());
+        let nanos = u32::from_be_bytes(bytes[8..].try_into().unwrap());
+        Some((UNIX_EPOCH + Duration::new(secs, nanos)).duration_since(UNIX_EPOCH).unwrap())
     }
 }
