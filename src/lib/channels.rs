@@ -94,10 +94,15 @@ impl Channel {
             }
         }
         // Encaminha o ACK para o destinatário se houver um
-        if let Some((tx, seq_num)) = sends.get_mut(&packet.header.src_addr) {
-            if packet.header.seq_num < *seq_num { return; }
-            *seq_num = packet.header.seq_num + 1;
-            Channel::deliver(tx, packet);
+        match sends.get_mut(&packet.header.src_addr){
+            Some((tx, seq_num)) => {
+                if packet.header.seq_num < *seq_num { return; }
+                *seq_num = packet.header.seq_num + 1;
+                Channel::deliver(tx, packet);
+            }
+            None => {
+                debug_println!("->-> ACK recebido sem destinatário esperando");
+            },
         }
     }
 

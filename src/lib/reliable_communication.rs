@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
+use std::time::Duration;
 
 pub struct ReliableCommunication {
     channel: Channel,
@@ -54,31 +55,40 @@ impl ReliableCommunication {
 
     /// Read one already received message or wait for a message to arrive
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        let rcv = ||  self.receive_rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(TIMEOUT*100));
+        let rcv = ||  self.receive_rx.lock().unwrap().recv_timeout(Duration::from_millis(TIMEOUT*100));
         let mut pkts = self.pkts_per_source.lock().unwrap();
         let mut msgs = self.msgs_per_source.lock().unwrap();
-        while let Ok(packet) = rcv() {
-            if !packet.header.is_dlv() {
-                let Packet { header, data, .. } = packet;
-                pkts.entry(header.src_addr).or_insert(Vec::new()).extend(data);
-                if header.is_last() {
-                    let msg = pkts.remove(&header.src_addr).unwrap();
-                    if !header.r_dlv() {
+        loop {
+            match rcv() {
+                Ok(packet) => {if !packet.header.is_dlv() {
+                    let Packet { header, data, .. } = packet;
+                    pkts.entry(header.src_addr).or_insert(Vec::new()).extend(data);
+                    if header.is_last() {
+                        let msg = pkts.remove(&header.src_addr).unwrap();
+                        if !header.r_dlv() {
+                            buffer.extend(msg);
+                            return true
+                        }
+                        msgs.entry(header.src_addr).or_insert(Vec::new()).push(msg);
+                    }
+                } else {
+                    // pops a message from the buffer
+                    if let Some(msgs) = msgs.get_mut(&packet.header.src_addr) {
+                        let msg = msgs.remove(0);
                         buffer.extend(msg);
                         return true
                     }
-                    msgs.entry(header.src_addr).or_insert(Vec::new()).push(msg);
-                }
-            } else {
-                // pops a message from the buffer
-                if let Some(msgs) = msgs.get_mut(&packet.header.src_addr) {
-                    let msg = msgs.remove(0);
-                    buffer.extend(msg);
-                    return true
-                }
+                }}
+                Err(RecvTimeoutError::Timeout) => {
+                    debug_println!("Timeout ao receber mensagem");
+                    return false
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    debug_println!("Erro ao receber pacote: Canal de comunicação desconectado");
+                    return false
+                },
             }
         }
-        false
     }
 
     /// Broadcasts a message, reliability level may be configured in the config file
@@ -143,14 +153,20 @@ impl ReliableCommunication {
             // Envia todos os pacotes dentro da janela
             self.send_window(&mut next_seq_num, base, &packets);
             // Espera por um ACK
-            match ack_rx.recv_timeout(std::time::Duration::from_millis(TIMEOUT)) {
+            match ack_rx.recv_timeout(Duration::from_millis(TIMEOUT)) {
                 Ok(packet) => {
                     // assume que a listener está enviando o número do maior pacote que recebeu
                     // listener também garante que o pacote seja >= base
                     base = (packet.header.seq_num - start_packet + 1) as usize;
                 },
-                Err(RecvTimeoutError::Timeout) => {next_seq_num = base;},
-                Err(RecvTimeoutError::Disconnected) => return start_packet + next_seq_num as u32,
+                Err(RecvTimeoutError::Timeout) => {
+                    // debug_println!("Timeout ao enviar pacote");
+                    next_seq_num = base;
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    debug_println!("Erro ao enviar pacote: Canal de comunicação desconectado");
+                    return start_packet + next_seq_num as u32
+                },
             }
         }
         start_packet + next_seq_num as u32
