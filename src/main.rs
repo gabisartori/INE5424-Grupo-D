@@ -35,7 +35,7 @@ use config::{Broadcast, Node, AGENT_NUM, BROADCAST, LOCALHOST, MSG, NODES, N_MSG
 
 struct Agent {
     id: usize,
-    communication: ReliableCommunication
+    communication: Arc<ReliableCommunication>
 }
 
 impl Agent {
