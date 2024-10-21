@@ -7,7 +7,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use super::channels::Channel;
 use super::packet::{Packet, HEADER_SIZE};
-use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, W_SIZE};
+use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, MESSAGE_TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
@@ -19,9 +19,7 @@ pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
     register_to_sender_tx: Sender<(Sender<bool>, Vec<u8>, SocketAddr)>,
-    receive_rx: Mutex<Receiver<Packet>>,
-    pkts_per_source: Mutex<HashMap<SocketAddr, Vec<u8>>>,
-    msgs_per_source: Mutex<HashMap<SocketAddr, Vec<Vec<u8>>>>,
+    receive_rx: Mutex<Receiver<Vec<u8>>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -44,11 +42,7 @@ impl ReliableCommunication {
         std::thread::spawn(move || {
             ReliableCommunication::sender(socket, acks_rx, register_to_sender_rx, register_to_listener_tx);
         });
-        Self {
-            host, group, register_to_sender_tx, receive_rx,
-            pkts_per_source: Mutex::new(HashMap::new()),
-            msgs_per_source: Mutex::new(HashMap::new()),
-        }
+        Self { host, group, register_to_sender_tx, receive_rx }
     }
 
     /// Send a message to a specific destination
@@ -60,39 +54,12 @@ impl ReliableCommunication {
 
     /// Read one already received message or wait for a message to arrive
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        let rcv = ||  self.receive_rx.lock().unwrap().recv_timeout(Duration::from_millis(TIMEOUT*100));
-        let mut pkts = self.pkts_per_source.lock().unwrap();
-        let mut msgs = self.msgs_per_source.lock().unwrap();
-        loop {
-            match rcv() {
-                Ok(packet) => {if !packet.header.is_dlv() {
-                    let Packet { header, data, .. } = packet;
-                    pkts.entry(header.src_addr).or_insert(Vec::new()).extend(data);
-                    if header.is_last() {
-                        let msg = pkts.remove(&header.src_addr).unwrap();
-                        if !header.r_dlv() {
-                            buffer.extend(msg);
-                            return true
-                        }
-                        msgs.entry(header.src_addr).or_insert(Vec::new()).push(msg);
-                    }
-                } else {
-                    // pops a message from the buffer
-                    if let Some(msgs) = msgs.get_mut(&packet.header.src_addr) {
-                        let msg = msgs.remove(0);
-                        buffer.extend(msg);
-                        return true
-                    }
-                }}
-                Err(RecvTimeoutError::Timeout) => {
-                    debug_println!("Timeout ao receber mensagem");
-                    return false
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    debug_println!("Erro ao receber pacote: Canal de comunicação desconectado");
-                    return false
-                },
-            }
+        match self.receive_rx.lock().unwrap().recv_timeout(Duration::from_millis(MESSAGE_TIMEOUT)) {
+            Ok(msg) => {
+                buffer.extend(msg);
+                true
+            },
+            Err(_) => false,
         }
     }
 
@@ -170,11 +137,11 @@ impl ReliableCommunication {
                 // Send window
                 while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
                     socket.send_to(&packets[next_seq_num].to_bytes(), destination.clone()).unwrap();
-                    debug_println!("Agent {} sent packet {}", socket.local_addr().unwrap().port(), packets[next_seq_num].header.seq_num);
                     next_seq_num += 1;
                 }
 
                 // Wait for an ACK
+                // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
                 match acks_rx.recv_timeout(Duration::from_millis(TIMEOUT)) {
                     Ok(packet) => {
                         // Assume that the listener is sending the number of the highest packet it received
@@ -194,7 +161,6 @@ impl ReliableCommunication {
 
             // Return the result of the operation to the caller
             result_tx.send(true).unwrap();
-            continue;
         }
     }
 }
