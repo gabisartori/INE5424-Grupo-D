@@ -10,7 +10,6 @@ use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, MESSAGE_TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, Arc};
@@ -20,8 +19,9 @@ pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
     channel: Arc<Channel>,
-    register_to_sender_tx: Sender<(Sender<bool>, Vec<u8>, SocketAddr)>,
+    register_to_sender_tx: Sender<(Sender<bool>, Vec<Packet>, SocketAddr)>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
+    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, usize>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -37,7 +37,7 @@ impl ReliableCommunication {
         let channel = Channel::new(host.addr);
         let receive_rx = Mutex::new(receive_rx);
         
-        let instance = Arc::new(Self { host, group, channel, register_to_sender_tx, receive_rx });
+        let instance = Arc::new(Self { host, group, channel, register_to_sender_tx, receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
         let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
         // Spawn all threads
@@ -53,8 +53,31 @@ impl ReliableCommunication {
 
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
+        // Fragment message into packets
+        let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE - HEADER_SIZE).collect();
+        let mut dst_seq_num_cnt = self.dst_seq_num_cnt.lock().unwrap();
+        let start_packet = *dst_seq_num_cnt.entry(*dst_addr).or_insert(0);
+        dst_seq_num_cnt.insert(*dst_addr, start_packet + chunks.len());
+        
+        let packets: Vec<Packet> = chunks.iter().enumerate().map(|(i, chunk)| {
+            Packet::new(
+                self.channel.socket_address(),
+                *dst_addr,
+                (start_packet + i) as u32,
+                None,
+                i == (chunks.len() - 1),
+                false,
+                false,
+                false,
+                chunk.to_vec(),
+            )
+        }).collect();
+        self.send_pkts(dst_addr, packets)
+    }
+
+    fn send_pkts(&self, dst_addr: &SocketAddr, packets: Vec<Packet>) -> bool {
         let (result_tx, result_rx) = mpsc::channel();
-        self.register_to_sender_tx.send((result_tx, message, *dst_addr)).unwrap();
+        self.register_to_sender_tx.send((result_tx, packets, *dst_addr)).unwrap();
         result_rx.recv().unwrap()
     }
 
@@ -65,7 +88,11 @@ impl ReliableCommunication {
                 buffer.extend(msg);
                 true
             },
-            Err(_) => false,
+            Err(RecvTimeoutError::Timeout) => false,
+            Err(RecvTimeoutError::Disconnected) => {
+                debug_println!("Erro ao receber mensagem: Canal de comunicação desconectado");
+                false
+            },
         }
     }
 
@@ -106,31 +133,15 @@ impl ReliableCommunication {
     }
 
     /// Thread to handle the sending of messages
-    fn sender(self: Arc<Self>, acks_rx: Receiver<Packet>, register_from_user_rx: Receiver<(Sender<bool>, Vec<u8>, SocketAddr)>, register_to_listener_tx: Sender<(SocketAddr, u32)>) {
+    fn sender(self: Arc<Self>, acks_rx: Receiver<Packet>,
+        register_from_user_rx: Receiver<(Sender<bool>, Vec<Packet>, SocketAddr)>,
+        register_to_listener_tx: Sender<(SocketAddr, u32)>) {
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
-        let mut destination_sequence_number_counter: HashMap<SocketAddr, usize> = HashMap::new();
         let mut base;
         let mut next_seq_num;
         // Message sending algorithm
-        while let Ok((result_tx, message, dst_addr)) = register_from_user_rx.recv() {
-            // Fragment message into packets
-            let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE - HEADER_SIZE).collect();
-            let start_packet = *destination_sequence_number_counter.entry(dst_addr).or_insert(0);
-            destination_sequence_number_counter.insert(dst_addr, start_packet + chunks.len());
-            
-            let packets: Vec<Packet> = chunks.iter().enumerate().map(|(i, chunk)| {
-                Packet::new(
-                    self.channel.socket_address(),
-                    dst_addr,
-                    (start_packet + i) as u32,
-                    None,
-                    i == (chunks.len() - 1),
-                    false,
-                    false,
-                    false,
-                    chunk.to_vec(),
-                )
-            }).collect();
+        while let Ok((result_tx, packets, dst_addr)) = register_from_user_rx.recv() {
+            let start_packet = packets.first().expect("Vetor de pacotes está vazio").header.seq_num;
 
             // Register the destination address and the sequence to the listener thread
             register_to_listener_tx.send((dst_addr, packets.first().unwrap().header.seq_num)).unwrap();
@@ -138,7 +149,7 @@ impl ReliableCommunication {
             // Go back-N algorithm to send packets
             base = 0;
             next_seq_num = 0;
-            while base < packets.len() {
+            'message_loop: while base < packets.len() {
                 // Send window
                 while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
                     self.channel.send(&packets[next_seq_num]);
@@ -159,7 +170,9 @@ impl ReliableCommunication {
                     Err(RecvTimeoutError::Disconnected) => {
                         debug_println!("Erro ao enviar pacote: Canal de comunicação desconectado");
                         result_tx.send(false).unwrap();
-                        return;
+                        // continues the message_loop loop
+                        continue 'message_loop;
+
                     },
                 }
             }
@@ -177,15 +190,7 @@ impl ReliableCommunication {
             if packet.header.is_ack() {
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
-                    match expected_acks.entry(key) {
-                        Entry::Occupied(mut entry) => {
-                            let seq_num = entry.get_mut();
-                            *seq_num = start_seq;
-                        },
-                        Entry::Vacant(entry) => {
-                            entry.insert(start_seq);
-                        }
-                    }    
+                    expected_acks.entry(key).or_insert(start_seq);
                 }
                 match expected_acks.get_mut(&packet.header.src_addr){
                     Some(seq_num) => {
