@@ -10,6 +10,7 @@ use super::packet::{Packet, HEADER_SIZE};
 use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, MESSAGE_TIMEOUT, W_SIZE};
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, Arc};
@@ -18,6 +19,7 @@ use std::time::Duration;
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
+    channel: Arc<Channel>,
     register_to_sender_tx: Sender<(Sender<bool>, Vec<u8>, SocketAddr)>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
 }
@@ -26,23 +28,31 @@ pub struct ReliableCommunication {
 impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
-    pub fn new(host: Node, group: Vec<Node>) -> Self {
+    pub fn new(host: Node, group: Vec<Node>) -> Arc<Self> {
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
         let (acks_tx, acks_rx) = mpsc::channel();
         let (register_to_listener_tx, register_to_listener_rx) = mpsc::channel();
-
+        let (channel_tx, channel_rx) = mpsc::channel();
+        
         let socket = Arc::new(std::net::UdpSocket::bind(host.addr).unwrap());
         
-        let channel = Channel::new(socket.clone(), receive_tx, acks_tx, register_to_listener_rx);
+        let channel = Arc::new(Channel::new(socket.clone(), channel_tx));
+        let socket_reader = Arc::clone(&channel);
         let receive_rx = Mutex::new(receive_rx);
         
-        // Spawn listener and sender threads
-        channel.run();
+        let instance = Arc::new(Self { host, group, channel, register_to_sender_tx, receive_rx });
+        let receiver_clone = Arc::clone(&instance);
+        // Spawn all threads
+        socket_reader.run();
         std::thread::spawn(move || {
             ReliableCommunication::sender(socket, acks_rx, register_to_sender_rx, register_to_listener_tx);
         });
-        Self { host, group, register_to_sender_tx, receive_rx }
+        std::thread::spawn(move || {
+            receiver_clone.listener(channel_rx, receive_tx, acks_tx, register_to_listener_rx);
+        });
+
+        instance
     }
 
     /// Send a message to a specific destination
@@ -161,6 +171,59 @@ impl ReliableCommunication {
 
             // Return the result of the operation to the caller
             result_tx.send(true).unwrap();
+        }
+    }
+
+    fn listener(self: Arc<Self>, channel_rx: Receiver<Packet>, messages_tx: Sender<Vec<u8>>, acks_tx: Sender<Packet>, register_from_sender_rx: Receiver<(SocketAddr, u32)>) {
+        let mut packets_per_source: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
+        let mut expected_acks: HashMap<SocketAddr, u32> = HashMap::new();
+        while let Ok(packet) = channel_rx.recv() {
+            if packet.header.is_ack() {
+                // Handle ack
+                while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
+                    match expected_acks.entry(key) {
+                        Entry::Occupied(mut entry) => {
+                            let seq_num = entry.get_mut();
+                            *seq_num = start_seq;
+                        },
+                        Entry::Vacant(entry) => {
+                            entry.insert(start_seq);
+                        }
+                    }    
+                }
+                match expected_acks.get_mut(&packet.header.src_addr){
+                    Some(seq_num) => {
+                        if packet.header.seq_num < *seq_num { continue; }
+                        *seq_num = packet.header.seq_num + 1;
+                        acks_tx.send(packet).unwrap();
+                    }
+                    None => {
+                        debug_println!("->-> ACK recebido sem destinatário esperando");
+                    },
+                }
+            } else {
+                // Handle data
+                let packets = packets_per_source.entry(packet.header.src_addr).or_insert(Vec::new());
+                let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
+        
+                // Ignore the packet if the sequence number is higher than expected
+                if packet.header.seq_num > expected { continue; }
+                // Send ack otherwise
+                self.channel.send(&packet.get_ack());
+                if packet.header.seq_num < expected { continue; }
+                
+                if packet.header.is_last() {
+                    let mut message = Vec::new();
+                    if !packets.is_empty() && packets.first().expect("Vetor de pacotes está vazio").header.is_last() { packets.remove(0); }
+                    for packet in packets.iter() {
+                        message.extend(&packet.data);
+                    }
+                    message.extend(&packet.data);
+                    messages_tx.send(message).unwrap();
+                    packets.clear();
+                }
+                packets.push(packet);
+            }
         }
     }
 }
