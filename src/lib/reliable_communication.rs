@@ -11,7 +11,7 @@ use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, MESSAGE_TI
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, Arc};
 use std::time::Duration;
@@ -33,23 +33,19 @@ impl ReliableCommunication {
         let (receive_tx, receive_rx) = mpsc::channel();
         let (acks_tx, acks_rx) = mpsc::channel();
         let (register_to_listener_tx, register_to_listener_rx) = mpsc::channel();
-        let (channel_tx, channel_rx) = mpsc::channel();
-        
-        let socket = Arc::new(std::net::UdpSocket::bind(host.addr).unwrap());
-        
-        let channel = Arc::new(Channel::new(socket.clone(), channel_tx));
-        let socket_reader = Arc::clone(&channel);
+                
+        let channel = Channel::new(host.addr);
         let receive_rx = Mutex::new(receive_rx);
         
         let instance = Arc::new(Self { host, group, channel, register_to_sender_tx, receive_rx });
+        let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
         // Spawn all threads
-        socket_reader.run();
         std::thread::spawn(move || {
-            ReliableCommunication::sender(socket, acks_rx, register_to_sender_rx, register_to_listener_tx);
+            sender_clone.sender(acks_rx, register_to_sender_rx, register_to_listener_tx);
         });
         std::thread::spawn(move || {
-            receiver_clone.listener(channel_rx, receive_tx, acks_tx, register_to_listener_rx);
+            receiver_clone.listener(receive_tx, acks_tx, register_to_listener_rx);
         });
 
         instance
@@ -110,7 +106,7 @@ impl ReliableCommunication {
     }
 
     /// Thread to handle the sending of messages
-    fn sender(socket: Arc<UdpSocket>, acks_rx: Receiver<Packet>, register_from_user_rx: Receiver<(Sender<bool>, Vec<u8>, SocketAddr)>, register_to_listener_tx: Sender<(SocketAddr, u32)>) {
+    fn sender(self: Arc<Self>, acks_rx: Receiver<Packet>, register_from_user_rx: Receiver<(Sender<bool>, Vec<u8>, SocketAddr)>, register_to_listener_tx: Sender<(SocketAddr, u32)>) {
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
         let mut destination_sequence_number_counter: HashMap<SocketAddr, usize> = HashMap::new();
         let mut base;
@@ -124,7 +120,7 @@ impl ReliableCommunication {
             
             let packets: Vec<Packet> = chunks.iter().enumerate().map(|(i, chunk)| {
                 Packet::new(
-                    socket.local_addr().unwrap(),
+                    self.channel.socket_address(),
                     dst_addr,
                     (start_packet + i) as u32,
                     None,
@@ -142,11 +138,10 @@ impl ReliableCommunication {
             // Go back-N algorithm to send packets
             base = 0;
             next_seq_num = 0;
-            let destination = packets[0].header.dst_addr;
             while base < packets.len() {
                 // Send window
                 while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
-                    socket.send_to(&packets[next_seq_num].to_bytes(), destination.clone()).unwrap();
+                    self.channel.send(&packets[next_seq_num]);
                     next_seq_num += 1;
                 }
 
@@ -174,10 +169,11 @@ impl ReliableCommunication {
         }
     }
 
-    fn listener(self: Arc<Self>, channel_rx: Receiver<Packet>, messages_tx: Sender<Vec<u8>>, acks_tx: Sender<Packet>, register_from_sender_rx: Receiver<(SocketAddr, u32)>) {
+    fn listener(self: Arc<Self>, messages_tx: Sender<Vec<u8>>, acks_tx: Sender<Packet>, register_from_sender_rx: Receiver<(SocketAddr, u32)>) {
         let mut packets_per_source: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
         let mut expected_acks: HashMap<SocketAddr, u32> = HashMap::new();
-        while let Ok(packet) = channel_rx.recv() {
+        loop {
+            let packet = self.channel.receive();
             if packet.header.is_ack() {
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
