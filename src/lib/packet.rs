@@ -130,13 +130,13 @@ impl Header {
         self.flags.is_set(Flags::ACK)
     }
 
-    pub fn is_dlv(&self) -> bool {
-        self.flags.is_set(Flags::DLV)
-    }
+    // pub fn is_dlv(&self) -> bool {
+    //     self.flags.is_set(Flags::DLV)
+    // }
 
-    pub fn r_dlv(&self) -> bool {
-        self.flags.is_set(Flags::RDLV)
-    }
+    // pub fn r_dlv(&self) -> bool {
+    //     self.flags.is_set(Flags::RDLV)
+    // }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -158,19 +158,31 @@ impl Header {
     }
 
     pub fn from_bytes(bytes: [u8; HEADER_SIZE]) -> Self {
+        let mut start = 0;
+        let src_addr = SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::from([bytes[start], bytes[start + 1], bytes[start + 2], bytes[start + 3]])),
+            u16::from_be_bytes([bytes[start + 4], bytes[start + 5]]),
+        );
+        start += 6;
+        let dst_addr = SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::from([bytes[start], bytes[start + 1], bytes[start + 2], bytes[start + 3]])),
+            u16::from_be_bytes([bytes[start + 4], bytes[start + 5]]),
+        );
+        start += 6;
+        let seq_num = u32::from_be_bytes([bytes[start], bytes[start + 1], bytes[start + 2], bytes[start + 3]]);
+        start += 4;
+        let flags = bytes[start].into();
+        start += 1;
+        let checksum = Some(u32::from_be_bytes([bytes[start], bytes[start + 1], bytes[start + 2], bytes[start + 3]]));
+        start += 4;
+        let timestamp = Header::bytes_to_timestamp(bytes[start..].try_into().unwrap());
         Header::new(
-            SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::from([bytes[0], bytes[1], bytes[2], bytes[3]])),
-                u16::from_be_bytes([bytes[4], bytes[5]]),
-            ),
-            SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::from([bytes[6], bytes[7], bytes[8], bytes[9]])),
-                u16::from_be_bytes([bytes[10], bytes[11]]),
-            ),
-            u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
-            bytes[16].into(),
-            Some(u32::from_be_bytes([bytes[17], bytes[18], bytes[19], bytes[20]])),
-            Header::bytes_to_timestamp(bytes[21..].try_into().unwrap() ),
+            src_addr,
+            dst_addr,
+            seq_num,
+            flags,
+            checksum,
+            timestamp,
         )
     }
 

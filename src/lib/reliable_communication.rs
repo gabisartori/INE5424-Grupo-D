@@ -73,7 +73,7 @@ impl ReliableCommunication {
     pub fn broadcast(&self, message: Vec<u8>) -> u32 {
         match BROADCAST {
             Broadcast::NONE => {
-                let idx = (self.host.agent_number + 1) as usize % self.group.len();
+                let idx = (self.host.agent_number + 1) % self.group.len();
                 self.send(&self.group[idx].addr, message) as u32
             },
             Broadcast::BEB => self.beb(message, &self.group).len() as u32,
