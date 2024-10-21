@@ -29,6 +29,7 @@ pub const BROADCAST: Broadcast = Broadcast::URB;
 
 pub const W_SIZE: usize = 5;
 pub const TIMEOUT: u64 = 1;
+pub const MESSAGE_TIMEOUT: u64 = 2500;
 pub const HEARTBEAT_INTERVAL: u64 = 500;
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000;
 pub const BUFFER_SIZE: usize = 2<<9;
