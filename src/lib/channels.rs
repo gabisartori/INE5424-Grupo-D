@@ -2,9 +2,9 @@
 A camada de comunicação mais baixa, representa os canais de comunicação (channels)
 e implementa sockets para comunicação entre os processos participantes.
 */
+use std::cell::RefCell;
 use std::net::{UdpSocket, SocketAddr};
-use std::io::Error;
-use std::sync::mpsc::{Sender, Receiver};
+use std::sync::{Arc, mpsc::{Sender, Receiver}};
 use std::thread;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -14,23 +14,25 @@ use super::packet::Packet;
 // use super::failure_detection;
 
 // Estrutura básica para a camada de comunicação por canais
-#[derive(Clone)]
 pub struct Channel {
-    socket: std::sync::Arc<UdpSocket>,
+    socket: Arc<UdpSocket>,
+    packets_tx: Sender<Packet>,
+    acks_tx: Sender<Packet>,
+    register_from_sender_rx: Receiver<(SocketAddr, u32)>,
+    expected_acks: RefCell<HashMap<SocketAddr, u32>>,
+    expected_messages: RefCell<HashMap<SocketAddr, u32>>,
 }
 
 impl Channel {
     /// Constructor
-    pub fn new(bind_addr: &SocketAddr) -> Result<Self, Error> {
-        let socket = std::sync::Arc::new(UdpSocket::bind(bind_addr)?);
-        Ok(Self { socket })
+    pub fn new(socket: Arc<UdpSocket>, packets_tx: Sender<Packet>, acks_tx: Sender<Packet>, register_from_sender_rx: Receiver<(SocketAddr, u32)>) -> Self {
+        Self { socket, packets_tx, acks_tx, register_from_sender_rx, expected_acks: RefCell::new(HashMap::new()), expected_messages: RefCell::new(HashMap::new()) }
     }
     
     /// Spawns the thread that listens for incoming messages
-    pub fn run(&self, tx_msgs: Sender<Packet>, send_rx: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
-        let clone = self.clone();
+    pub fn run(self) {
         thread::spawn(move || {
-            Channel::listener(&clone, tx_msgs, send_rx);
+            self.listener();
         });
     }
 
@@ -38,9 +40,7 @@ impl Channel {
     /// This function will be responsible for routing and filtering the received packets to the correct destination
     /// Routing is done using the channels stablished by those who are waiting for something
     /// Filtering is done by checking the checksum and sequence number of the received packet
-    fn listener(&self, tx_msgs: Sender<Packet>, rx_acks: Receiver<(Sender<Packet>, SocketAddr, u32)>) {
-        let mut sends: HashMap<SocketAddr, (Sender<Packet>, u32)> = HashMap::new();
-        let mut messages_sequence_numbers: HashMap<SocketAddr, u32> = HashMap::new();
+    fn listener(&self) {
         loop {
             let packet;
             match self.receive() {
@@ -48,28 +48,29 @@ impl Channel {
                 None => continue 
             };
             // Verifica se o pacote recebido é válido
-            if !Channel::validate_message(&packet) {continue;}
+            if !self.validate_message(&packet) {continue;}
             
             if packet.header.is_ack() {
-                Channel::process_acks(packet, &mut sends, &rx_acks);
+                self.process_acks(packet);
             } else {
                 // Verificar se o pacote é o próximo esperado
-                let next_seq_num = *messages_sequence_numbers.get(&packet.header.src_addr).unwrap_or(&0);
+                let next_seq_num = *self.expected_messages.borrow().get(&packet.header.src_addr).unwrap_or(&0);
+                debug_println!("Agent {} received packet {}, expected {}", packet.header.dst_addr.port(), packet.header.seq_num, next_seq_num);
                 if packet.header.seq_num > next_seq_num {continue;}
                 // Send ACK
                 if !self.send(&packet.get_ack()) {continue;}
                 // Encaminhar o pacote para a fila de mensagens se for o próximo esperado
                 if packet.header.seq_num < next_seq_num { continue; }
                 
-                messages_sequence_numbers.insert(packet.header.src_addr, packet.header.seq_num + 1);
-                Channel::deliver(&tx_msgs, packet);
+                self.expected_messages.borrow_mut().insert(packet.header.src_addr, packet.header.seq_num + 1);
+                Channel::deliver(&self.packets_tx, packet);
             }
         }
     }
 
     /// Validates the received message
     /// For now, only validates the checksum
-    fn validate_message(packet: &Packet) -> bool {
+    fn validate_message(&self, packet: &Packet) -> bool {
         // Checksum
         let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
         c1
@@ -77,28 +78,26 @@ impl Channel {
 
     /// Checks for senders waiting for the ACK received
     /// If there is someone waiting, forwards the ACK to the sender
-    fn process_acks(packet: Packet,
-                    sends: &mut HashMap<SocketAddr, (Sender<Packet>, u32)>,
-                    rx_acks: &Receiver<(Sender<Packet>, SocketAddr, u32)>) {
+    fn process_acks(&self, packet: Packet) {
+        debug_println!("Agent {} received ack {}", packet.header.dst_addr.port(), packet.header.seq_num);
         // Verifica se há alguém esperando pelo ACK recebido
-        while let Ok((tx, key, start_seq)) = rx_acks.try_recv() {
-            match sends.entry(key) {
+        while let Ok((key, start_seq)) = self.register_from_sender_rx.try_recv() {
+            match self.expected_acks.borrow_mut().entry(key) {
                 Entry::Occupied(mut entry) => {
-                    let (tx_, seq_num) = entry.get_mut();
-                    *tx_ = tx;
+                    let seq_num = entry.get_mut();
                     *seq_num = start_seq;
                 },
                 Entry::Vacant(entry) => {
-                    entry.insert((tx, start_seq));
+                    entry.insert(start_seq);
                 }
             }
         }
         // Encaminha o ACK para o destinatário se houver um
-        match sends.get_mut(&packet.header.src_addr){
-            Some((tx, seq_num)) => {
+        match self.expected_acks.borrow_mut().get_mut(&packet.header.src_addr){
+            Some(seq_num) => {
                 if packet.header.seq_num < *seq_num { return; }
                 *seq_num = packet.header.seq_num + 1;
-                Channel::deliver(tx, packet);
+                Channel::deliver(&self.acks_tx, packet);
             }
             None => {
                 debug_println!("->-> ACK recebido sem destinatário esperando");
