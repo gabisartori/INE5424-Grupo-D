@@ -3,8 +3,7 @@ A camada de comunicação mais baixa, representa os canais de comunicação (cha
 e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::UdpSocket;
-use std::sync::{Arc, mpsc::Sender};
-use std::thread;
+use std::sync::Arc;
 
 use crate::config::{BUFFER_SIZE, LOSS_RATE};
 use super::packet::Packet;
@@ -14,26 +13,13 @@ use super::packet::Packet;
 #[derive(Clone)]
 pub struct Channel {
     socket: Arc<UdpSocket>,
-    packets_tx: Sender<Packet>,
 }
 
 impl Channel {
     /// Constructor
-    pub fn new(socket: Arc<UdpSocket>, packets_tx: Sender<Packet>) -> Self {
-        Self { socket, packets_tx }
-    }
-    
-    /// Spawns the thread that listens for incoming messages
-    /// This thread will be responsible for routing and filtering the received packets to the correct destination
-    /// Routing is done using the channels stablished by those who are waiting for something
-    /// Filtering is done by checking the checksum and sequence number of the received packet
-    pub fn run(self: Arc<Self>) {
-        thread::spawn(move || {
-            loop {
-                let packet = self.receive();
-                if self.validate_message(&packet) { self.packets_tx.send(packet).unwrap(); }
-            }
-        });
+    pub fn new(bind_addr: std::net::SocketAddr) -> Arc<Self> {
+        let socket = Arc::new(UdpSocket::bind(bind_addr).unwrap());
+        Arc::new(Self { socket })
     }
 
     /// Validates the received message
@@ -45,7 +31,7 @@ impl Channel {
     }
 
     /// Reads a packet from the socket or waits for a packet to arrive
-    fn receive(&self) -> Packet {
+    pub fn receive(&self) -> Packet {
         loop {
             let mut buffer = [0; BUFFER_SIZE];
             let size;
@@ -57,9 +43,12 @@ impl Channel {
                     continue;
                 },
             }
+            let packet = Packet::from_bytes(buffer, size);
             // Simula perda de pacotes
             if rand::random::<f32>() < LOSS_RATE { continue; }
-            return Packet::from_bytes(buffer, size);
+            // Verifica se o pacote foi corrompido
+            if !self.validate_message(&packet) { continue; }
+            return packet
         }
     }
 
@@ -80,5 +69,9 @@ impl Channel {
                 false
             }
         }
+    }
+
+    pub fn socket_address(&self) -> std::net::SocketAddr {
+        self.socket.local_addr().unwrap()
     }
 }
