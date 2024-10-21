@@ -48,8 +48,8 @@ impl Agent {
 
     fn listener(&self) -> u32 {
         let mut acertos = 0;
-        let stop = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*AGENT_NUM};
-        for i in 0..stop {
+        let mut i = 0;
+        loop {
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
@@ -69,6 +69,7 @@ impl Agent {
                 // connverts the message to a string
                 std::io::Write::write_all(&mut file, &message).expect("Erro ao escrever no arquivo");
             }
+            i += 1;
         }
         return acertos;
     }
