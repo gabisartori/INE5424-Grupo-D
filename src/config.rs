@@ -7,7 +7,7 @@ use std::clone::Clone;
 #[derive(Debug)]
 pub struct Node {
     pub addr: SocketAddr,
-    pub agent_number: u32
+    pub agent_number: usize
 }
 
 #[derive(PartialEq)]
@@ -25,7 +25,7 @@ pub const N_MSGS: u32 = 10;
 // Configurações da comunicação
 pub const CORRUPTION_RATE: f32 = 0.;
 pub const LOSS_RATE: f32 = 0.;
-pub const BROADCAST: Broadcast = Broadcast::URB;
+pub const BROADCAST: Broadcast = Broadcast::BEB;
 
 pub const W_SIZE: usize = 5;
 pub const TIMEOUT: u64 = 1;

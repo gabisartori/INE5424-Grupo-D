@@ -141,7 +141,9 @@ fn create_agents(id: usize) -> Arc<Agent> {
 
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..AGENT_NUM {
-        nodes.push(Node{addr: SocketAddr::new(LOCALHOST, 3100 + (i as u16)), agent_number: i});
+        nodes.push(Node{addr: SocketAddr::new(LOCALHOST, 
+            3100 + (i as u16)),
+            agent_number: i as usize});
     }
 
     if let Some(remote_nodes) = NODES {
