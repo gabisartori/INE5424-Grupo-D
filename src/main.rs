@@ -27,11 +27,11 @@ mod lib {
     pub mod packet;
     pub mod flags;
 }
-use lib::reliable_communication::ReliableCommunication;
+use lib::reliable_communication::{ReliableCommunication, Node};
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Broadcast, Node, AGENT_NUM, BROADCAST, LOCALHOST, MSG, NODES, N_MSGS};
+use config::{Broadcast, AGENT_NUM, BROADCAST, LOCALHOST, PORT,MSG, N_MSGS};
 
 struct Agent {
     id: usize,
@@ -46,7 +46,7 @@ impl Agent {
         }
     }
 
-    fn listener(&self) -> u32 {
+    fn receiver(&self) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -74,7 +74,7 @@ impl Agent {
         return acertos;
     }
 
-    fn sender(&self) -> u32 {
+    fn creater(&self) -> u32 {
         let mut acertos= 0;
         for i in 0..N_MSGS {
             // Send message to the selected node
@@ -101,26 +101,15 @@ impl Agent {
         true
     }
 
-    // fn pick_destination(&self) -> u32 {
-    //     let size = self.communication.group.len() as u32;
-    //     if cfg!(debug_assertions) {
-    //         let dst = rand::thread_rng().gen_range(0..size);
-    //         if dst  == self.id { (dst + 1) % size }
-    //         else { dst }
-    //     } else {
-    //         (self.id + 1) % size
-    //     }
-    // }
-
     pub fn run(self: Arc<Self>) {
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
-        let sender = thread::spawn(move || sender_clone.sender());
-        let listener = thread::spawn(move || listener_clone.listener());
+        let sender = thread::spawn(move || sender_clone.creater());
+        let listener = thread::spawn(move || listener_clone.receiver());
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
-        let max = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*AGENT_NUM};
+        let max = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*(AGENT_NUM as u32)};
         let path = format!("tests/Resultado.txt");
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
@@ -142,15 +131,10 @@ fn create_agents(id: usize) -> Arc<Agent> {
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..AGENT_NUM {
         nodes.push(Node{addr: SocketAddr::new(LOCALHOST, 
-            3100 + (i as u16)),
-            agent_number: i as usize});
+            PORT + (i as u16)),
+            agent_number: i});
     }
-
-    if let Some(remote_nodes) = NODES {
-        for node in remote_nodes {
-            nodes.push(Node{addr: node.addr, agent_number: node.agent_number});
-        }
-    }
+    
     let agent = Arc::new(Agent::new(id, nodes));
     agent
 

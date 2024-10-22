@@ -1,14 +1,7 @@
 #![allow(dead_code)]
-
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::clone::Clone;
-
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct Node {
-    pub addr: SocketAddr,
-    pub agent_number: usize
-}
+use std::net::{IpAddr, Ipv4Addr};
+pub const LOCALHOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+pub const PORT: u16 = 3000;
 
 #[derive(PartialEq)]
 pub enum Broadcast {
@@ -19,40 +12,17 @@ pub enum Broadcast {
 }
 
 // Quantia de agentes locais a serem criados
-pub const AGENT_NUM: u32 = 50;
+pub const AGENT_NUM: usize = 50;
 pub const N_MSGS: u32 = 10;
+pub const BUFFER_SIZE: usize = 2<<9;
 
 // Configurações da comunicação
 pub const CORRUPTION_RATE: f32 = 0.;
 pub const LOSS_RATE: f32 = 0.;
 pub const BROADCAST: Broadcast = Broadcast::URB;
 
-pub const W_SIZE: usize = 5;
-pub const TIMEOUT: u64 = 1;
-pub const MESSAGE_TIMEOUT: u64 = 2500;
 pub const HEARTBEAT_INTERVAL: u64 = 500;
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000;
-pub const BUFFER_SIZE: usize = 2<<9;
-
-/*
-    Existem dois estados principais para os valores de AGENT_NUM e NODES
-    1. Cenário de teste local: AGENT_NUM é um valor qualquer e não há NODES remotos
-    2. Cenário que imita um ambiente distribuído: AGENT_NUM é 1 (apenas a própria máquina) e NODES é um vetor com os vários endereços de outras máquinas pertencentes ao grupo
-*/
-
-// Endereços IP úteis
-pub const LOCALHOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-pub const MAYKON: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 208));
-pub const SARTORI: IpAddr = IpAddr::V4(Ipv4Addr::new(150, 162, 77, 181));
-
-// Endereços de agentes externos
-// pub const NODES: Option<&[Node]> = Some(&[
-//     Node { addr: SocketAddr::new(MAYKON, 8080), agent_number: 1 },
-//     Node { addr: SocketAddr::new(MAYKON, 8081), agent_number: 2 },
-//     Node { addr: SocketAddr::new(MAYKON, 8082), agent_number: 3 },
-//     Node { addr: SocketAddr::new(MAYKON, 8083), agent_number: 4 }
-// ]);
-pub const NODES: Option<&[Node]> = None;
 
 pub const MSG: &str = "
 --------------------------------------
