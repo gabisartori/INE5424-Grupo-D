@@ -21,7 +21,7 @@ pub struct ReliableCommunication {
     channel: Arc<Channel>,
     register_to_sender_tx: Sender<(Sender<bool>, Vec<Packet>, SocketAddr)>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
-    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, usize>>,
+    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -53,26 +53,29 @@ impl ReliableCommunication {
 
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> bool {
-        // Fragment message into packets
+        let packets = self.get_packets(dst_addr, message, false);
+        self.send_pkts(dst_addr, packets)
+    }
+    /// Fragment message into packets
+    fn get_packets(&self, dst_addr: &SocketAddr,
+        message: Vec<u8>, gossip: bool) -> Vec<Packet> {
         let chunks: Vec<&[u8]> = message.chunks(BUFFER_SIZE - HEADER_SIZE).collect();
         let mut dst_seq_num_cnt = self.dst_seq_num_cnt.lock().unwrap();
         let start_packet = *dst_seq_num_cnt.entry(*dst_addr).or_insert(0);
-        dst_seq_num_cnt.insert(*dst_addr, start_packet + chunks.len());
+        dst_seq_num_cnt.insert(*dst_addr, start_packet + chunks.len() as u32);
         
-        let packets: Vec<Packet> = chunks.iter().enumerate().map(|(i, chunk)| {
+        chunks.iter().enumerate().map(|(i, chunk)| {
             Packet::new(
                 self.channel.socket_address(),
                 *dst_addr,
-                (start_packet + i) as u32,
+                start_packet + i as u32,
                 None,
                 i == (chunks.len() - 1),
                 false,
-                false,
-                false,
+                gossip,
                 chunk.to_vec(),
             )
-        }).collect();
-        self.send_pkts(dst_addr, packets)
+        }).collect()
     }
 
     fn send_pkts(&self, dst_addr: &SocketAddr, packets: Vec<Packet>) -> bool {
