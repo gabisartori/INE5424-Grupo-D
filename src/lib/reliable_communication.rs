@@ -7,17 +7,28 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use super::channels::Channel;
 use super::packet::{Packet, HEADER_SIZE};
-use crate::config::{Node, Broadcast, BROADCAST, BUFFER_SIZE, TIMEOUT, MESSAGE_TIMEOUT, W_SIZE};
+use crate::config::{Broadcast, BROADCAST, BUFFER_SIZE};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, Arc};
 use std::time::Duration;
+use std::clone::Clone;
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub struct Node {
+    pub addr: SocketAddr,
+    pub agent_number: usize
+}
 
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
+    timeout: u64,
+    message_timeout: u64,
+    w_size: usize,
     channel: Arc<Channel>,
     register_to_sender_tx: Sender<(Sender<bool>, Vec<Packet>, SocketAddr)>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
@@ -26,6 +37,9 @@ pub struct ReliableCommunication {
 
 // TODO: Fazer com que a inicialização seja de um grupo
 impl ReliableCommunication {
+    pub const W_SIZE: usize = 5;
+    pub const TIMEOUT: u64 = 1;
+    pub const MESSAGE_TIMEOUT: u64 = 1000;
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
     pub fn new(host: Node, group: Vec<Node>) -> Arc<Self> {
@@ -37,7 +51,12 @@ impl ReliableCommunication {
         let channel = Channel::new(host.addr);
         let receive_rx = Mutex::new(receive_rx);
         
-        let instance = Arc::new(Self { host, group, channel, register_to_sender_tx, receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
+        let instance = Arc::new(Self {
+            host, group, timeout: ReliableCommunication::TIMEOUT,
+            message_timeout: ReliableCommunication::MESSAGE_TIMEOUT,
+            w_size:ReliableCommunication::W_SIZE,
+            channel, register_to_sender_tx,
+            receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
         let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
         // Spawn all threads
@@ -86,7 +105,7 @@ impl ReliableCommunication {
 
     /// Read one already received message or wait for a message to arrive
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        match self.receive_rx.lock().unwrap().recv_timeout(Duration::from_millis(MESSAGE_TIMEOUT)) {
+        match self.receive_rx.lock().unwrap().recv_timeout(Duration::from_millis(self.message_timeout)) {
             Ok(msg) => {
                 buffer.extend(msg);
                 true
@@ -154,14 +173,14 @@ impl ReliableCommunication {
             next_seq_num = 0;
             'message_loop: while base < packets.len() {
                 // Send window
-                while next_seq_num < base + W_SIZE && next_seq_num < packets.len() {
+                while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                     self.channel.send(&packets[next_seq_num]);
                     next_seq_num += 1;
                 }
 
                 // Wait for an ACK
                 // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
-                match acks_rx.recv_timeout(Duration::from_millis(TIMEOUT)) {
+                match acks_rx.recv_timeout(Duration::from_millis(self.timeout)) {
                     Ok(packet) => {
                         // Assume that the listener is sending the number of the highest packet it received
                         // The listener also guarantees that the packet is >= base
@@ -218,7 +237,7 @@ impl ReliableCommunication {
                 
                 if packet.header.is_last() {
                     let mut message = Vec::new();
-                    if !packets.is_empty() && packets.first().expect("Vetor de pacotes está vazio").header.is_last() { packets.remove(0); }
+                    if !packets.is_empty() && packets.first().unwrap().header.is_last() { packets.remove(0); }
                     for packet in packets.iter() {
                         message.extend(&packet.data);
                     }
