@@ -12,8 +12,8 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
-            seq_num: u32, checksum: Option<u32>, is_last: bool,
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
+            seq_num: u32, is_last: bool,
             is_ack: bool, gossip: bool, data: Vec<u8>) -> Self {
         let mut flags = Flags::EMP;
         
@@ -26,14 +26,29 @@ impl Packet {
         if gossip {
             flags = flags | Flags::GSP;
         }
-        let checksum = checksum.or_else(|| Some(Self::checksum(&Header::new(src_addr, dst_addr, seq_num, flags, None), &data)));
-        let header = Header::new(src_addr, dst_addr, seq_num, flags, checksum);
+        let checksum = Self::checksum(&Header::new(src_addr, dst_addr, origin, seq_num, flags, 0), &data);
+        let header = Header::new(src_addr, dst_addr, origin, seq_num, flags, checksum);
         Self { header, data }
     }
 
     pub fn get_ack(&self) -> Self {
         let ack_header = self.header.get_ack();
         Self {header: ack_header, data: Vec::new()}  
+    }
+
+    pub fn get_resend(&self, new_dst: SocketAddr) -> Self {
+        let mut new_header = Header{
+            src_addr: self.header.dst_addr,
+            dst_addr: new_dst,
+            origin: self.header.origin,
+            seq_num: self.header.seq_num,
+            flags: self.header.flags,
+            checksum: 0,
+        };
+        let checksum = Self::checksum(&new_header, &self.data);
+        new_header.checksum = checksum;
+        Self {header: new_header, data: self.data.clone()}
+
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -60,6 +75,7 @@ impl Packet {
         let mut sum: u32 = 0;
         sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
         sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.origin));
         sum = sum.wrapping_add(header.seq_num as u32);
         sum = sum.wrapping_add(header.flags.value as u32);
         for byte in data {
@@ -76,25 +92,27 @@ impl Packet {
 pub struct Header {
     pub src_addr: SocketAddr,   // 6 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
-    pub seq_num: u32,           // 16 bytes
-    pub flags: Flags,           // 17 bytes
-    pub checksum: u32,          // 21 bytes
+    pub origin: SocketAddr,     // 18 bytes
+    pub seq_num: u32,           // 22 bytes
+    pub flags: Flags,           // 23 bytes
+    pub checksum: u32,          // 27 bytes
 }
 
 // Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
-pub const HEADER_SIZE: usize = 21;
+pub const HEADER_SIZE: usize = 27;
 
 // Implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
-            seq_num: u32, flags: Flags, checksum: Option<u32>) -> Self {
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
+            seq_num: u32, flags: Flags, checksum: u32) -> Self {
         // Gera um timestamp usando o relógio local
         Self {
             src_addr,
             dst_addr,
+            origin,
             seq_num,
             flags,
-            checksum: checksum.unwrap_or(0),
+            checksum: checksum,
         }
     }
 
@@ -103,6 +121,7 @@ impl Header {
         Self {
             src_addr: self.dst_addr,
             dst_addr: self.src_addr,
+            origin: self.origin,
             seq_num: self.seq_num,
             flags,
             // TODO: Fix the checksum gambiarra
@@ -116,6 +135,10 @@ impl Header {
 
     pub fn is_ack(&self) -> bool {
         self.flags.is_set(Flags::ACK)
+    }
+
+    pub fn must_gossip(&self) -> bool {
+        self.flags.is_set(Flags::GSP)
     }
 
     fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {
@@ -132,6 +155,7 @@ impl Header {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&Header::addr_to_bytes(self.src_addr));
         bytes.extend_from_slice(&Header::addr_to_bytes(self.dst_addr));
+        bytes.extend_from_slice(&Header::addr_to_bytes(self.origin));
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.push(self.flags.value);
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
@@ -156,13 +180,15 @@ impl Header {
         let mut start = 0;
         let src_addr = Header::addr_from_bytes(&bytes, &mut start);
         let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
+        let origin = Header::addr_from_bytes(&bytes, &mut start);
         let seq_num = Header::u32_from_bytes(&bytes, &mut start);
         let flags = bytes[start].into();
         start += 1;
-        let checksum = Some(Header::u32_from_bytes(&bytes, &mut start));
+        let checksum = Header::u32_from_bytes(&bytes, &mut start);
         Header::new(
             src_addr,
             dst_addr,
+            origin,
             seq_num,
             flags,
             checksum,
