@@ -12,14 +12,19 @@ pub enum Broadcast {
 }
 
 // Quantia de agentes locais a serem criados
-pub const AGENT_NUM: usize = 50;
+pub const AGENT_NUM: usize = 10;
 pub const N_MSGS: u32 = 10;
 pub const BUFFER_SIZE: usize = 2<<9;
 
 // Configurações da comunicação
 pub const CORRUPTION_RATE: f32 = 0.;
 pub const LOSS_RATE: f32 = 0.;
+pub const GOSSIP_RATE: usize = 3;
 pub const BROADCAST: Broadcast = Broadcast::URB;
+
+pub const W_SIZE: usize = 5;
+pub const TIMEOUT: u64 = 1;
+pub const MESSAGE_TIMEOUT: u64 = 500;
 
 pub const HEARTBEAT_INTERVAL: u64 = 500;
 pub const FAILURE_DETECTION_INTERVAL: u64 = 1000;

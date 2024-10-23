@@ -70,8 +70,4 @@ impl Channel {
             }
         }
     }
-
-    pub fn socket_address(&self) -> std::net::SocketAddr {
-        self.socket.local_addr().unwrap()
-    }
 }
