@@ -122,7 +122,6 @@ impl Agent {
             Ok(f) => f,
             Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
         };
-        // println!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}", self.id);
         let msf = format!("AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n", self.id);
         std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     }
@@ -147,23 +146,21 @@ fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
 
 }
 
-fn calculate_test(agent_num: usize) {
+fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
     let mut reader = std::io::BufReader::new(file);
 
     let mut total_sends: u32 = 0;
     let mut total_receivs: u32 = 0;
-    let mut expected_sends: u32 = 0;
     let mut line = String::new();
     // a vector to store the results, with a preset size
     let mut resultados: Vec<String> = vec![String::new(); agent_num];
     while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
-        let sends: Vec<u32> = words[4].split("/").map(|x| x.parse().unwrap()).collect();
-        let receivs: Vec<u32> = words[7].split("/").map(|x| x.parse().unwrap()).collect();
-        total_sends += sends[0];
-        total_receivs += receivs[0];
-        expected_sends += sends[1];
+        let sends: u32 = words[4].parse().unwrap();
+        let receivs: u32 = words[7].parse().unwrap();
+        total_sends += sends;
+        total_receivs += receivs;
         let idx = words[1].parse::<u32>().unwrap() as usize;
         // saves the line as str on the correct index in resultados
         resultados[idx] = line.clone();
@@ -180,8 +177,12 @@ fn calculate_test(agent_num: usize) {
     for a in resultados {
         std::io::Write::write_all(&mut file, a.as_bytes()).expect("Erro ao escrever no arquivo");
     }
-    println!("Total de Mensagens Enviadas : {total_sends}/{expected_sends}");
-    println!("Total de Mensagens Recebidas: {total_receivs}/{expected_sends}");
+    let expected = match broadcast {
+        "NONE" => agent_num*n_msgs,
+        _ => agent_num*agent_num*n_msgs        
+    };
+    println!("Total de Mensagens Enviadas : {total_sends}/{expected}");
+    println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
 }
 
 
@@ -190,6 +191,7 @@ fn main() {
 
     if args.len() == 11 {
         let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
+        let n_msgs: usize = args[2].parse().expect("");
         assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
         let mut childs = Vec::new();  
         // Inicializar os agentes locais
@@ -214,7 +216,7 @@ fn main() {
         for mut c in childs {
             c.wait().expect("Falha ao esperar processo filho");
         }
-        calculate_test(agent_num);
+        calculate_test(agent_num, n_msgs, args[3].as_str());
     } else if args.len() == 12 { // Se há argumentos, então está rodando um subprocesso
         let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
