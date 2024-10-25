@@ -245,8 +245,6 @@ impl ReliableCommunication {
                 let ugh = packets.first().unwrap().header.clone();
                 register_to_listener_tx.send((ugh.dst_addr, ugh.seq_num)).unwrap();
 
-                debug_println!("Agente {} reencaminhando mensagem {} do {} para {}", self.host.agent_number, ugh.seq_num, ugh.origin, ugh.dst_addr);
-
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
@@ -319,6 +317,7 @@ impl ReliableCommunication {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
+                        debug_println!("Agent {} expecting ack {} but last gotten was {}", self.host.agent_number, next_seq_num, base);
                         panic!("LIMITE DE TIMEOUT ALCANÇADO SEM NENHUM NODO MORTO. AUMENTE A TOLERÂNCIA");
                         // return false;
                     }
@@ -347,9 +346,7 @@ impl ReliableCommunication {
             start_seq,
             is_gossip,
         );
-        if !origin.is_none() {
-            destination_seq.insert(destination, start_seq + packets.len() as u32);
-        }
+        destination_seq.insert(destination, start_seq + packets.len() as u32);
         packets
     }
 
@@ -388,7 +385,7 @@ impl ReliableCommunication {
                         if packet.header.seq_num < *seq_num { continue; }
                         *seq_num = packet.header.seq_num + 1;
                         acks_tx.send(packet).unwrap();
-                    }
+                    },
                     None => {
                         debug_println!("->-> ACK recebido sem destinatário esperando");
                     },
