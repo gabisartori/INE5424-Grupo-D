@@ -167,7 +167,15 @@ impl ReliableCommunication {
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        self.beb(message)
+        let (request, _) = SendRequest::new (
+            None,
+            Some(self.host.addr),
+            None,
+            true,
+            message.clone(),
+        );
+        self.register_to_sender_tx.send(request).unwrap();
+        self.group.len() as u32
     }
 
     fn gossip(&self, message: Vec<u8>, origin: SocketAddr, sequence_number: u32) -> bool {
@@ -346,7 +354,9 @@ impl ReliableCommunication {
             start_seq,
             is_gossip,
         );
-        destination_seq.insert(destination, start_seq + packets.len() as u32);
+        if origin.is_none() {
+            destination_seq.insert(destination, start_seq + packets.len() as u32);
+        }
         packets
     }
 
