@@ -7,8 +7,6 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use super::channels::Channel;
 use super::packet::Packet;
-use crate::config::{self, Broadcast, BROADCAST};
-use crate::config::{W_SIZE, TIMEOUT, MESSAGE_TIMEOUT, GOSSIP_RATE};
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -31,15 +29,24 @@ struct SendRequest {
     is_broadcast: bool,
     data: Vec<u8>,
 }
+#[derive(PartialEq)]
+pub enum Broadcast {
+    NONE,
+    BEB,
+    URB,
+    AB
+}
 
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
     leader: Mutex<usize>,
+    broadcast: Broadcast,
     timeout: u64,
     message_timeout: u64,
-    w_size: usize,
+    broadcast_timeout: u64,
     gossip_rate: usize,
+    w_size: usize,
     channel: Arc<Channel>,
     register_to_sender_tx: Sender<SendRequest>,
     broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
@@ -51,7 +58,9 @@ pub struct ReliableCommunication {
 impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
-    pub fn new(host: Node, group: Vec<Node>) -> Arc<Self> {
+    pub fn new(host: Node, group: Vec<Node>, timeout: u64,
+    message_timeout: u64, w_size: usize, gossip_rate: usize,
+    broadcast: Broadcast, broadcast_timeout: u64) -> Arc<Self> {
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
         let (acks_tx, acks_rx) = mpsc::channel();
@@ -60,12 +69,11 @@ impl ReliableCommunication {
         let receive_rx = Mutex::new(receive_rx);                
         let channel = Channel::new(host.addr);
         
-        let leader = if config::BROADCAST == Broadcast::AB {group.first().unwrap().agent_number} else {host.agent_number};
+        let leader = if broadcast == Broadcast::AB {group.first().unwrap().agent_number} else {host.agent_number};
         let leader = Mutex::new(leader);
         let instance = Arc::new(Self {
-            host, group, leader,
-            timeout: TIMEOUT, message_timeout: MESSAGE_TIMEOUT,
-            w_size: W_SIZE, gossip_rate: GOSSIP_RATE, channel, register_to_sender_tx, broadcast_waiters_tx,
+            host, group, leader, broadcast, timeout, message_timeout, broadcast_timeout,
+            gossip_rate, w_size, channel, register_to_sender_tx, broadcast_waiters_tx,
             receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
         let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
@@ -116,7 +124,7 @@ impl ReliableCommunication {
 
     /// Broadcasts a message, reliability level may be configured in the config file
     pub fn broadcast(&self, message: Vec<u8>) -> u32 {
-        match BROADCAST {
+        match self.broadcast {
             Broadcast::NONE => {
                 let idx = (self.host.agent_number + 1) % self.group.len();
                 self.send(&self.group[idx].addr, message) as u32
@@ -188,7 +196,8 @@ impl ReliableCommunication {
             // While there are broadcasts arriving, it means the leader is still alive
             // If the channel times out before your message arrives, it means the leader died
             loop {
-                let msg = broadcast_rx.recv_timeout(Duration::from_millis(config::BROADCAT_TIMEOUT));
+                let msg = broadcast_rx
+                .recv_timeout(Duration::from_millis(self.broadcast_timeout));
                 match msg {
                     Ok(msg) => {
                         if msg == message {
@@ -243,8 +252,8 @@ impl ReliableCommunication {
 
     fn handle_request(&self, messages_to_send: &mut VecDeque<Vec<Packet>>, request: &SendRequest) {
         if request.is_broadcast {
-            match config::BROADCAST {
-                Broadcast::NONE => {},
+            match self.broadcast {
+                Broadcast::NONE => {debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast");},
                 Broadcast::BEB => {
                     for node in self.group.iter() {
                         let packets = self.get_packets(request.data.clone(), node.addr, None, false, None);
@@ -308,7 +317,8 @@ impl ReliableCommunication {
         true
     }
 
-    fn get_packets(&self, data: Vec<u8>, destination: SocketAddr, origin: Option<SocketAddr>, is_gossip: bool, sq: Option<u32>) -> Vec<Packet> {
+    fn get_packets(&self, data: Vec<u8>, destination: SocketAddr,
+        origin: Option<SocketAddr>, is_gossip: bool, sq: Option<u32>) -> Vec<Packet> {
         let mut destination_seq = self.dst_seq_num_cnt.lock().unwrap();
         let start_seq;
         if sq.is_none() { start_seq = *destination_seq.entry(destination).or_insert(0); }
@@ -323,7 +333,14 @@ impl ReliableCommunication {
             is_gossip,
         );
         if !origin.is_none() {
-            *destination_seq.get_mut(&destination).unwrap() += packets.len() as u32;
+            match destination_seq.get_mut(&destination) {
+                Some(dst) => {
+                    *dst += packets.len() as u32;
+                }
+                None => {
+                    destination_seq.insert(destination, packets.len() as u32);
+                }
+            }
         }
         packets
     }
@@ -383,7 +400,7 @@ impl ReliableCommunication {
                     let (message, origin, sequence_number) = ReliableCommunication::receive_last_packet(packets, &packet);
                     // Handling broadcasts
                     if packet.header.must_gossip() {
-                        match config::BROADCAST {
+                        match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::NONE | Broadcast::BEB => {
                                 messages_tx.send(message).unwrap();

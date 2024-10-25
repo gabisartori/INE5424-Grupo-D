@@ -15,7 +15,7 @@ macro_rules! debug_println {
     };
 }
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::thread;
 // use rand::Rng;
@@ -27,22 +27,27 @@ mod lib {
     pub mod packet;
     pub mod flags;
 }
-use lib::reliable_communication::{ReliableCommunication, Node};
+use lib::reliable_communication::{ReliableCommunication, Node, Broadcast};
 
 // Importa as configurações de endereços dos processos
 mod config;
-use config::{Broadcast, AGENT_NUM, BROADCAST, LOCALHOST, PORT,MSG, N_MSGS};
+use config::MSG;
 
 struct Agent {
     id: usize,
-    communication: Arc<ReliableCommunication>
+    communication: Arc<ReliableCommunication>,
+    n_msgs: u32,
 }
 
 impl Agent {
-    fn new(id: usize, nodes: Vec<Node>) -> Self {
+    fn new(id: usize, nodes: Vec<Node>, n_msgs: u32, timeout: u64,
+        message_timeout: u64, w_size: usize, gossip_rate: usize,
+        broadcast: Broadcast, broadcast_timeout: u64) -> Self {
         Agent {
             id,
-            communication: ReliableCommunication::new(nodes[id].clone(), nodes)
+            communication: ReliableCommunication::new(nodes[id].clone(), nodes,
+                timeout, message_timeout, w_size, gossip_rate, broadcast, broadcast_timeout),
+            n_msgs
         }
     }
 
@@ -76,7 +81,7 @@ impl Agent {
 
     fn creater(&self) -> u32 {
         let mut acertos= 0;
-        for i in 0..N_MSGS {
+        for i in 0..self.n_msgs {
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
@@ -109,7 +114,6 @@ impl Agent {
         let listener = thread::spawn(move || listener_clone.receiver());
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
-        let max = if BROADCAST == Broadcast::NONE {N_MSGS} else {N_MSGS*(AGENT_NUM as u32)};
         let path = format!("tests/Resultado.txt");
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
@@ -119,28 +123,31 @@ impl Agent {
             Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
         };
         // println!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}", self.id);
-        let msf = format!("AGENTE {} -> ENVIOS: {s_acertos}/{max} - RECEBIDOS: {r_acertos}/{max}\n", self.id);
+        let msf = format!("AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n", self.id);
         std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     }
 }
 
 
-fn create_agents(id: usize) -> Arc<Agent> {
+fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
+        timeout: u64, message_timeout: u64, broadcast_timeout: u64, ip: IpAddr, port: u16,
+        gossip_rate: usize, w_size: usize) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
-    for i in 0..AGENT_NUM {
-        nodes.push(Node{addr: SocketAddr::new(LOCALHOST, 
-            PORT + (i as u16)),
+    for i in 0..agent_num {
+        nodes.push(Node{addr: SocketAddr::new(ip,
+            port + (i as u16)),
             agent_number: i});
     }
     
-    let agent = Arc::new(Agent::new(id, nodes));
+    let agent = Arc::new(Agent::new(id, nodes, n_msgs, timeout,
+        message_timeout, w_size, gossip_rate, broadcast, broadcast_timeout));
     agent
 
 }
 
-fn calculate_test() {
+fn calculate_test(agent_num: usize) {
     let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
     let mut reader = std::io::BufReader::new(file);
 
@@ -149,7 +156,7 @@ fn calculate_test() {
     let mut expected_sends: u32 = 0;
     let mut line = String::new();
     // a vector to store the results, with a preset size
-    let mut resultados: Vec<String> = vec![String::new(); AGENT_NUM as usize];
+    let mut resultados: Vec<String> = vec![String::new(); agent_num];
     while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
         let sends: Vec<u32> = words[4].split("/").map(|x| x.parse().unwrap()).collect();
@@ -181,18 +188,24 @@ fn calculate_test() {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // Verifica se o programa foi executado com argumentos (quando for rodado como um subprocesso)
-    if args.len() > 1 {
-        let agent_id: usize = args[1].parse().expect("Falha ao converter agent_id para u32");
-        let agent = create_agents(agent_id);
-        agent.run();
-    } else { // Se não há argumentos, então está rodando o processo principal
-        assert!(AGENT_NUM > 0, "Número de agentes deve ser maior que 0");
+    if args.len() == 11 {
+        let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
+        assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
         let mut childs = Vec::new();  
         // Inicializar os agentes locais
-        for i in 0..AGENT_NUM {
+        for i in 0..agent_num {
             let c = std::process::Command::new(std::env::current_exe().unwrap())
-                .arg(i.to_string())  // Passando o ID do agente
+                .arg(args[1].clone())  // Passando o número de agentes
+                .arg(args[2].clone())  // Passando o número de mensagens
+                .arg(args[3].clone())  // Passando o tipo de broadcast
+                .arg(args[4].clone())  // Passando o timeout
+                .arg(args[5].clone())  // Passando o message_timeout
+                .arg(args[6].clone())  // Passando o broadcast_timeout
+                .arg(args[7].clone())  // Passando o IP
+                .arg(args[8].clone())  // Passando a Porta base
+                .arg(args[9].clone())  // Passando a taxa de gossip
+                .arg(args[10].clone()) // Passando o tamanho da janela
+                .arg(i.to_string())  // Passando o ID do agente    
                 .spawn()
                 .expect(format!("Falha ao spawnar processo {i}").as_str());
             childs.push(c);
@@ -201,6 +214,31 @@ fn main() {
         for mut c in childs {
             c.wait().expect("Falha ao esperar processo filho");
         }
-        calculate_test();
+        calculate_test(agent_num);
+    } else if args.len() == 12 { // Se há argumentos, então está rodando um subprocesso
+        let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
+        let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
+        let broadcast: Broadcast = match args[3].as_str() {
+            "NONE" => Broadcast::NONE,
+            "BEB" => Broadcast::BEB,
+            "URB" => Broadcast::URB,
+            "AB" => Broadcast::AB,
+            _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3])
+        };
+        let timeout: u64 = args[4].parse().expect("Falha ao converter timeout para u64");
+        let message_timeout: u64 = args[5].parse().expect("Falha ao converter message_timeout para u64");
+        let broadcast_timeout: u64 = args[6].parse().expect("Falha ao converter broadcast_timeout para u64");
+        let ip: IpAddr = args[7].parse().expect("Falha ao converter ip para IpAddr");
+        let port: u16 = args[8].parse().expect("Falha ao converter port para u16");
+        let gossip_rate: usize = args[9].parse().expect("Falha ao converter gossip_rate para usize");
+        let w_size: usize = args[10].parse().expect("Falha ao converter w_size para usize");
+        let agent_id: usize = args[11].parse().expect("Falha ao converter agent_id para u32");
+        let agent = create_agents(agent_id, agent_num, n_msgs, broadcast, timeout, message_timeout,  broadcast_timeout, ip, port, gossip_rate, w_size);
+        agent.run();
+    }
+    else {
+        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size>");
+        println!("enviado {:?}", args);
+        panic!("Número de argumentos inválido");
     }
 }
