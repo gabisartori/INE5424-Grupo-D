@@ -41,12 +41,12 @@ struct Agent {
 
 impl Agent {
     fn new(id: usize, nodes: Vec<Node>, n_msgs: u32, timeout: u64,
-        message_timeout: u64, w_size: usize, gossip_rate: usize,
+        message_timeout: u64, timeout_limit: u32, w_size: usize, gossip_rate: usize,
         broadcast: Broadcast, broadcast_timeout: u64) -> Self {
         Agent {
             id,
             communication: ReliableCommunication::new(nodes[id].clone(), nodes,
-                timeout, message_timeout, w_size, gossip_rate, broadcast, broadcast_timeout),
+                timeout, message_timeout, timeout_limit, w_size, gossip_rate, broadcast, broadcast_timeout),
             n_msgs
         }
     }
@@ -129,7 +129,7 @@ impl Agent {
 
 
 fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
-        timeout: u64, message_timeout: u64, broadcast_timeout: u64, ip: IpAddr, port: u16,
+        timeout: u64, timeout_limit: u32, message_timeout: u64, broadcast_timeout: u64, ip: IpAddr, port: u16,
         gossip_rate: usize, w_size: usize) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
@@ -141,7 +141,7 @@ fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
     }
     
     let agent = Arc::new(Agent::new(id, nodes, n_msgs, timeout,
-        message_timeout, w_size, gossip_rate, broadcast, broadcast_timeout));
+        message_timeout, timeout_limit, w_size, gossip_rate, broadcast, broadcast_timeout));
     agent
 
 }
@@ -189,7 +189,7 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() == 11 {
+    if args.len() == 12 {
         let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
         let n_msgs: usize = args[2].parse().expect("");
         assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
@@ -207,7 +207,8 @@ fn main() {
                 .arg(args[8].clone())  // Passando a Porta base
                 .arg(args[9].clone())  // Passando a taxa de gossip
                 .arg(args[10].clone()) // Passando o tamanho da janela
-                .arg(i.to_string())  // Passando o ID do agente    
+                .arg(args[11].clone()) // Passando o limite de timeouts consecutivos
+                .arg(i.to_string())  // Passando o ID do agente  
                 .spawn()
                 .expect(format!("Falha ao spawnar processo {i}").as_str());
             childs.push(c);
@@ -217,7 +218,7 @@ fn main() {
             c.wait().expect("Falha ao esperar processo filho");
         }
         calculate_test(agent_num, n_msgs, args[3].as_str());
-    } else if args.len() == 12 { // Se há argumentos, então está rodando um subprocesso
+    } else if args.len() == 13 { // Se há argumentos, então está rodando um subprocesso
         let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
         let broadcast: Broadcast = match args[3].as_str() {
@@ -234,8 +235,9 @@ fn main() {
         let port: u16 = args[8].parse().expect("Falha ao converter port para u16");
         let gossip_rate: usize = args[9].parse().expect("Falha ao converter gossip_rate para usize");
         let w_size: usize = args[10].parse().expect("Falha ao converter w_size para usize");
-        let agent_id: usize = args[11].parse().expect("Falha ao converter agent_id para u32");
-        let agent = create_agents(agent_id, agent_num, n_msgs, broadcast, timeout, message_timeout,  broadcast_timeout, ip, port, gossip_rate, w_size);
+        let timeout_limit: u32 = args[11].parse().expect("Falha ao converter timeout_limit para u32");
+        let agent_id: usize = args[12].parse().expect("Falha ao converter agent_id para u32");
+        let agent = create_agents(agent_id, agent_num, n_msgs, broadcast, timeout, timeout_limit, message_timeout,  broadcast_timeout, ip, port, gossip_rate, w_size);
         agent.run();
     }
     else {
