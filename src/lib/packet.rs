@@ -111,6 +111,12 @@ impl Packet {
     }
 }
 
+impl std::fmt::Debug for Packet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packet seq_num: {}", self.header.seq_num)
+    }
+}
+
 #[derive(Clone)]
 pub struct Header {
     pub src_addr: SocketAddr,   // 6 bytes
