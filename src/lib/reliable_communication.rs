@@ -260,7 +260,11 @@ impl ReliableCommunication {
                         }
                     }
                 },
-                Broadcast::AB => {}
+                Broadcast::AB => {
+                    let leader = self.group[*self.leader.lock().unwrap()].addr;
+                    let packets = self.get_packets(request.data.clone(), leader, request.origin_address, true, request.start_sequence_number);
+                    messages_to_send.push_back(packets);
+                }
             }
         } else {
             let destination = request.destination_address.unwrap();
