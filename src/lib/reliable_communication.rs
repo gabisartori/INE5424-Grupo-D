@@ -9,7 +9,6 @@ use super::channels::Channel;
 use super::packet::Packet;
 
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, Arc};
@@ -241,14 +240,13 @@ impl ReliableCommunication {
         register_to_listener_tx: Sender<(SocketAddr, u32)>
     ) {
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
-        let mut messages_to_send: VecDeque<Vec<Packet>> = VecDeque::new();
         
         // Message sending algorithm
         while let Ok(request) = register_from_user_rx.recv() {
-            self.handle_request(&mut messages_to_send, &request);
+            let messages_to_send = self.handle_request(&request);
             let result_tx = request.result_tx;
             let mut success_count = 0;
-            while let Some(packets) = messages_to_send.pop_front() {
+            for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
                 let ugh = packets.first().unwrap().header.clone();
                 register_to_listener_tx.send((ugh.dst_addr, ugh.seq_num)).unwrap();
@@ -265,14 +263,15 @@ impl ReliableCommunication {
         }
     }
 
-    fn handle_request(&self, messages_to_send: &mut VecDeque<Vec<Packet>>, request: &SendRequest) {
+    fn handle_request(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
+        let mut messages_to_send = Vec::new();
         if request.is_broadcast {
             match self.broadcast {
-                Broadcast::NONE => {debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast");},
+                Broadcast::NONE => { debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast"); },
                 Broadcast::BEB => {
                     for node in self.group.iter() {
                         let packets = self.get_packets(request.data.clone(), node.addr, None, false, None);
-                        messages_to_send.push_back(packets);
+                        messages_to_send.push(packets);
                     }
                 },
                 Broadcast::URB => {
@@ -280,21 +279,22 @@ impl ReliableCommunication {
                     for node in self.group.iter() {
                         let packets = self.get_packets(request.data.clone(), node.addr, request.origin_address, true, request.start_sequence_number);
                         if friends.contains(node) {
-                            messages_to_send.push_back(packets);
+                            messages_to_send.push(packets);
                         }
                     }
                 },
                 Broadcast::AB => {
                     let leader = self.group[*self.leader.lock().unwrap()].addr;
                     let packets = self.get_packets(request.data.clone(), leader, request.origin_address, true, request.start_sequence_number);
-                    messages_to_send.push_back(packets);
+                    messages_to_send.push(packets);
                 }
             }
         } else {
             let destination = request.destination_address.unwrap();
             let packets = self.get_packets(request.data.clone(), destination, None, false, None);
-            messages_to_send.push_back(packets);
+            messages_to_send.push(packets);
         }
+        messages_to_send
     }
 
     fn go_back_n(
@@ -325,7 +325,7 @@ impl ReliableCommunication {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} expecting ack {} but last gotten was {}", self.host.agent_number, next_seq_num, base);
+                        debug_println!("Agent {} expecting ack {} but last gotten was {}", self.host.agent_number, start_packet + next_seq_num as u32, start_packet + base as u32);
                         panic!("LIMITE DE TIMEOUT ALCANÇADO SEM NENHUM NODO MORTO. AUMENTE A TOLERÂNCIA");
                         // return false;
                     }
@@ -354,7 +354,7 @@ impl ReliableCommunication {
             start_seq,
             is_gossip,
         );
-        if origin.is_none() {
+        if sq.is_none() {
             destination_seq.insert(destination, start_seq + packets.len() as u32);
         }
         packets
