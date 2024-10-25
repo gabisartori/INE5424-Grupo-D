@@ -58,6 +58,7 @@ pub struct ReliableCommunication {
     leader: Mutex<usize>,
     broadcast: Broadcast,
     timeout: u64,
+    timeout_limit: u32,
     message_timeout: u64,
     broadcast_timeout: u64,
     gossip_rate: usize,
@@ -74,7 +75,7 @@ impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
     pub fn new(host: Node, group: Vec<Node>, timeout: u64,
-    message_timeout: u64, w_size: usize, gossip_rate: usize,
+    message_timeout: u64, timeout_limit: u32, w_size: usize, gossip_rate: usize,
     broadcast: Broadcast, broadcast_timeout: u64) -> Arc<Self> {
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
@@ -87,7 +88,7 @@ impl ReliableCommunication {
         let leader = if broadcast == Broadcast::AB {group.first().unwrap().agent_number} else {host.agent_number};
         let leader = Mutex::new(leader);
         let instance = Arc::new(Self {
-            host, group, leader, broadcast, timeout, message_timeout, broadcast_timeout,
+            host, group, leader, broadcast, timeout, message_timeout, timeout_limit,  broadcast_timeout,
             gossip_rate, w_size, channel, register_to_sender_tx, broadcast_waiters_tx,
             receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
         let sender_clone = Arc::clone(&instance);
@@ -297,6 +298,7 @@ impl ReliableCommunication {
     ) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
+        let mut timeout_count = 0;
         let start_packet = packets.first().unwrap().header.seq_num;
         while base < packets.len() {
             // Send window
@@ -315,6 +317,11 @@ impl ReliableCommunication {
                 },
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
+                    timeout_count += 1;
+                    if timeout_count == self.timeout_limit {
+                        panic!("LIMITE DE TIMEOUT ALCANÇADO SEM NENHUM NODO MORTO. AUMENTE A TOLERÂNCIA");
+                        // return false;
+                    }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
                     debug_println!("Erro ao receber ACKS, Listener thread desconectada");
