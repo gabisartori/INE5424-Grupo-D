@@ -37,6 +37,21 @@ pub enum Broadcast {
     AB
 }
 
+impl SendRequest {
+    pub fn new(
+    destination_address: Option<SocketAddr>,
+    origin_address: Option<SocketAddr>,
+    start_sequence_number: Option<u32>,
+    is_broadcast: bool,
+    data: Vec<u8>) -> (Self, Receiver<u32>) {
+        let (result_tx, result_rx) = mpsc::channel();
+        (Self {
+            result_tx, destination_address, origin_address,
+            start_sequence_number, is_broadcast, data
+        }, result_rx)
+    }
+}
+
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Vec<Node>,
@@ -94,15 +109,13 @@ impl ReliableCommunication {
     }
 
     fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
-        let (result_tx, result_rx) = mpsc::channel();
-        let request = SendRequest {
-            result_tx,
-            destination_address: Some(*dst_addr),
-            origin_address: None,
-            start_sequence_number: None,
-            is_broadcast: false,
-            data: message,
-        };
+        let (request, result_rx) = SendRequest::new (
+            Some(*dst_addr),
+            None,
+            None,
+            false,
+            message,
+        );
         self.register_to_sender_tx.send(request).unwrap();
         result_rx
     }
@@ -139,15 +152,13 @@ impl ReliableCommunication {
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
         //debug_println!("{} BEB to {:?}", self.host.agent_number, group);
-        let (result_tx, result_rx) = mpsc::channel();
-        let request = SendRequest {
-            result_tx,
-            destination_address: None,
-            origin_address: None,
-            start_sequence_number: None,
-            is_broadcast: true,
-            data: message,
-        };
+        let (request, result_rx) = SendRequest::new (
+             None,
+             None,
+             None,
+            true,
+            message,
+        );
         self.register_to_sender_tx.send(request).unwrap();
         result_rx.recv().unwrap()
     }
@@ -159,14 +170,13 @@ impl ReliableCommunication {
     }
 
     fn gossip(&self, message: Vec<u8>, origin: SocketAddr, sequence_number: u32) -> bool {
-        let request = SendRequest {
-            result_tx: mpsc::channel().0,
-            destination_address: None,
-            origin_address: Some(origin),
-            start_sequence_number: Some(sequence_number),
-            is_broadcast: true,
-            data: message,
-        };
+        let (request, _) = SendRequest::new (
+             None,
+             Some(origin),
+             Some(sequence_number),
+            true,
+            message,
+        );
         self.register_to_sender_tx.send(request).unwrap();
         true
     }
@@ -177,16 +187,14 @@ impl ReliableCommunication {
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
         self.broadcast_waiters_tx.send(broadcast_tx).unwrap();
         loop {
-            let (request_result_tx, request_result_rx) = mpsc::channel();
             let leader = Some(self.group[*self.leader.lock().unwrap()].addr);
-            let request = SendRequest {
-                result_tx: request_result_tx,
-                destination_address: leader,
-                origin_address: None,
-                start_sequence_number: None,
-                is_broadcast: true,
-                data: message.clone(),
-            };
+            let (request, request_result_rx) = SendRequest::new (
+                leader,
+                None,
+                None,
+                true,
+                message.clone(),
+            );
             self.register_to_sender_tx.send(request).unwrap();
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
@@ -333,14 +341,7 @@ impl ReliableCommunication {
             is_gossip,
         );
         if !origin.is_none() {
-            match destination_seq.get_mut(&destination) {
-                Some(dst) => {
-                    *dst += packets.len() as u32;
-                }
-                None => {
-                    destination_seq.insert(destination, packets.len() as u32);
-                }
-            }
+            destination_seq.insert(destination, start_seq + packets.len() as u32);
         }
         packets
     }
