@@ -20,14 +20,7 @@ pub struct Node {
     pub addr: SocketAddr,
     pub agent_number: usize
 }
-struct SendRequest {
-    result_tx: Sender<u32>,
-    destination_address: Option<SocketAddr>,
-    origin_address: Option<SocketAddr>,
-    start_sequence_number: Option<u32>,
-    is_broadcast: bool,
-    data: Vec<u8>,
-}
+
 #[derive(PartialEq)]
 pub enum Broadcast {
     NONE,
@@ -36,18 +29,30 @@ pub enum Broadcast {
     AB
 }
 
+enum SendRequestData {
+    // Creates one message to be sent to a specific destination
+    Send {
+        destination_address: SocketAddr,
+    },
+    // Creates as many messages as needed to broadcast to the group
+    StartBroadcast {},
+    // Creates N messages to gossip to neighbors, keeping the original message information
+    Gossip {
+        origin_address: SocketAddr,
+        start_sequence_number: u32,
+    }
+}
+
+struct SendRequest {
+    result_tx: Sender<u32>,
+    data: Vec<u8>,
+    options: SendRequestData
+}
+
 impl SendRequest {
-    pub fn new(
-    destination_address: Option<SocketAddr>,
-    origin_address: Option<SocketAddr>,
-    start_sequence_number: Option<u32>,
-    is_broadcast: bool,
-    data: Vec<u8>) -> (Self, Receiver<u32>) {
+    pub fn new(data: Vec<u8>, options: SendRequestData) -> (Self, Receiver<u32>) {
         let (result_tx, result_rx) = mpsc::channel();
-        (Self {
-            result_tx, destination_address, origin_address,
-            start_sequence_number, is_broadcast, data
-        }, result_rx)
+        (Self { result_tx, data, options }, result_rx)
     }
 }
 
@@ -110,11 +115,10 @@ impl ReliableCommunication {
 
     fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
         let (request, result_rx) = SendRequest::new (
-            Some(*dst_addr),
-            None,
-            None,
-            false,
             message,
+            SendRequestData::Send {
+                destination_address: *dst_addr,
+            },
         );
         self.register_to_sender_tx.send(request).unwrap();
         result_rx
@@ -151,13 +155,9 @@ impl ReliableCommunication {
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
-        //debug_println!("{} BEB to {:?}", self.host.agent_number, group);
         let (request, result_rx) = SendRequest::new (
-             None,
-             None,
-             None,
-            true,
             message,
+            SendRequestData::StartBroadcast {},
         );
         self.register_to_sender_tx.send(request).unwrap();
         result_rx.recv().unwrap()
@@ -167,11 +167,8 @@ impl ReliableCommunication {
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
         let (request, _) = SendRequest::new (
-            None,
-            Some(self.host.addr),
-            None,
-            true,
-            message.clone(),
+            message,
+            SendRequestData::StartBroadcast {},
         );
         self.register_to_sender_tx.send(request).unwrap();
         self.group.len() as u32
@@ -179,11 +176,11 @@ impl ReliableCommunication {
 
     fn gossip(&self, message: Vec<u8>, origin: SocketAddr, sequence_number: u32) -> bool {
         let (request, _) = SendRequest::new (
-             None,
-             Some(origin),
-             Some(sequence_number),
-            true,
             message,
+            SendRequestData::Gossip {
+                origin_address: origin,
+                start_sequence_number: sequence_number,
+            },
         );
         self.register_to_sender_tx.send(request).unwrap();
         true
@@ -195,13 +192,9 @@ impl ReliableCommunication {
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
         self.broadcast_waiters_tx.send(broadcast_tx).unwrap();
         loop {
-            let leader = Some(self.group[*self.leader.lock().unwrap()].addr);
             let (request, request_result_rx) = SendRequest::new (
-                leader,
-                None,
-                None,
-                true,
                 message.clone(),
+                SendRequestData::StartBroadcast {},
             );
             self.register_to_sender_tx.send(request).unwrap();
             // If the chosen leader didn't receive the broadcast request
@@ -243,7 +236,7 @@ impl ReliableCommunication {
         
         // Message sending algorithm
         while let Ok(request) = register_from_user_rx.recv() {
-            let messages_to_send = self.handle_request(&request);
+            let messages_to_send = self.get_messages(&request);
             let result_tx = request.result_tx;
             let mut success_count = 0;
             for packets in messages_to_send {
@@ -261,40 +254,6 @@ impl ReliableCommunication {
             // The caller may have chosen to not wait for the result, so we ignore if the channel was disconnected
             let _ = result_tx.send(success_count);
         }
-    }
-
-    fn handle_request(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
-        let mut messages_to_send = Vec::new();
-        if request.is_broadcast {
-            match self.broadcast {
-                Broadcast::NONE => { debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast"); },
-                Broadcast::BEB => {
-                    for node in self.group.iter() {
-                        let packets = self.get_packets(request.data.clone(), node.addr, None, false, None);
-                        messages_to_send.push(packets);
-                    }
-                },
-                Broadcast::URB => {
-                    let friends = self.get_friends();
-                    for node in self.group.iter() {
-                        let packets = self.get_packets(request.data.clone(), node.addr, request.origin_address, true, request.start_sequence_number);
-                        if friends.contains(node) {
-                            messages_to_send.push(packets);
-                        }
-                    }
-                },
-                Broadcast::AB => {
-                    let leader = self.group[*self.leader.lock().unwrap()].addr;
-                    let packets = self.get_packets(request.data.clone(), leader, request.origin_address, true, request.start_sequence_number);
-                    messages_to_send.push(packets);
-                }
-            }
-        } else {
-            let destination = request.destination_address.unwrap();
-            let packets = self.get_packets(request.data.clone(), destination, None, false, None);
-            messages_to_send.push(packets);
-        }
-        messages_to_send
     }
 
     fn go_back_n(
@@ -339,25 +298,94 @@ impl ReliableCommunication {
         true
     }
 
-    fn get_packets(&self, data: Vec<u8>, destination: SocketAddr,
-        origin: Option<SocketAddr>, is_gossip: bool, sq: Option<u32>) -> Vec<Packet> {
-        let mut destination_seq = self.dst_seq_num_cnt.lock().unwrap();
-        let start_seq;
-        if sq.is_none() { start_seq = *destination_seq.entry(destination).or_insert(0); }
-        else { start_seq = sq.unwrap(); }
-        
-        let packets = Packet::packets_from_message(
-            self.host.addr,
-            destination,
-            origin.unwrap_or(self.host.addr),
-            data,
-            start_seq,
-            is_gossip,
-        );
-        if sq.is_none() {
-            destination_seq.insert(destination, start_seq + packets.len() as u32);
+    fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
+        let mut messages = Vec::new();
+        match &request.options {
+            SendRequestData::Send { destination_address } => {
+                let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
+                let start_seq = *seq_lock.entry(*destination_address).or_insert(0);
+                let packets = Packet::packets_from_message(
+                    self.host.addr,
+                    *destination_address,
+                    self.host.addr,
+                    request.data.clone(),
+                    start_seq,
+                    false,
+                );
+                seq_lock.insert(*destination_address, start_seq + packets.len() as u32);
+                messages.push(packets);
+            },
+            SendRequestData::StartBroadcast {} => {
+                match self.broadcast {
+                    Broadcast::NONE => { debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast"); },
+                    Broadcast::BEB => {
+                        for node in self.group.iter() {
+                            let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
+                            let start_seq = *seq_lock.entry(node.addr).or_insert(0);
+                            let packets = Packet::packets_from_message(
+                                self.host.addr,
+                                node.addr,
+                                self.host.addr,
+                                request.data.clone(),
+                                start_seq,
+                                false,
+                            );
+                            seq_lock.insert(node.addr, start_seq + packets.len() as u32);
+                            messages.push(packets);
+                        }
+                    },
+                    Broadcast::URB => {
+                        let friends = self.get_friends();
+                        for node in self.group.iter() {
+                            let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
+                            let start_seq = *seq_lock.entry(node.addr).or_insert(0);
+                            if friends.contains(node) {
+                                let packets = Packet::packets_from_message(
+                                    self.host.addr,
+                                    node.addr,
+                                    self.host.addr,
+                                    request.data.clone(),
+                                    start_seq,
+                                    true,
+                                );
+                                messages.push(packets);
+                            }
+                            seq_lock.insert(node.addr, start_seq + 1);
+                        }
+                    },
+                    Broadcast::AB => {
+                        let leader = self.group[*self.leader.lock().unwrap()].addr;
+                        let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
+                        let start_seq = *seq_lock.entry(leader).or_insert(0);
+                        let packets = Packet::packets_from_message(
+                            self.host.addr,
+                            leader,
+                            self.host.addr,
+                            request.data.clone(),
+                            start_seq,
+                            true,
+                        );
+                        seq_lock.insert(leader, start_seq + 1);
+                        messages.push(packets);
+                    }
+                }
+            },
+            SendRequestData::Gossip { origin_address, start_sequence_number } => {
+                for node in self.get_friends() {
+                    let packets = Packet::packets_from_message(
+                        *origin_address,
+                        node.addr,
+                        self.host.addr,
+                        request.data.clone(),
+                        *start_sequence_number,
+                        true,
+                    );
+                    messages.push(packets);
+                }
+            }
         }
-        packets
+        
+        messages
     }
 
     fn get_friends(&self) -> Vec<Node> {
