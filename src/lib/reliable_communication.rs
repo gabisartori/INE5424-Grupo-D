@@ -18,8 +18,7 @@ use std::sync::{Mutex, Arc};
 use std::time::Duration;
 use std::clone::Clone;
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub addr: SocketAddr,
     pub agent_number: usize
@@ -253,9 +252,12 @@ impl ReliableCommunication {
                     }
                 },
                 Broadcast::URB => {
-                    for node in self.get_friends().iter() {
+                    let friends = self.get_friends();
+                    for node in self.group.iter() {
                         let packets = self.get_packets(request.data.clone(), node.addr, request.origin_address, true, request.start_sequence_number);
-                        messages_to_send.push_back(packets);
+                        if friends.contains(node) {
+                            messages_to_send.push_back(packets);
+                        }
                     }
                 },
                 Broadcast::AB => {}
