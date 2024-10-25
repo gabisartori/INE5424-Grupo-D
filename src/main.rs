@@ -40,13 +40,29 @@ struct Agent {
 }
 
 impl Agent {
-    fn new(id: usize, nodes: Vec<Node>, n_msgs: u32, timeout: u64,
-        message_timeout: u64, timeout_limit: u32, w_size: usize, gossip_rate: usize,
-        broadcast: Broadcast, broadcast_timeout: u64) -> Self {
+    fn new(id: usize,
+        nodes: Vec<Node>,
+        n_msgs: u32,
+        timeout: u64,
+        message_timeout: u64,
+        timeout_limit: u32,
+        w_size: usize,
+        gossip_rate: usize,
+        broadcast: Broadcast, broadcast_timeout: u64
+    ) -> Self {
         Agent {
             id,
-            communication: ReliableCommunication::new(nodes[id].clone(), nodes,
-                timeout, message_timeout, timeout_limit, w_size, gossip_rate, broadcast, broadcast_timeout),
+            communication: ReliableCommunication::new(
+                nodes[id].clone(),
+                nodes,
+                timeout,
+                message_timeout,
+                timeout_limit,
+                w_size,
+                gossip_rate,
+                broadcast,
+                broadcast_timeout
+            ),
             n_msgs
         }
     }
@@ -128,9 +144,20 @@ impl Agent {
 }
 
 
-fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
-        timeout: u64, timeout_limit: u32, message_timeout: u64, broadcast_timeout: u64, ip: IpAddr, port: u16,
-        gossip_rate: usize, w_size: usize) -> Arc<Agent> {
+fn create_agents(
+    id: usize,
+    agent_num: usize,
+    n_msgs: u32,
+    broadcast: Broadcast,
+    timeout: u64,
+    timeout_limit: u32,
+    message_timeout: u64,
+    broadcast_timeout: u64,
+    ip: IpAddr,
+    port: u16,
+    gossip_rate: usize,
+    w_size: usize
+) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
@@ -140,8 +167,19 @@ fn create_agents(id: usize, agent_num: usize, n_msgs: u32, broadcast: Broadcast,
             agent_number: i});
     }
     
-    let agent = Arc::new(Agent::new(id, nodes, n_msgs, timeout,
-        message_timeout, timeout_limit, w_size, gossip_rate, broadcast, broadcast_timeout));
+    let agent = Arc::new(
+        Agent::new(
+            id, nodes,
+            n_msgs,
+            timeout,
+            message_timeout,
+            timeout_limit,
+            w_size,
+            gossip_rate,
+            broadcast,
+            broadcast_timeout
+        )
+    );
     agent
 
 }
