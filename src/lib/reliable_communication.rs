@@ -78,9 +78,16 @@ pub struct ReliableCommunication {
 impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
-    pub fn new(host: Node, group: Vec<Node>, timeout: u64,
-    message_timeout: u64, timeout_limit: u32, w_size: usize, gossip_rate: usize,
-    broadcast: Broadcast, broadcast_timeout: u64) -> Arc<Self> {
+    pub fn new(
+        host: Node,
+        group: Vec<Node>,
+        timeout: u64,
+        message_timeout: u64,
+        timeout_limit: u32,
+        w_size: usize,
+        gossip_rate: usize,
+        broadcast: Broadcast, broadcast_timeout: u64
+    ) -> Arc<Self> {
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
         let (acks_tx, acks_rx) = mpsc::channel();
