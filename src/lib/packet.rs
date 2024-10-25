@@ -36,20 +36,19 @@ impl Packet {
         Self {header: ack_header, data: Vec::new()}  
     }
 
-    pub fn get_resend(&self, new_dst: SocketAddr) -> Self {
-        let mut new_header = Header{
-            src_addr: self.header.dst_addr,
-            dst_addr: new_dst,
-            origin: self.header.origin,
-            seq_num: self.header.seq_num,
-            flags: self.header.flags,
-            checksum: 0,
-        };
-        let checksum = Self::checksum(&new_header, &self.data);
-        new_header.checksum = checksum;
-        Self {header: new_header, data: self.data.clone()}
-
-    }
+    // pub fn get_resend(&self, new_dst: SocketAddr) -> Self {
+    //     let mut new_header = Header{
+    //         src_addr: self.header.dst_addr,
+    //         dst_addr: new_dst,
+    //         origin: self.header.origin,
+    //         seq_num: self.header.seq_num,
+    //         flags: self.header.flags,
+    //         checksum: 0,
+    //     };
+    //     let checksum = Self::checksum(&new_header, &self.data);
+    //     new_header.checksum = checksum;
+    //     Self {header: new_header, data: self.data.clone()}
+    // }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
@@ -58,8 +57,8 @@ impl Packet {
     }
 
     pub fn from_bytes(bytes: [u8; BUFFER_SIZE], data_size: usize) -> Self {
-        let header = Header::from_bytes(bytes[..HEADER_SIZE].try_into().unwrap());
-        let data = bytes[HEADER_SIZE..data_size].to_vec();
+        let header = Header::from_bytes(bytes[..Header::HEADER_SIZE].try_into().unwrap());
+        let data = bytes[Header::HEADER_SIZE..data_size].to_vec();
         Self { header, data }
     }
 
@@ -95,7 +94,7 @@ impl Packet {
         start_sequence_number: u32,
         is_gossip: bool,
     ) -> Vec<Self> {
-        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - HEADER_SIZE).collect();
+        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - Header::HEADER_SIZE).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
             Packet::new(
@@ -122,11 +121,10 @@ pub struct Header {
     pub checksum: u32,          // 27 bytes
 }
 
-// Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
-pub const HEADER_SIZE: usize = 27;
-
 // Implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
+    // Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
+    pub const HEADER_SIZE: usize = 27;
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
             seq_num: u32, flags: Flags, checksum: u32) -> Self {
         // Gera um timestamp usando o relógio local
@@ -200,7 +198,7 @@ impl Header {
         out
     }
 
-    pub fn from_bytes(bytes: [u8; HEADER_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; Header::HEADER_SIZE]) -> Self {
         let mut start = 0;
         let src_addr = Header::addr_from_bytes(&bytes, &mut start);
         let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
