@@ -86,6 +86,30 @@ impl Packet {
         }
         sum
     }
+
+    pub fn packets_from_message(
+        src_addr: SocketAddr,
+        dst_addr: SocketAddr,
+        origin: SocketAddr,
+        data: Vec<u8>,
+        start_sequence_number: u32,
+        is_gossip: bool,
+    ) -> Vec<Self> {
+        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - HEADER_SIZE).collect();
+
+        chunks.iter().enumerate().map(|(i, chunk)| {
+            Packet::new(
+                src_addr,
+                dst_addr,
+                origin,
+                start_sequence_number + i as u32,
+                i == (chunks.len() - 1),
+                false,
+                is_gossip,
+                chunk.to_vec(),
+            )
+        }).collect()
+    }
 }
 
 #[derive(Clone)]
