@@ -371,7 +371,7 @@ impl ReliableCommunication {
                             start_seq,
                             true,
                         );
-                        seq_lock.insert(leader, start_seq + 1);
+                        seq_lock.insert(leader, start_seq + packets.len() as u32);
                         messages.push(packets);
                     }
                 }
