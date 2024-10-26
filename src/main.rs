@@ -95,15 +95,6 @@ impl Agent {
             } else {
                 let path = format!("tests/erros{}_{i}.txt", self.id);
                 debug_file!(path, &message);
-                // let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                //                                     .create(true)
-                //                                     .append(true)
-                //                                     .open(path) {
-                //     Ok(f) => f,
-                //     Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-                // };
-                // // connverts the message to a string
-                // std::io::Write::write_all(&mut file, &message).expect("Erro ao escrever no arquivo");
             }
             i += 1;
         }
@@ -170,9 +161,7 @@ fn create_agents(
 
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..agent_num {
-        nodes.push(Node{addr: SocketAddr::new(ip,
-            port + (i as u16)),
-            agent_number: i});
+        nodes.push(Node::new(SocketAddr::new(ip,port + (i as u16)), i));
     }
     
     let agent = Arc::new(

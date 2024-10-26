@@ -1,0 +1,20 @@
+{
+    "test1: send": {
+        "agent_0": [
+            ["send", "agent_1", "message_0"],
+            ["corrupt", [[0, 1], [5, 3], [7, 1]]]
+        ],
+        "agent_1": [
+            ["receive", "agent_0", "message_0"]
+        ]
+    },
+    "test2: multiple_sends" : {
+        "agent_0": [
+            ["send", "agent_1", "message_0"]
+        ],
+        "agent_1": [
+            ["receive", "agent_0", "message_0"],
+            ["send", "agent_0", "message_1"]
+        ]
+    }
+}
