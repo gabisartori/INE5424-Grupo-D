@@ -181,7 +181,7 @@ impl ReliableCommunication {
         self.group.len() as u32
     }
 
-    fn gossip(&self, message: Vec<u8>, origin: SocketAddr, sequence_number: u32) -> bool {
+    fn gossip(&self, message: Vec<u8>, origin: SocketAddr, sequence_number: u32) {
         let (request, _) = SendRequest::new (
             message,
             SendRequestData::Gossip {
@@ -190,7 +190,6 @@ impl ReliableCommunication {
             },
         );
         self.register_to_sender_tx.send(request).unwrap();
-        true
     }
 
     /// Atomic Broadcast: sends a message to all nodes in the group and returns how many were successful
