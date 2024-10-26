@@ -40,6 +40,7 @@ mod lib {
     pub mod failure_detection;
     pub mod packet;
     pub mod flags;
+    pub mod debug;
 }
 use lib::reliable_communication::{ReliableCommunication, Node, Broadcast};
 
