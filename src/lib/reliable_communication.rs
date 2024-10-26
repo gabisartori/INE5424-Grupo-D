@@ -247,8 +247,8 @@ impl ReliableCommunication {
             let mut success_count = 0;
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
-                let ugh = packets.first().unwrap().header.clone();
-                register_to_listener_tx.send((ugh.dst_addr, ugh.seq_num)).unwrap();
+                let message_header = packets.first().unwrap().header.clone();
+                register_to_listener_tx.send((message_header.dst_addr, message_header.seq_num)).unwrap();
 
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
