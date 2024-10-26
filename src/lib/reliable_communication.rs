@@ -345,18 +345,18 @@ impl ReliableCommunication {
                         for node in self.group.iter() {
                             let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
                             let start_seq = *seq_lock.entry(node.addr).or_insert(0);
+                            let packets = Packet::packets_from_message(
+                                self.host.addr,
+                                node.addr,
+                                self.host.addr,
+                                request.data.clone(),
+                                start_seq,
+                                true,
+                            );
+                            seq_lock.insert(node.addr, start_seq + packets.len() as u32);
                             if friends.contains(node) {
-                                let packets = Packet::packets_from_message(
-                                    self.host.addr,
-                                    node.addr,
-                                    self.host.addr,
-                                    request.data.clone(),
-                                    start_seq,
-                                    true,
-                                );
                                 messages.push(packets);
                             }
-                            seq_lock.insert(node.addr, start_seq + 1);
                         }
                     },
                     Broadcast::AB => {
@@ -422,7 +422,7 @@ impl ReliableCommunication {
             if packet.header.is_ack() {
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
-                    expected_acks.entry(key).or_insert(start_seq);
+                    expected_acks.insert(key, start_seq);
                 }
                 match expected_acks.get_mut(&packet.header.src_addr){
                     Some(seq_num) => {
