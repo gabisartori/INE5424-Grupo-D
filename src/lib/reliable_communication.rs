@@ -379,9 +379,9 @@ impl ReliableCommunication {
             SendRequestData::Gossip { origin_address, start_sequence_number } => {
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
-                        *origin_address,
-                        node.addr,
                         self.host.addr,
+                        node.addr,
+                        *origin_address,
                         request.data.clone(),
                         *start_sequence_number,
                         true,
