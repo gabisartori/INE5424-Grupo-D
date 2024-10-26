@@ -113,7 +113,7 @@ impl Packet {
 
 impl std::fmt::Debug for Packet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packet seq_num: {}", self.header.seq_num)
+        write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num, self.header.src_addr.port(), self.header.dst_addr.port(), self.header.origin.port())
     }
 }
 
