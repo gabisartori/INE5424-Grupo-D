@@ -2,7 +2,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 // Tamanho do buffer
-use crate::config::{CORRUPTION_RATE, BUFFER_SIZE};
+use crate::config::BUFFER_SIZE;
 use super::flags::Flags;
 
 #[derive(Clone)]
@@ -79,9 +79,6 @@ impl Packet {
         sum = sum.wrapping_add(header.flags.value as u32);
         for byte in data {
             sum = sum.wrapping_add(*byte as u32);
-        }
-        if rand::random::<f32>() < CORRUPTION_RATE {
-            sum = sum.wrapping_add(1);
         }
         sum
     }

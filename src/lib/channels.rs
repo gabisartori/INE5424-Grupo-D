@@ -5,7 +5,7 @@ e implementa sockets para comunicação entre os processos participantes.
 use std::net::UdpSocket;
 use std::sync::Arc;
 
-use crate::config::{BUFFER_SIZE, LOSS_RATE};
+use crate::config::{BUFFER_SIZE, LOSS_RATE, CORRUPTION_RATE};
 use super::packet::Packet;
 // use super::failure_detection;
 
@@ -43,9 +43,12 @@ impl Channel {
                     continue;
                 },
             }
-            let packet = Packet::from_bytes(buffer, size);
+            let mut packet = Packet::from_bytes(buffer, size);
             // Simula perda de pacotes
             if rand::random::<f32>() < LOSS_RATE { continue; }
+            if rand::random::<f32>() < CORRUPTION_RATE {
+                packet.header.checksum += 1;
+            }
             // Verifica se o pacote foi corrompido
             if !self.validate_message(&packet) { continue; }
             return packet

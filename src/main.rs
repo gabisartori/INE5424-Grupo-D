@@ -14,6 +14,20 @@ macro_rules! debug_println {
         std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     };
 }
+macro_rules! debug_file {
+    ($file_path:expr, $msg:expr) => {
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                            .create(true)
+                                            .append(true)
+                                            .open($file_path) {
+            Ok(f) => f,
+            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+        };
+        // connverts the message to a string
+        std::io::Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
+
+    };
+}
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -80,15 +94,16 @@ impl Agent {
                 acertos += 1;
             } else {
                 let path = format!("tests/erros{}_{i}.txt", self.id);
-                let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                                    .create(true)
-                                                    .append(true)
-                                                    .open(path) {
-                    Ok(f) => f,
-                    Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-                };
-                // connverts the message to a string
-                std::io::Write::write_all(&mut file, &message).expect("Erro ao escrever no arquivo");
+                debug_file!(path, &message);
+                // let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                //                                     .create(true)
+                //                                     .append(true)
+                //                                     .open(path) {
+                //     Ok(f) => f,
+                //     Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+                // };
+                // // connverts the message to a string
+                // std::io::Write::write_all(&mut file, &message).expect("Erro ao escrever no arquivo");
             }
             i += 1;
         }
@@ -131,15 +146,8 @@ impl Agent {
         let s_acertos =  sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
         let path = format!("tests/Resultado.txt");
-        let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open(path) {
-            Ok(f) => f,
-            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-        };
-        let msf = format!("AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n", self.id);
-        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
+        let msg = format!("AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n", self.id);
+        debug_file!(path, &msg.as_bytes());
     }
 }
 
@@ -204,6 +212,11 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
         resultados[idx] = line.clone();
         line.clear();
     }
+    // turn results into a string and write it to the file
+    let mut result_str = String::new();
+    for a in resultados {
+        result_str.push_str(&a);
+    }
     // clear the file and rewrite the results in order
     let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                         .write(true)
@@ -212,12 +225,10 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
         Ok(f) => f,
         Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
     };
-    for a in resultados {
-        std::io::Write::write_all(&mut file, a.as_bytes()).expect("Erro ao escrever no arquivo");
-    }
-    let expected = match broadcast {
+    std::io::Write::write_all(&mut file, result_str.as_bytes()).expect("Erro ao escrever no arquivo");
+    let expected = match broadcast {    
         "NONE" => agent_num*n_msgs,
-        _ => agent_num*agent_num*n_msgs        
+        _ => agent_num*agent_num*n_msgs
     };
     println!("Total de Mensagens Enviadas : {total_sends}/{expected}");
     println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
@@ -256,7 +267,7 @@ fn main() {
             c.wait().expect("Falha ao esperar processo filho");
         }
         calculate_test(agent_num, n_msgs, args[3].as_str());
-    } else if args.len() == 13 { // Se há argumentos, então está rodando um subprocesso
+    } else if args.len() == 13 { // Se há 13 argumentos, então está rodando um subprocesso
         let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
         let broadcast: Broadcast = match args[3].as_str() {
@@ -275,11 +286,15 @@ fn main() {
         let w_size: usize = args[10].parse().expect("Falha ao converter w_size para usize");
         let timeout_limit: u32 = args[11].parse().expect("Falha ao converter timeout_limit para u32");
         let agent_id: usize = args[12].parse().expect("Falha ao converter agent_id para u32");
-        let agent = create_agents(agent_id, agent_num, n_msgs, broadcast, timeout, timeout_limit, message_timeout,  broadcast_timeout, ip, port, gossip_rate, w_size);
+        
+        
+        let agent = create_agents(agent_id, agent_num, n_msgs,
+            broadcast, timeout, timeout_limit, message_timeout,
+            broadcast_timeout, ip, port, gossip_rate, w_size);
         agent.run();
     }
     else {
-        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size>");
+        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <timeout_limit>");
         println!("enviado {:?}", args);
         panic!("Número de argumentos inválido");
     }

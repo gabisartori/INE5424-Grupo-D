@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 // Configurações da comunicação
 pub const BUFFER_SIZE: usize = 2<<9;
 pub const CORRUPTION_RATE: f32 = 0.;
