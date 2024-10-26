@@ -210,7 +210,11 @@ impl ReliableCommunication {
             self.register_to_sender_tx.send(request).unwrap();
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
-            if request_result_rx.recv().unwrap() == 0 { continue; }
+            if request_result_rx.recv().unwrap() == 0 {
+                let mut ld = self.leader.lock().unwrap();
+                *ld = (*ld + 1) % self.group.len();
+                continue;
+            }
 
             // Listen for any broadcasts until your message arrives
             // While there are broadcasts arriving, it means the leader is still alive
