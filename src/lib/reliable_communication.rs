@@ -499,9 +499,9 @@ impl ReliableCommunication {
         let mut message = Vec::new();
         // Ignore the first packet if its the remnant of a previous message
         if !packets.is_empty() && packets.first().unwrap().header.is_last() { packets.remove(0); }
-        let sequence_number;
-        if packets.is_empty() { sequence_number = packet.header.seq_num; }
-        else { sequence_number = packets.first().unwrap().header.seq_num; }
+
+        let sequence_number = if packets.is_empty() { packet.header.seq_num } else { packets.first().unwrap().header.seq_num };
+
         for packet in packets.iter() {
             message.extend(&packet.data);
         }
