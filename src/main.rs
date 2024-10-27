@@ -200,10 +200,10 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_1();
+    let mut test = tests::send_test_2();
+    let agent_num = test.len();
 
     if args.len() == 12 {
-        let agent_num = test.len();
 
         assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
 
@@ -236,9 +236,6 @@ fn main() {
 
     } else if args.len() == 13 {
         // Se há 13 argumentos, então está rodando um subprocesso
-       let agent_num: usize = args[1]
-            .parse()
-            .expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
         let broadcast: Broadcast = match args[3].as_str() {
             "NONE" => Broadcast::NONE,
