@@ -1,6 +1,6 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// ack: 1, last: 2, syn: 4, fin: 8, gsp: 16
+/// ack: 1, last: 2, gsp: 4, syn: 8, fin: 16
 pub struct Flags {
     pub value: u8,
 }
@@ -10,6 +10,8 @@ impl Flags {
     pub const ACK: Flags = Flags { value: 1 };
     pub const LST: Flags = Flags { value: 2 };
     pub const GSP: Flags = Flags { value: 4 };
+    pub const SYN: Flags = Flags { value: 8 };
+    pub const FIN: Flags = Flags { value: 16 };
 
     pub fn is_set(&self, flag: Flags) -> bool {
         self.value & flag.value != 0
@@ -25,6 +27,12 @@ impl Flags {
         }
         if self.is_set(Flags::GSP) {
             result.push_str("GSP ");
+        }
+        if self.is_set(Flags::SYN) {
+            result.push_str("SYN ");
+        }
+        if self.is_set(Flags::FIN) {
+            result.push_str("FIN ");
         }
         result
     }
@@ -43,6 +51,30 @@ impl std::ops::BitAnd for Flags {
 
     fn bitand(self, rhs: Self) -> Self::Output {
         Flags { value: self.value & rhs.value }
+    }
+}
+
+impl std::ops::BitAnd<u8> for Flags {
+    type Output = Flags;
+
+    fn bitand(self, rhs: u8) -> Self::Output {
+        Flags { value: self.value & rhs }
+    }
+}
+
+impl std::ops::BitAnd<bool> for Flags {
+    type Output = Flags;
+
+    fn bitand(self, rhs: bool) -> Self::Output {
+        Flags { value: if rhs { self.value } else { 0 } }
+    }
+}
+
+impl std::ops::BitAnd<Flags> for bool {
+    type Output = Flags;
+
+    fn bitand(self, rhs: Flags) -> Self::Output {
+        Flags { value: if self { rhs.value } else { 0 } }
     }
 }
 
