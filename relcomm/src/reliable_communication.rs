@@ -309,7 +309,7 @@ impl ReliableCommunication {
         self: Arc<Self>,
         acks_rx: Receiver<Packet>,
         register_from_user_rx: Receiver<SendRequest>,
-        register_to_listener_tx: Sender<(SocketAddr, u32)>,
+        register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
 
@@ -320,7 +320,7 @@ impl ReliableCommunication {
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
                 let message_header = packets.first().unwrap().header.clone();
-                register_to_listener_tx.send((message_header.dst_addr, message_header.seq_num)).unwrap();
+                register_to_listener_tx.send(((message_header.dst_addr, message_header.origin), message_header.seq_num)).unwrap();
 
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
@@ -450,11 +450,11 @@ impl ReliableCommunication {
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
         acks_tx: Sender<Packet>,
-        register_from_sender_rx: Receiver<(SocketAddr, u32)>,
+        register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
         let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
-        let mut expected_acks: HashMap<SocketAddr, u32> = HashMap::new();
+        let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
         let mut broadcast_waiters: Vec<Sender<Vec<u8>>> = Vec::new();
         loop {
             let packet = self.channel.receive();
@@ -463,7 +463,7 @@ impl ReliableCommunication {
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
                     expected_acks.insert(key, start_seq);
                 }
-                match expected_acks.get_mut(&packet.header.src_addr) {
+                match expected_acks.get_mut(&(packet.header.src_addr, packet.header.origin)) {
                     Some(seq_num) => {
                         if packet.header.seq_num < *seq_num { continue; }
                         *seq_num = packet.header.seq_num + 1;
