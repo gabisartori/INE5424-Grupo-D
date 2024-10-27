@@ -1,9 +1,10 @@
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 // use rand::Rng;
 
-use logger::log::Logger;
+use logger::log::SharedLogger;
+use logger::log::{Logger, LoggerState, MessageStatus, SenderType};
 use logger::{debug_file, debug_println, log};
 use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
 
@@ -28,7 +29,7 @@ impl Agent {
         gossip_rate: usize,
         broadcast: Broadcast,
         broadcast_timeout: u64,
-        logger: Logger,
+        logger: SharedLogger,
     ) -> Self {
         Agent {
             id,
@@ -42,7 +43,8 @@ impl Agent {
                 gossip_rate,
                 broadcast,
                 broadcast_timeout,
-                logger,
+                logger.clone(),
+
             ),
             n_msgs,
         }
@@ -75,6 +77,9 @@ impl Agent {
                 tests::Action::Send { destination, message } => {
                     let destination = &self.communication.group.lock().unwrap()[destination];
                     acertos  += self.communication.send(&destination.addr, message.as_bytes().to_vec());
+                    self.log_a_send();
+                    self.log_msg_fail();
+
                 },
                 tests::Action::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
@@ -84,6 +89,31 @@ impl Agent {
         }
         return acertos;
     }
+
+    pub fn log_msg_fail(&self) {
+        let logger_state = LoggerState::MessageSender {
+            state: MessageStatus::SentFailed,
+            current_agent_id: self.id,
+            message_id: 0,
+            target_agent_id: 0,
+            action: MessageStatus::SentFailed,
+            sender_type: SenderType::Unknown,
+        };
+        self.communication.logger.lock().unwrap().log(logger_state);
+    }
+
+    pub fn log_a_send(&self) {
+        let logger_state = LoggerState::MessageSender {
+            state: MessageStatus::Sent,
+            current_agent_id: self.id,
+            message_id: 0,
+            target_agent_id: 0,
+            action: MessageStatus::Sent,
+            sender_type: SenderType::Unknown,
+        };
+        self.communication.logger.lock().unwrap().log(logger_state);
+    }
+
 
     pub fn run(self: Arc<Self>, actions: Vec<tests::Action>) {
         let mut send_actions = Vec::new();
@@ -99,6 +129,7 @@ impl Agent {
                 },
             }
         }
+    
 
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
@@ -136,7 +167,8 @@ fn create_agents(
     for i in 0..agent_num {
         nodes.push(Node::new(SocketAddr::new(ip, port + (i as u16)), i));
     }
-    let mut logger: Logger = Logger::new(1, agent_num);
+
+    let logger = Arc::new(Mutex::new(Logger::new(1, agent_num)));
 
     let agent = Arc::new(
         Agent::new(
@@ -148,8 +180,11 @@ fn create_agents(
             w_size,
             gossip_rate,
             broadcast,
-        broadcast_timeout,
-        logger,
+            broadcast_timeout,
+            Arc::clone(&logger),
+
+
+        
     ));
     agent
 }
@@ -198,6 +233,37 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
 }
 
+pub fn init_log_files(n_agents: usize) {
+    // remove log folder if it exists in logger/src
+
+    let log_path = "logger/src/log";
+
+    // Verifique se a pasta existe antes de tentar removê-la
+    if std::fs::metadata(log_path).is_ok() {
+        println!("Removendo a pasta de log...");
+        if let Err(e) = std::fs::remove_dir_all(log_path) {
+            eprintln!("Erro ao remover a pasta de log: {}", e);
+        } else {
+            println!("Pasta de log removida com sucesso.");
+        }
+    } else {
+        println!("A pasta de log não existe, nada para remover.");
+    }
+
+
+    if let Err(e) = std::fs::remove_dir_all("logger/src/log") {
+        eprintln!("Erro ao remover a pasta de log: {}", e);
+    }
+
+    // create log folder
+    std::fs::create_dir("logger/src/log").expect("Erro ao criar pasta de log");
+
+    for i in 0..n_agents {
+        let file = std::fs::File::create(format!("logger/src/log/log_agent_{}.txt", i))
+            .expect("Erro ao criar arquivo de log");
+    }
+
+}
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut test = tests::send_test_2();
@@ -267,6 +333,8 @@ fn main() {
         let agent_id: usize = args[12]
             .parse()
             .expect("Falha ao converter agent_id para u32");
+
+        init_log_files(agent_num);
 
         let agent = create_agents(
             agent_id,

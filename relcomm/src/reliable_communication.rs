@@ -7,6 +7,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use crate::channels::Channel;
 use crate::packet::Packet;
+use logger::log::SharedLogger;
 use logger::log::{Logger, MessageStatus, SenderType};
 use logger::{debug_file, debug_println, log};
 
@@ -97,7 +98,7 @@ pub struct ReliableCommunication {
     broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
-    logger: Logger,
+    pub logger: SharedLogger,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -114,7 +115,7 @@ impl ReliableCommunication {
         gossip_rate: usize,
         broadcast: Broadcast,
         broadcast_timeout: u64,
-        logger: Logger,
+        logger: SharedLogger,
     ) -> Arc<Self> {
         let channel = Channel::new(host.addr);
         let leader = if broadcast == Broadcast::AB {
@@ -264,9 +265,12 @@ impl ReliableCommunication {
             );
             self.register_to_sender_tx.send(request).unwrap();
 
-            // packet sender logger state
-            let logger_state = log::LoggerState::MessageSender { state: MessageStatus::Sent, current_agent_id: self.host.agent_number, target_agent_id: 0, message_id: 0, action: MessageStatus::Waiting, sender_type: SenderType::Unknown };
-            //self.logger.log(logger_state);
+            let logger_state = log::LoggerState::MessageSender {
+                state: MessageStatus::Sent, current_agent_id: self.host.agent_number, 
+                target_agent_id: 0, message_id: 0, action: MessageStatus::Waiting, 
+                sender_type: SenderType::Unknown
+            };
+            self.logger.lock().unwrap().log(logger_state);
 
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
