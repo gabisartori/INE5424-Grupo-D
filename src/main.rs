@@ -1,48 +1,10 @@
-#[macro_export]
-macro_rules! debug_println {
-    // This pattern accepts format arguments like println!
-    ($($arg:tt)*) => {
-        let path = format!("tests/debug.txt");
-        let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open(path) {
-            Ok(f) => f,
-            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-        };
-        let msf = format!("----------\n{}\n----------\n", format!($($arg)*));
-        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
-    };
-}
-macro_rules! debug_file {
-    ($file_path:expr, $msg:expr) => {
-        let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open($file_path) {
-            Ok(f) => f,
-            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
-        };
-        // connverts the message to a string
-        std::io::Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
-
-    };
-}
-
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::thread;
 // use rand::Rng;
 
-mod lib {
-    pub mod reliable_communication;
-    pub mod channels;
-    pub mod failure_detection;
-    pub mod packet;
-    pub mod flags;
-    pub mod debug;
-}
-use lib::reliable_communication::{ReliableCommunication, Node, Broadcast};
+use relcomm::reliable_communication::{ReliableCommunication, Node, Broadcast};
+use logger::{debug_println, debug_file};
 
 // Importa as configurações de endereços dos processos
 mod config;
