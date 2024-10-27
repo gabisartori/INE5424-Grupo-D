@@ -3,8 +3,9 @@ use std::sync::Arc;
 use std::thread;
 // use rand::Rng;
 
-use relcomm::reliable_communication::{ReliableCommunication, Node, Broadcast};
-use logger::{debug_println, debug_file};
+use logger::log::Logger;
+use logger::{debug_file, debug_println, log};
+use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
 
 // Importa as configurações de endereços dos processos
 mod config;
@@ -17,7 +18,8 @@ struct Agent {
 }
 
 impl Agent {
-    fn new(id: usize,
+    fn new(
+        id: usize,
         nodes: Vec<Node>,
         n_msgs: u32,
         timeout: u64,
@@ -25,7 +27,9 @@ impl Agent {
         timeout_limit: u32,
         w_size: usize,
         gossip_rate: usize,
-        broadcast: Broadcast, broadcast_timeout: u64
+        broadcast: Broadcast,
+        broadcast_timeout: u64,
+        logger: Logger,
     ) -> Self {
         Agent {
             id,
@@ -38,9 +42,10 @@ impl Agent {
                 w_size,
                 gossip_rate,
                 broadcast,
-                broadcast_timeout
+                broadcast_timeout,
+                logger,
             ),
-            n_msgs
+            n_msgs,
         }
     }
 
@@ -65,15 +70,15 @@ impl Agent {
     }
 
     fn creater(&self) -> u32 {
-        let mut acertos= 0;
-        for i in 0..self.n_msgs {
+        let mut acertos = 0;
+        for _i in 0..self.n_msgs {
             // Send message to the selected node
             let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
 
             let tot = self.communication.broadcast(msg);
             acertos += tot;
             if tot == 0 {
-                debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, i);
+                debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, _i);
             }
         }
         return acertos;
@@ -97,14 +102,16 @@ impl Agent {
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
         let sender = thread::spawn(move || sender_clone.creater());
         let listener = thread::spawn(move || listener_clone.receiver());
-        let s_acertos =  sender.join().unwrap();
+        let s_acertos = sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
         let path = format!("tests/Resultado.txt");
-        let msg = format!("AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n", self.id);
+        let msg = format!(
+            "AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n",
+            self.id
+        );
         debug_file!(path, &msg.as_bytes());
     }
 }
-
 
 fn create_agents(
     id: usize,
@@ -118,15 +125,16 @@ fn create_agents(
     ip: IpAddr,
     port: u16,
     gossip_rate: usize,
-    w_size: usize
+    w_size: usize,
 ) -> Arc<Agent> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
     for i in 0..agent_num {
-        nodes.push(Node::new(SocketAddr::new(ip,port + (i as u16)), i));
+        nodes.push(Node::new(SocketAddr::new(ip, port + (i as u16)), i));
     }
-    
+    let mut logger: Logger = Logger::new(1, agent_num);
+
     let agent = Arc::new(
         Agent::new(
             id, nodes,
@@ -137,11 +145,10 @@ fn create_agents(
             w_size,
             gossip_rate,
             broadcast,
-            broadcast_timeout
-        )
-    );
+        broadcast_timeout,
+        logger,
+    ));
     agent
-
 }
 
 fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
@@ -171,45 +178,51 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     }
     // clear the file and rewrite the results in order
     let mut file: std::fs::File = match std::fs::OpenOptions::new()
-                                        .write(true)
-                                        .truncate(true)
-                                        .open("tests/Resultado.txt") {
+        .write(true)
+        .truncate(true)
+        .open("tests/Resultado.txt")
+    {
         Ok(f) => f,
-        Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+        Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
     };
-    std::io::Write::write_all(&mut file, result_str.as_bytes()).expect("Erro ao escrever no arquivo");
-    let expected = match broadcast {    
-        "NONE" => agent_num*n_msgs,
-        _ => agent_num*agent_num*n_msgs
+    std::io::Write::write_all(&mut file, result_str.as_bytes())
+        .expect("Erro ao escrever no arquivo");
+    let expected = match broadcast {
+        "NONE" => agent_num * n_msgs,
+        _ => agent_num * agent_num * n_msgs,
     };
     println!("Total de Mensagens Enviadas : {total_sends}/{expected}");
     println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
 }
 
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() == 12 {
-        let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
-        let n_msgs: usize = args[2].parse().expect("");
+        let agent_num: usize = args[1]
+            .parse()
+            .expect("Falha ao converter agent_num para usize");
+
         assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
-        let mut childs = Vec::new();  
+
+        let n_msgs: usize = args[2].parse().expect("");
+        let mut childs = Vec::new();
+
         // Inicializar os agentes locais
         for i in 0..agent_num {
             let c = std::process::Command::new(std::env::current_exe().unwrap())
-                .arg(args[1].clone())  // Passando o número de agentes
-                .arg(args[2].clone())  // Passando o número de mensagens
-                .arg(args[3].clone())  // Passando o tipo de broadcast
-                .arg(args[4].clone())  // Passando o timeout
-                .arg(args[5].clone())  // Passando o message_timeout
-                .arg(args[6].clone())  // Passando o broadcast_timeout
-                .arg(args[7].clone())  // Passando o IP
-                .arg(args[8].clone())  // Passando a Porta base
-                .arg(args[9].clone())  // Passando a taxa de gossip
+                .arg(args[1].clone()) // Passando o número de agentes
+                .arg(args[2].clone()) // Passando o número de mensagens
+                .arg(args[3].clone()) // Passando o tipo de broadcast
+                .arg(args[4].clone()) // Passando o timeout
+                .arg(args[5].clone()) // Passando o message_timeout
+                .arg(args[6].clone()) // Passando o broadcast_timeout
+                .arg(args[7].clone()) // Passando o IP
+                .arg(args[8].clone()) // Passando a Porta base
+                .arg(args[9].clone()) // Passando a taxa de gossip
                 .arg(args[10].clone()) // Passando o tamanho da janela
                 .arg(args[11].clone()) // Passando o limite de timeouts consecutivos
-                .arg(i.to_string())  // Passando o ID do agente  
+                .arg(i.to_string()) // Passando o ID do agente
                 .spawn()
                 .expect(format!("Falha ao spawnar processo {i}").as_str());
             childs.push(c);
@@ -219,33 +232,60 @@ fn main() {
             c.wait().expect("Falha ao esperar processo filho");
         }
         calculate_test(agent_num, n_msgs, args[3].as_str());
-    } else if args.len() == 13 { // Se há 13 argumentos, então está rodando um subprocesso
-        let agent_num: usize = args[1].parse().expect("Falha ao converter agent_num para usize");
+
+    } else if args.len() == 13 {
+        // Se há 13 argumentos, então está rodando um subprocesso
+        let agent_num: usize = args[1]
+            .parse()
+            .expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
         let broadcast: Broadcast = match args[3].as_str() {
             "NONE" => Broadcast::NONE,
             "BEB" => Broadcast::BEB,
             "URB" => Broadcast::URB,
             "AB" => Broadcast::AB,
-            _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3])
+            _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3]),
         };
-        let timeout: u64 = args[4].parse().expect("Falha ao converter timeout para u64");
-        let message_timeout: u64 = args[5].parse().expect("Falha ao converter message_timeout para u64");
-        let broadcast_timeout: u64 = args[6].parse().expect("Falha ao converter broadcast_timeout para u64");
+        let timeout: u64 = args[4]
+            .parse()
+            .expect("Falha ao converter timeout para u64");
+        let message_timeout: u64 = args[5]
+            .parse()
+            .expect("Falha ao converter message_timeout para u64");
+        let broadcast_timeout: u64 = args[6]
+            .parse()
+            .expect("Falha ao converter broadcast_timeout para u64");
         let ip: IpAddr = args[7].parse().expect("Falha ao converter ip para IpAddr");
         let port: u16 = args[8].parse().expect("Falha ao converter port para u16");
-        let gossip_rate: usize = args[9].parse().expect("Falha ao converter gossip_rate para usize");
-        let w_size: usize = args[10].parse().expect("Falha ao converter w_size para usize");
-        let timeout_limit: u32 = args[11].parse().expect("Falha ao converter timeout_limit para u32");
-        let agent_id: usize = args[12].parse().expect("Falha ao converter agent_id para u32");
-        
-        
-        let agent = create_agents(agent_id, agent_num, n_msgs,
-            broadcast, timeout, timeout_limit, message_timeout,
-            broadcast_timeout, ip, port, gossip_rate, w_size);
+        let gossip_rate: usize = args[9]
+            .parse()
+            .expect("Falha ao converter gossip_rate para usize");
+        let w_size: usize = args[10]
+            .parse()
+            .expect("Falha ao converter w_size para usize");
+        let timeout_limit: u32 = args[11]
+            .parse()
+            .expect("Falha ao converter timeout_limit para u32");
+        let agent_id: usize = args[12]
+            .parse()
+            .expect("Falha ao converter agent_id para u32");
+
+        let agent = create_agents(
+            agent_id,
+            agent_num,
+            n_msgs,
+            broadcast,
+            timeout,
+            timeout_limit,
+            message_timeout,
+            broadcast_timeout,
+            ip,
+            port,
+            gossip_rate,
+            w_size,
+        );
         agent.run();
-    }
-    else {
+    } else {
         println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <timeout_limit>");
         println!("enviado {:?}", args);
         panic!("Número de argumentos inválido");
