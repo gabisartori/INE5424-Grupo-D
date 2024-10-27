@@ -32,7 +32,7 @@ macro_rules! debug_file {
     };
 }
 
-use std::fs::File;
+use std::{fs::File, sync::{Arc, Mutex}};
 
 // // Define states for the agents
 // #[derive(Debug, Clone, Copy)]
@@ -202,11 +202,14 @@ impl DebugLog {
     }
 }
 
+pub type SharedLogger = Arc<Mutex<Logger>>;
+
+
 /// Creates the log files for each Agent, and writes the log messages obtained from the DebugLog struct.
+#[derive(Debug, Clone, Copy)]
 pub struct Logger {
     debug_level: u8,
     n_agents: usize,
-    log_file: Vec<File>,
 }
 
 impl Logger {
@@ -214,19 +217,11 @@ impl Logger {
         let mut logger = Self {
             debug_level,
             n_agents,
-            log_file: Vec::new(),
         };
-        logger.init_log_files();
         logger
     }
 
-    pub fn init_log_files(&mut self) {
-        for _i in 0..self.n_agents {
-            let file_name = format!("log_agent_{}.txt", self.n_agents);
-            let file = File::create(file_name).expect("Erro ao criar arquivo de log");
-            self.log_file.push(file);
-        }
-    }
+
 
     pub fn log(&mut self, logger_state: LoggerState) {
         // with the logger state, we can get the log message
@@ -250,8 +245,8 @@ impl Logger {
             };
 
             // write to the agent log file
-            std::fs::write(format!("log_agent_{}.txt", agent_id), msg_buffer)
-                .expect("Erro ao escrever no arquivo de log do Agente {agent_id}");
+            std::fs::write(format!("src/log/log_agent_{}.txt", agent_id), msg_buffer)
+                .expect(&format!("Erro ao escrever no arquivo de log do Agente {}",agent_id));
         }
     }
 }
