@@ -14,15 +14,23 @@ FAILURE_DETECTION_INTERVAL = 1000
 all:
 	@mkdir -p tests
 	@rm -f tests/*.txt
+	@rm -rf src/log
+	@rm -rf relcomm/log
+	@mkdir -p src/log
+	@mkdir -p relcomm/log
 	@cargo run --release -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT) > tests/result.txt
-	@clear
+#	@clear
 	@cat tests/result.txt
 
 debug:
 	@mkdir -p tests
 	@rm -f tests/*.txt
+	@rm -f src/log
+	@rm -f relcomm/log
+	@mkdir -p src/log
+	@mkdir -p relcomm/log
 	@cargo run -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT) > tests/result.txt
-	@clear
+#	@clear
 	@cat tests/result.txt
 
 clean:

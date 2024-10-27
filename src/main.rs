@@ -234,32 +234,9 @@ fn _calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
 }
 
 pub fn init_log_files(n_agents: usize) {
-    // remove log folder if it exists in logger/src
-
-    let log_path = "logger/src/log";
-
-    // Verifique se a pasta existe antes de tentar removê-la
-    if std::fs::metadata(log_path).is_ok() {
-        println!("Removendo a pasta de log...");
-        if let Err(e) = std::fs::remove_dir_all(log_path) {
-            eprintln!("Erro ao remover a pasta de log: {}", e);
-        } else {
-            println!("Pasta de log removida com sucesso.");
-        }
-    } else {
-        println!("A pasta de log não existe, nada para remover.");
-    }
-
-
-    if let Err(e) = std::fs::remove_dir_all("logger/src/log") {
-        eprintln!("Erro ao remover a pasta de log: {}", e);
-    }
-
-    // create log folder
-    std::fs::create_dir("logger/src/log").expect("Erro ao criar pasta de log");
 
     for i in 0..n_agents {
-        let file = std::fs::File::create(format!("logger/src/log/log_agent_{}.txt", i))
+        let file = std::fs::File::create(format!("src/log/log_agent_{}.txt", i))
             .expect("Erro ao criar arquivo de log");
     }
 
