@@ -7,14 +7,15 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 // Importa a camada de canais
 use crate::channels::Channel;
 use crate::packet::Packet;
-use logger::debug_println;
+use logger::log::{Logger, MessageStatus, SenderType};
+use logger::{debug_file, debug_println, log};
 
+use std::clone::Clone;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::clone::Clone;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
@@ -24,13 +25,17 @@ pub struct Node {
 }
 impl Node {
     pub fn new(addr: SocketAddr, agent_number: usize) -> Self {
-        Self { addr, agent_number, state: NodeState::ALIVE }
+        Self {
+            addr,
+            agent_number,
+            state: NodeState::ALIVE,
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeState {
     ALIVE,
-//    SUSPECT,
+    //    SUSPECT,
     DEAD,
 }
 
@@ -39,7 +44,7 @@ pub enum Broadcast {
     NONE,
     BEB,
     URB,
-    AB
+    AB,
 }
 
 enum SendRequestData {
@@ -53,19 +58,26 @@ enum SendRequestData {
     Gossip {
         origin_address: SocketAddr,
         start_sequence_number: u32,
-    }
+    },
 }
 
 struct SendRequest {
     result_tx: Sender<u32>,
     data: Vec<u8>,
-    options: SendRequestData
+    options: SendRequestData,
 }
 
 impl SendRequest {
     pub fn new(data: Vec<u8>, options: SendRequestData) -> (Self, Receiver<u32>) {
         let (result_tx, result_rx) = mpsc::channel();
-        (Self { result_tx, data, options }, result_rx)
+        (
+            Self {
+                result_tx,
+                data,
+                options,
+            },
+            result_rx,
+        )
     }
 }
 
@@ -85,6 +97,7 @@ pub struct ReliableCommunication {
     broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
+    logger: Logger,
 }
 
 // TODO: Fazer com que a inicialização seja de um grupo
@@ -100,33 +113,63 @@ impl ReliableCommunication {
         w_size: usize,
         gossip_rate: usize,
         broadcast: Broadcast,
-        broadcast_timeout: u64
+        broadcast_timeout: u64,
+        logger: Logger,
     ) -> Arc<Self> {
-        let channel = Channel::new(host.addr);        
-        let leader = if broadcast == Broadcast::AB {group.first().unwrap().clone()} else {host.clone()};
+        let channel = Channel::new(host.addr);
+        let leader = if broadcast == Broadcast::AB {
+            group.first().unwrap().clone()
+        } else {
+            host.clone()
+        };
         let leader = Mutex::new(leader);
         let group = Mutex::new(group);
+
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
         let (receive_tx, receive_rx) = mpsc::channel();
+
         let (register_to_listener_tx, register_to_listener_rx) = mpsc::channel();
         let (broadcast_waiters_tx, broadcast_waiters_rx) = mpsc::channel();
         let receive_rx = Mutex::new(receive_rx);
+
         let timeout = Duration::from_millis(timeout);
         let message_timeout = Duration::from_millis(message_timeout);
         let broadcast_timeout = Duration::from_millis(broadcast_timeout);
+
         let instance = Arc::new(Self {
-            host, group, leader, broadcast, timeout, message_timeout, timeout_limit, 
-            broadcast_timeout, gossip_rate, w_size, channel, register_to_sender_tx,
-            broadcast_waiters_tx, receive_rx, dst_seq_num_cnt: Mutex::new(HashMap::new()) });
+            host,
+            group,
+            leader,
+            broadcast,
+            timeout,
+            message_timeout,
+            timeout_limit,
+            broadcast_timeout,
+            gossip_rate,
+            w_size,
+            channel,
+            register_to_sender_tx,
+            broadcast_waiters_tx,
+            receive_rx,
+            dst_seq_num_cnt: Mutex::new(HashMap::new()),
+            logger,
+        });
+
         let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
         let (acks_tx, acks_rx) = mpsc::channel();
+
         // Spawn all threads
         std::thread::spawn(move || {
             sender_clone.sender(acks_rx, register_to_sender_rx, register_to_listener_tx);
         });
         std::thread::spawn(move || {
-            receiver_clone.listener(receive_tx, acks_tx, register_to_listener_rx, broadcast_waiters_rx);
+            receiver_clone.listener(
+                receive_tx,
+                acks_tx,
+                register_to_listener_rx,
+                broadcast_waiters_rx,
+            );
         });
 
         instance
@@ -138,7 +181,7 @@ impl ReliableCommunication {
     }
 
     fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
-        let (request, result_rx) = SendRequest::new (
+        let (request, result_rx) = SendRequest::new(
             message,
             SendRequestData::Send {
                 destination_address: *dst_addr,
@@ -150,16 +193,21 @@ impl ReliableCommunication {
 
     /// Read one already received message or wait for a message to arrive
     pub fn receive(&self, buffer: &mut Vec<u8>) -> bool {
-        match self.receive_rx.lock().unwrap().recv_timeout(self.message_timeout) {
+        match self
+            .receive_rx
+            .lock()
+            .unwrap()
+            .recv_timeout(self.message_timeout)
+        {
             Ok(msg) => {
                 buffer.extend(msg);
                 true
-            },
+            }
             Err(RecvTimeoutError::Timeout) => false,
             Err(RecvTimeoutError::Disconnected) => {
                 debug_println!("Erro ao receber mensagem: Canal de comunicação desconectado");
                 false
-            },
+            }
         }
     }
 
@@ -170,7 +218,7 @@ impl ReliableCommunication {
                 let group = self.group.lock().unwrap();
                 let idx = (self.host.agent_number + 1) % group.len();
                 self.send(&group[idx].addr, message) as u32
-            },
+            }
             Broadcast::BEB => self.beb(message),
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
@@ -180,10 +228,7 @@ impl ReliableCommunication {
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
-        let (request, result_rx) = SendRequest::new (
-            message,
-            SendRequestData::StartBroadcast {},
-        );
+        let (request, result_rx) = SendRequest::new(message, SendRequestData::StartBroadcast {});
         self.register_to_sender_tx.send(request).unwrap();
         result_rx.recv().unwrap()
     }
@@ -191,18 +236,13 @@ impl ReliableCommunication {
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        let (request, _) = SendRequest::new (
-            message,
-            SendRequestData::StartBroadcast {},
-        );
+        let (request, _) = SendRequest::new(message, SendRequestData::StartBroadcast {});
         self.register_to_sender_tx.send(request).unwrap();
         self.group.lock().unwrap().len() as u32
     }
 
-    fn gossip(&self, data: Vec<u8>,
-              origin: SocketAddr,
-              sequence_number: u32) {
-        let (request, _) = SendRequest::new (
+    fn gossip(&self, data: Vec<u8>, origin: SocketAddr, sequence_number: u32) {
+        let (request, _) = SendRequest::new(
             data,
             SendRequestData::Gossip {
                 origin_address: origin,
@@ -223,6 +263,11 @@ impl ReliableCommunication {
                 SendRequestData::StartBroadcast {},
             );
             self.register_to_sender_tx.send(request).unwrap();
+
+            // packet sender logger state
+            let logger_state = log::LoggerState::MessageSender { state: MessageStatus::Sent, current_agent_id: self.host.agent_number, target_agent_id: 0, message_id: 0, action: MessageStatus::Waiting, sender_type: SenderType::Unknown };
+            //self.logger.log(logger_state);
+
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
             if request_result_rx.recv().unwrap() == 0 {
@@ -241,23 +286,21 @@ impl ReliableCommunication {
             // While there are broadcasts arriving, it means the leader is still alive
             // If the channel times out before your message arrives, it means the leader died
             loop {
-                let msg = broadcast_rx
-                .recv_timeout(self.broadcast_timeout);
+                let msg = broadcast_rx.recv_timeout(self.broadcast_timeout);
                 match msg {
                     Ok(msg) => {
                         if msg == message {
                             return self.group.lock().unwrap().len() as u32;
                         }
-                    },
+                    }
                     Err(RecvTimeoutError::Timeout) => {
                         break;
-                    },
+                    }
                     Err(e) => {
                         panic!("{:?}", e)
-                    },
+                    }
                 }
             }
-
         }
     }
 
@@ -266,10 +309,10 @@ impl ReliableCommunication {
         self: Arc<Self>,
         acks_rx: Receiver<Packet>,
         register_from_user_rx: Receiver<SendRequest>,
-        register_to_listener_tx: Sender<(SocketAddr, u32)>
+        register_to_listener_tx: Sender<(SocketAddr, u32)>,
     ) {
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
-        
+
         // Message sending algorithm
         while let Ok(request) = register_from_user_rx.recv() {
             let messages_to_send = self.get_messages(&request);
@@ -291,11 +334,7 @@ impl ReliableCommunication {
         }
     }
 
-    fn go_back_n(
-        &self,
-        packets: &Vec<Packet>,
-        acks_rx: &Receiver<Packet>
-    ) -> bool {
+    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
@@ -337,12 +376,7 @@ impl ReliableCommunication {
         let mut seq_lock = self.dst_seq_num_cnt.lock().unwrap();
         let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
         let packets = Packet::packets_from_message(
-            *src_addr,
-            *dst_addr,
-            *origin,
-            data,
-            *start_seq,
-            is_gossip,
+            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
         );
         *start_seq += packets.len() as u32;
         packets
@@ -354,19 +388,20 @@ impl ReliableCommunication {
             SendRequestData::Send { destination_address } => {
                 let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
                 messages.push(packets);
-            },
-            SendRequestData::StartBroadcast {} => {
-                match self.broadcast {
-                    Broadcast::NONE => { debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast"); },
-                    Broadcast::BEB => {
-                        for node in self.group.lock().unwrap().iter() {
+            }
+            SendRequestData::StartBroadcast {} => match self.broadcast {
+                Broadcast::NONE => {
+                    debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast");
+                }
+                Broadcast::BEB => {
+                    for node in self.group.lock().unwrap().iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
                             messages.push(packets);
                         }
-                    },
-                    Broadcast::URB => {
-                        let friends = self.get_friends();
-                        for node in self.group.lock().unwrap().iter() {
+                }
+                Broadcast::URB => {
+                    let friends = self.get_friends();
+                    for node in self.group.lock().unwrap().iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
                             if friends.contains(node) {
                                 messages.push(packets);
@@ -377,7 +412,6 @@ impl ReliableCommunication {
                         let leader = self.group.lock().unwrap()[self.leader.lock().unwrap().agent_number].addr;
                         let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
                         messages.push(packets);
-                    }
                 }
             },
             SendRequestData::Gossip { origin_address, start_sequence_number } => {
@@ -417,7 +451,7 @@ impl ReliableCommunication {
         messages_tx: Sender<Vec<u8>>,
         acks_tx: Sender<Packet>,
         register_from_sender_rx: Receiver<(SocketAddr, u32)>,
-        register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>
+        register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
         let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
         let mut expected_acks: HashMap<SocketAddr, u32> = HashMap::new();
@@ -429,29 +463,34 @@ impl ReliableCommunication {
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
                     expected_acks.insert(key, start_seq);
                 }
-                match expected_acks.get_mut(&packet.header.src_addr){
+                match expected_acks.get_mut(&packet.header.src_addr) {
                     Some(seq_num) => {
                         if packet.header.seq_num < *seq_num { continue; }
                         *seq_num = packet.header.seq_num + 1;
                         acks_tx.send(packet).unwrap();
-                    },
+                    }
                     None => {
                         debug_println!("->-> ACK recebido sem destinatário esperando");
-                    },
+                    }
                 }
             } else {
                 // Handle data
-                let packets = pkts_per_origin.entry(packet.header.origin).or_insert(Vec::new());
+                let packets = pkts_per_origin
+                    .entry(packet.header.origin)
+                    .or_insert(Vec::new());
                 let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
 
                 // Ignore the packet if the sequence number is higher than expected
-                if packet.header.seq_num > expected { continue; }
+                if packet.header.seq_num > expected {
+                    continue;
+                }
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
                 if packet.header.seq_num < expected { continue; }
                 
                 if packet.header.is_last() {
-                    let (message, origin, sequence_number) = ReliableCommunication::receive_last_packet(packets, &packet);
+                    let (message, origin, sequence_number) =
+                        ReliableCommunication::receive_last_packet(packets, &packet);
                     // Handling broadcasts
                     if packet.header.must_gossip() {
                         match self.broadcast {
@@ -459,12 +498,12 @@ impl ReliableCommunication {
                             Broadcast::NONE | Broadcast::BEB => {
                                 debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
                                 messages_tx.send(message).unwrap();
-                            },
+                            }
                             // URB: All broadcasts must be gossip   ed and delivered
                             Broadcast::URB => {
                                 self.gossip(message.clone(), origin, sequence_number);
                                 messages_tx.send(message).unwrap();
-                            },
+                            }
                             // AB: Must check if I'm the leader and should broadcast it or just gossip
                             // In AB, broadcast messages can only be delivered if they were sent by the leader
                             // However, since the leader is the only one that can broadcast,
@@ -478,9 +517,9 @@ impl ReliableCommunication {
                                     broadcast_waiters.push(broadcast_waiter);
                                 }
                                 for waiter in broadcast_waiters.iter() {
-                                    let _ =  waiter.send(message.clone());
+                                    let _ = waiter.send(message.clone());
                                 }
-                                // Handle the message ????????????????  
+                                // Handle the message ????????????????
                                 if self.host.agent_number == self.leader.lock().unwrap().agent_number {
                                     if packet.header.origin == self.host.addr {
                                         self.gossip(message.clone(), origin, sequence_number);
@@ -492,7 +531,7 @@ impl ReliableCommunication {
                                     self.gossip(message.clone(), origin, sequence_number);
                                     messages_tx.send(message).unwrap();
                                 }
-                            },
+                            }
                         }
                     } else {
                         messages_tx.send(message).unwrap();
@@ -517,4 +556,3 @@ impl ReliableCommunication {
         (message, packet.header.origin, sequence_number)
     }
 }
-
