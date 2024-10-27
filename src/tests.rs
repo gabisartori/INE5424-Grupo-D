@@ -1,4 +1,18 @@
-pub const MSG: &str = "
+#[derive(PartialEq)]
+pub enum Action {
+    Send {
+        destination: usize,
+        message: String
+    },
+    Receive {
+        message: String
+    },
+    Broadcast {
+        message: String
+    },
+}
+
+const MSG: &str = "
 --------------------------------------
 START OF MESSAGE
 --------------------------------------
@@ -29,3 +43,73 @@ uso de sockets padrão.
 END OF MESSAGE
 --------------------
 ";
+
+
+type Test = Vec<Vec<Action>>;
+
+pub fn send_test_1() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Send {
+                destination: 1,
+                message: "message_0".to_string(),
+            }
+        ],
+        // Agent 1
+        vec![
+            Action::Receive {
+                message: "message_0".to_string(),
+            }
+        ]
+    ]
+}
+
+pub fn send_test_2() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Send {
+                destination: 1,
+                message: "message_0".to_string(),
+            }
+        ],
+        // Agent 1
+        vec![
+            Action::Send { destination: 2, message: MSG.to_string() },
+            Action::Receive {
+                message: "message_0".to_string(),
+            }
+        ],
+        // Agent 2
+        vec![
+            Action::Receive {
+                message: MSG.to_string(),
+            }
+        ]
+    ] 
+}
+
+pub fn broadcast_test_1() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Broadcast {
+                message: "message_0".to_string(),
+            },
+            Action::Receive { message: "message_0".to_string() },
+        ],
+        // Agent 1
+        vec![
+            Action::Receive {
+                message: "message_0".to_string(),
+            }
+        ],
+        // Agent 2
+        vec![
+            Action::Receive {
+                message: "message_0".to_string(),
+            }
+        ]
+    ]
+}

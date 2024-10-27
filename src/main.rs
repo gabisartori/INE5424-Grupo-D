@@ -8,8 +8,7 @@ use logger::{debug_file, debug_println, log};
 use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
 
 // Importa as configurações de endereços dos processos
-mod config;
-use config::MSG;
+mod tests;
 
 struct Agent {
     id: usize,
@@ -49,7 +48,7 @@ impl Agent {
         }
     }
 
-    fn receiver(&self) -> u32 {
+    fn receiver(&self, actions: Vec<tests::Action>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -57,8 +56,8 @@ impl Agent {
             if !self.communication.receive(&mut message) {
                 break;
             }
-            let gabarito: Vec<u8> = MSG.to_string().as_bytes().to_vec();
-            if self.compare_msg(&message, &gabarito) {
+            debug_println!("Agent {}: Recebida mensagem {}", self.id, String::from_utf8(message.clone()).unwrap());
+            if actions.contains(&tests::Action::Receive { message: String::from_utf8(message.clone()).unwrap() }) {
                 acertos += 1;
             } else {
                 let path = format!("tests/erros{}_{i}.txt", self.id);
@@ -69,39 +68,43 @@ impl Agent {
         return acertos;
     }
 
-    fn creater(&self) -> u32 {
+    fn creater(&self, actions: Vec<tests::Action>) -> u32 {
         let mut acertos = 0;
-        for _i in 0..self.n_msgs {
-            // Send message to the selected node
-            let msg: Vec<u8> = MSG.to_string().as_bytes().to_vec();
-
-            let tot = self.communication.broadcast(msg);
-            acertos += tot;
-            if tot == 0 {
-                debug_println!("ERROR -> AGENTE {} TIMED OUT AO TENTAR ENVIAR A MENSAGEM {}", self.id, _i);
+        for action in actions {
+            match action {
+                tests::Action::Send { destination, message } => {
+                    let destination = &self.communication.group.lock().unwrap()[destination];
+                    acertos  += self.communication.send(&destination.addr, message.as_bytes().to_vec());
+                },
+                tests::Action::Broadcast { message } => {
+                    acertos += self.communication.broadcast(message.as_bytes().to_vec());
+                },
+                tests::Action::Receive { .. } => { panic!("Agent {}: thread creater não deve receber ação de receber mensagem", self.id) },
             }
         }
         return acertos;
     }
 
-    fn compare_msg(&self, msg1: &Vec<u8>, msg2: &Vec<u8>) -> bool {
-        if msg1.len() != msg2.len() {
-            return false;
-        }
-        for i in 0..msg1.len() {
-            if msg1[i] != msg2[i] {
-                return false;
+    pub fn run(self: Arc<Self>, actions: Vec<tests::Action>) {
+        let mut send_actions = Vec::new();
+        let mut receive_actions = Vec::new();
+
+        for action in actions {
+            match action {
+                tests::Action::Send { .. } | tests::Action::Broadcast { .. } => {
+                    send_actions.push(action);
+                },
+                tests::Action::Receive { .. } => {
+                    receive_actions.push(action);
+                },
             }
         }
-        true
-    }
 
-    pub fn run(self: Arc<Self>) {
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
-        let sender = thread::spawn(move || sender_clone.creater());
-        let listener = thread::spawn(move || listener_clone.receiver());
+        let sender = thread::spawn(move || sender_clone.creater(send_actions));
+        let listener = thread::spawn(move || listener_clone.receiver(receive_actions));
         let s_acertos = sender.join().unwrap();
         let r_acertos = listener.join().unwrap();
         let path = format!("tests/Resultado.txt");
@@ -197,15 +200,13 @@ fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let mut test = tests::broadcast_test_1();
 
     if args.len() == 12 {
-        let agent_num: usize = args[1]
-            .parse()
-            .expect("Falha ao converter agent_num para usize");
+        let agent_num = test.len();
 
         assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
 
-        let n_msgs: usize = args[2].parse().expect("");
         let mut childs = Vec::new();
 
         // Inicializar os agentes locais
@@ -231,11 +232,11 @@ fn main() {
         for mut c in childs {
             c.wait().expect("Falha ao esperar processo filho");
         }
-        calculate_test(agent_num, n_msgs, args[3].as_str());
+        // calculate_test(agent_num, n_msgs, args[3].as_str());
 
     } else if args.len() == 13 {
         // Se há 13 argumentos, então está rodando um subprocesso
-        let agent_num: usize = args[1]
+       let agent_num: usize = args[1]
             .parse()
             .expect("Falha ao converter agent_num para usize");
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
@@ -284,7 +285,8 @@ fn main() {
             gossip_rate,
             w_size,
         );
-        agent.run();
+        let actions = test.remove(agent_id);
+        agent.run(actions);
     } else {
         println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <timeout_limit>");
         println!("enviado {:?}", args);
