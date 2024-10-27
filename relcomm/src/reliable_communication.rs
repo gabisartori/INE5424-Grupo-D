@@ -5,8 +5,9 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 // Importa a camada de canais
-use super::channels::Channel;
-use super::packet::Packet;
+use crate::channels::Channel;
+use crate::packet::Packet;
+use logger::debug_println;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

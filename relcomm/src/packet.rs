@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 // Tamanho do buffer
 use crate::config::BUFFER_SIZE;
-use super::flags::Flags;
+use crate::flags::Flags;
 
 #[derive(Clone)]
 pub struct Packet {

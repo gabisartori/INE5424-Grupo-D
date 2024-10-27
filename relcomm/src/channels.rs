@@ -6,8 +6,9 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 
 use crate::config::{BUFFER_SIZE, LOSS_RATE, CORRUPTION_RATE};
-use super::packet::Packet;
+use crate::packet::Packet;
 // use super::failure_detection;
+use logger::debug_println;
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
