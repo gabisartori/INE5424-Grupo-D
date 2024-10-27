@@ -14,18 +14,10 @@ pub struct Packet {
 impl Packet {
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
             seq_num: u32, is_last: bool,
-            is_ack: bool, gossip: bool, data: Vec<u8>) -> Self {
-        let mut flags = Flags::EMP;
+            is_ack: bool, gossip: bool, is_syn: bool, is_fin: bool, data: Vec<u8>) -> Self {
         
-        if is_last {
-            flags = flags | Flags::LST;
-        }
-        if is_ack {
-            flags = flags | Flags::ACK;
-        }
-        if gossip {
-            flags = flags | Flags::GSP;
-        }
+        let flags = is_last & Flags::LST | is_ack & Flags::ACK | gossip & Flags::GSP | is_syn & Flags::SYN | is_fin & Flags::FIN;
+
         let checksum = Self::checksum(&Header::new(src_addr, dst_addr, origin, seq_num, flags, 0), &data);
         let header = Header::new(src_addr, dst_addr, origin, seq_num, flags, checksum);
         Self { header, data }
@@ -36,19 +28,24 @@ impl Packet {
         Self {header: ack_header, data: Vec::new()}  
     }
 
-    // pub fn get_resend(&self, new_dst: SocketAddr) -> Self {
-    //     let mut new_header = Header{
-    //         src_addr: self.header.dst_addr,
-    //         dst_addr: new_dst,
-    //         origin: self.header.origin,
-    //         seq_num: self.header.seq_num,
-    //         flags: self.header.flags,
-    //         checksum: 0,
-    //     };
-    //     let checksum = Self::checksum(&new_header, &self.data);
-    //     new_header.checksum = checksum;
-    //     Self {header: new_header, data: self.data.clone()}
-    // }
+    pub fn get_syn(
+        source_address: SocketAddr,
+        destination_address: SocketAddr,
+        sequence_number: u32,
+    ) -> Self {
+        Self::new(
+            source_address,
+            destination_address,
+            source_address,
+            sequence_number,
+            false,
+            false,
+            false,
+            true,
+            false,
+            Vec::new(),
+        ) 
+    }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
@@ -102,6 +99,8 @@ impl Packet {
                 i == (chunks.len() - 1),
                 false,
                 is_gossip,
+                false,
+                false,
                 chunk.to_vec(),
             )
         }).collect()
@@ -164,6 +163,14 @@ impl Header {
 
     pub fn must_gossip(&self) -> bool {
         self.flags.is_set(Flags::GSP)
+    }
+
+    pub fn is_syn(&self) -> bool {
+        self.flags.is_set(Flags::SYN)
+    }
+
+    pub fn is_fin(&self) -> bool {
+        self.flags.is_set(Flags::FIN)
     }
 
     fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {
