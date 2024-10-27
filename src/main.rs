@@ -14,14 +14,14 @@ mod tests;
 struct Agent {
     id: usize,
     communication: Arc<ReliableCommunication>,
-    n_msgs: u32,
 }
 
 impl Agent {
     fn new(
         id: usize,
         nodes: Vec<Node>,
-        n_msgs: u32,
+        // TODO: Update agent struct to match new test format
+        _n_msgs: u32,
         timeout: u64,
         message_timeout: u64,
         timeout_limit: u32,
@@ -46,7 +46,6 @@ impl Agent {
                 logger.clone(),
 
             ),
-            n_msgs,
         }
     }
 
@@ -189,7 +188,8 @@ fn create_agents(
     agent
 }
 
-fn calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
+// TODO: Fix this function so it works with the new logger
+fn _calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
     let mut reader = std::io::BufReader::new(file);
 
