@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[derive(PartialEq)]
 pub enum Action {
     Send {

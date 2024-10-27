@@ -1,3 +1,6 @@
+// Ignore unused functions while handshake isn't implemented
+#![allow(dead_code)]
+
 // Importações necessárias
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
