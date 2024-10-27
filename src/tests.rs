@@ -10,6 +10,9 @@ pub enum Action {
     Broadcast {
         message: String
     },
+    // Die {
+    //     time: u64
+    // }
 }
 
 const MSG: &str = "
@@ -109,6 +112,30 @@ pub fn broadcast_test_1() -> Test {
         vec![
             Action::Receive {
                 message: "message_0".to_string(),
+            }
+        ]
+    ]
+}
+
+pub fn broadcast_test_2() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Broadcast {
+                message: MSG.to_string(),
+            },
+            Action::Receive { message: MSG.to_string() },
+        ],
+        // Agent 1
+        vec![
+            Action::Receive {
+                message: MSG.to_string(),
+            }
+        ],
+        // Agent 2
+        vec![
+            Action::Receive {
+                message: MSG.to_string(),
             }
         ]
     ]
