@@ -623,23 +623,36 @@ impl ReliableCommunication {
             SendRequestData::StartBroadcast {} => match self.broadcast {
                 Broadcast::BEB => {
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                        let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
-                        messages.push(packets);
+                        if node.state == NodeState::ALIVE {
+                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
+                            messages.push(packets);
+                        }
                     }
                 }
                 Broadcast::URB => {
                     let friends = self.get_friends();
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) {
+                            if friends.contains(node) && node.state == NodeState::ALIVE {
                                 messages.push(packets);
                             }
                         }
                     },
                 Broadcast::AB => {
                     let leader = self.get_leader().addr;
-                    let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
-                    messages.push(packets);
+                    if leader == self.host.addr {
+                        // If I'm the leader, I can just start broadcasting
+                        let friends = self.get_friends();
+                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
+                            if friends.contains(node) {
+                                messages.push(packets);
+                            }
+                        }
+                    } else {
+                        let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
+                        messages.push(packets);
+                    }
                 }
             },
             SendRequestData::Gossip { origin, seq_num } => {
@@ -652,25 +665,34 @@ impl ReliableCommunication {
                         *seq_num,
                         true,
                     );
-                    messages.push(packets);
+                    if node.state == NodeState::ALIVE {
+                        messages.push(packets);
+                    }
                 }
             }
-        }
-        
+        }  
         messages
     }
 
     fn get_friends(&self) -> Vec<Node> {
         let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let start = (self.host.agent_number + 1) % group.len();
-        let end = (start + self.gossip_rate) % group.len();
+        let mut alive =  Vec::new();
+        for node in group.iter() {
+            debug_println!("Node: {:?}", node);
+            if node.state == NodeState::ALIVE {
+                alive.push(node.clone());
+            }
+        }
+        let start = (self.host.agent_number + 1) % alive.len();
+        let end = (start + self.gossip_rate) % alive.len();
         let mut friends = Vec::new();
         if start < end {
-            friends.extend_from_slice(&group[start..end]);
+            friends.extend_from_slice(&alive[start..end]);
         } else {
-            friends.extend_from_slice(&group[start..]);
-            friends.extend_from_slice(&group[..end]);
+            friends.extend_from_slice(&alive[start..]);
+            friends.extend_from_slice(&alive[..end]);
         }
+
         friends
     }
 
