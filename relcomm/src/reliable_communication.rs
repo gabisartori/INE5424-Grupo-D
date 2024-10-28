@@ -95,21 +95,21 @@ fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
     let timeout: u64 = args[4]
         .parse()
         .expect("Falha ao converter timeout para u64");
-    let message_timeout: u64 = args[5]
-        .parse()
-        .expect("Falha ao converter message_timeout para u64");
-    let broadcast_timeout: u64 = args[6]
-        .parse()
-        .expect("Falha ao converter broadcast_timeout para u64");
-    let gossip_rate: usize = args[9]
-        .parse()
-        .expect("Falha ao converter gossip_rate para usize");
-    let w_size: usize = args[10]
-        .parse()
-        .expect("Falha ao converter w_size para usize");
-    let timeout_limit: u32 = args[11]
+    let timeout_limit: u32 = args[5]
         .parse()
         .expect("Falha ao converter timeout_limit para u32");
+    let message_timeout: u64 = args[6]
+        .parse()
+        .expect("Falha ao converter message_timeout para u64");
+    let broadcast_timeout: u64 = args[7]
+        .parse()
+        .expect("Falha ao converter broadcast_timeout para u64");
+    let gossip_rate: usize = args[10]
+        .parse()
+        .expect("Falha ao converter gossip_rate para usize");
+    let w_size: usize = args[11]
+        .parse()
+        .expect("Falha ao converter w_size para usize");
 
     let timeout = Duration::from_millis(timeout);
     let message_timeout = Duration::from_millis(message_timeout);

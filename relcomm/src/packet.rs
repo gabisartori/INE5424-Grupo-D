@@ -4,8 +4,7 @@
 // Importações necessárias
 use std::net::SocketAddr;
 
-// Tamanho do buffer
-use crate::config::BUFFER_SIZE;
+// use crate::config::BUFFER_SIZE;
 use crate::flags::Flags;
 use crate::header::Header;
 
@@ -16,6 +15,8 @@ pub struct Packet {
 }
 
 impl Packet {
+    // Tamanho do buffer
+    pub const BUFFER_SIZE: usize = 2<<9;
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
             origin: SocketAddr, seq_num: u32, is_last: bool,
             is_ack: bool, gossip: bool, is_syn: bool, is_fin: bool, data: Vec<u8>) -> Self {
@@ -58,7 +59,7 @@ impl Packet {
         bytes
     }
 
-    pub fn from_bytes(bytes: [u8; BUFFER_SIZE], data_size: usize) -> Result<Self, std::array::TryFromSliceError> {
+    pub fn from_bytes(bytes: [u8; Packet::BUFFER_SIZE], data_size: usize) -> Result<Self, std::array::TryFromSliceError> {
         let header = Header::from_bytes(bytes[..Header::HEADER_SIZE].try_into()?);
         let data = bytes[Header::HEADER_SIZE..data_size].to_vec();
         Ok(Self { header, data })
@@ -80,7 +81,7 @@ impl Packet {
         seq_num: u32,
         is_gossip: bool,
     ) -> Vec<Self> {
-        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - Header::HEADER_SIZE).collect();
+        let chunks: Vec<&[u8]> = data.chunks(Packet::BUFFER_SIZE - Header::HEADER_SIZE).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
             Packet::new(
