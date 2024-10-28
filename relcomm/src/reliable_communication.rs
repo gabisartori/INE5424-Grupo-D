@@ -95,7 +95,7 @@ pub struct ReliableCommunication {
     w_size: usize,
     channel: Arc<Channel>,
     register_to_sender_tx: Sender<SendRequest>,
-    broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
+    broadcast_waiters_tx: Sender<(Sender<Vec<u8>>, SocketAddr)>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
     pub logger: SharedLogger,
@@ -268,7 +268,7 @@ impl ReliableCommunication {
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
-        self.broadcast_waiters_tx.send(broadcast_tx).unwrap();
+        self.broadcast_waiters_tx.send((broadcast_tx, self.host.addr)).unwrap();
         loop {
             let (request, request_result_rx) = SendRequest::new (
                 message.clone(),
@@ -480,11 +480,11 @@ impl ReliableCommunication {
         messages_tx: Sender<Vec<u8>>,
         acks_tx: Sender<Packet>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
-        register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
+        register_broadcast_waiters_rx: Receiver<(Sender<Vec<u8>>, SocketAddr)>,
     ) {
         let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
         let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
-        let mut broadcast_waiters: Vec<Sender<Vec<u8>>> = Vec::new();
+        let mut broadcast_waiters: Vec<(Sender<Vec<u8>>, SocketAddr)> = Vec::new();
         loop {
             let packet = self.channel.receive();
             if packet.header.is_ack() {
@@ -541,13 +541,20 @@ impl ReliableCommunication {
                             // instead, it must broadcast the message and only deliver when it gets gossiped back to it
                             Broadcast::AB => {
                                 // Check for anyone waiting for a broadcast
-                                // TODO: Remove the broadcast_waiters that are disconnected
                                 while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
                                     broadcast_waiters.push(broadcast_waiter);
                                 }
+                                let mut ended = Vec::new();
                                 for waiter in broadcast_waiters.iter() {
-                                    let _ = waiter.send(message.clone());
+                                    match waiter.0.send(message.clone()) {
+                                        Ok(_) => {}
+                                        Err(_) => {
+                                            ended.push(waiter.1);
+                                        }
+                                    }
                                 }
+                                broadcast_waiters.retain(|x| !ended.contains(&x.1));
+                                
                                 if self.atm_gossip(message.clone(), &packet, &origin, sequence_number) {
                                     messages_tx.send(message).unwrap();
                                 }
