@@ -126,7 +126,6 @@ fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Mutex<Vec<Node>>,
-    leader: Mutex<Node>,
     broadcast: Broadcast,
     timeout: Duration,
     timeout_limit: u32,
@@ -152,19 +151,6 @@ impl ReliableCommunication {
     ) -> Result<Arc<Self>, std::io::Error> {
         let channel = Channel::new(host.addr)?;
         let (broadcast, timeout, timeout_limit, message_timeout, broadcast_timeout, gossip_rate, w_size) = get_args();
-        let leader = if broadcast == Broadcast::AB {
-            match group.first() {
-                Some(node) => node.clone(),
-                None => {
-                    // TODO: Improve this error message
-                    debug_println!("Erro: Grupo vazio");
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Grupo vazio"));
-                }
-            }
-        } else {
-            host.clone()
-        };
-        let leader = Mutex::new(leader);
         let group = Mutex::new(group);
 
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
@@ -177,7 +163,6 @@ impl ReliableCommunication {
         let instance = Arc::new(Self {
             host,
             group,
-            leader,
             broadcast,
             timeout,
             message_timeout,
@@ -230,7 +215,6 @@ impl ReliableCommunication {
                 0
             }
         }
-        
     }
 
     fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
@@ -312,15 +296,33 @@ impl ReliableCommunication {
         .expect("Falha ao fazer o URB, Não obteve lock de Grupo").len() as u32
     }
 
-    fn change_leader(&self) {
-        let mut ld = self.leader.lock().expect("Erro ao trocar de líder: Mutex lock do líder falhou");
-        let mut group = self.group.lock().expect("Erro ao trocar de líder: Mutex lock do grupo falhou");
-        let mut idx = ld.agent_number;
-        group[idx].state = NodeState::DEAD;
-        while group[idx].state == NodeState::DEAD {
-            idx = (idx + 1) % group.len();
+    fn mark_as_dead(&self, addr: &SocketAddr) {
+        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
+        for node in group.iter_mut() {
+            if node.addr == *addr {
+                node.state = NodeState::DEAD;
+            }
         }
-        *ld = group[idx].clone();
+    }
+
+    fn get_leader(&self) -> Node {
+        for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
+            if node.state == NodeState::ALIVE {
+                return node.clone();
+            }
+        }
+        return self.host.clone();
+    }
+
+    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
+        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
+        let x = group.len();
+        for (i, n) in group.iter().enumerate() {
+            if n.addr == *node_address {
+                return x-i;
+            }
+        }
+        0
     }
 
     fn gossip(&self, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
@@ -365,12 +367,13 @@ impl ReliableCommunication {
             // It means it died and we need to pick a new one
             match request_result_rx.recv() {
                 Ok(0) => {
-                    self.change_leader();
+                    debug_println!("Agente {} falhou em enviar mensagem para o líder, tentando novamente...", self.host.agent_number);
                     continue;
                 }
                 Ok(_) => {}
                 Err(e) => {
                     debug_println!("Erro ao fazer requisitar AB para o lider: {e}");
+                    continue;
                 }
             }
 
@@ -426,8 +429,6 @@ impl ReliableCommunication {
                     }
                 }
 
-                
-
                 let logger_state = log::LoggerState::MessageSender {
                     state: MessageStatus::Sent, current_agent_id: self.host.agent_number, 
                     target_agent_id: if packets[0].header.must_gossip() {
@@ -442,6 +443,9 @@ impl ReliableCommunication {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
+                } else {
+                    // If the message wasn't sent, mark the destination as dead
+                    self.mark_as_dead(&packets[0].header.dst_addr);
                 }
             }
 
@@ -544,7 +548,7 @@ impl ReliableCommunication {
                         }
                     },
                 Broadcast::AB => {
-                    let leader = self.leader.lock().expect("Erro ao fazer broadcast: Mutex lock do líder falhou").addr;
+                    let leader = self.get_leader().addr;
                     let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
                     messages.push(packets);
                 }
@@ -661,18 +665,11 @@ impl ReliableCommunication {
                                 while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
                                     broadcast_waiters.push(broadcast_waiter);
                                 }
-                                let mut ended = Vec::new();
                                 for waiter in broadcast_waiters.iter() {
-                                    match waiter.0.send(message.clone()) {
-                                        Ok(_) => {}
-                                        Err(_) => {
-                                            ended.push(waiter.1);
-                                        }
-                                    }
+                                    let _ = waiter.0.send(message.clone());
                                 }
-                                broadcast_waiters.retain(|x| !ended.contains(&x.1));
                                 
-                                if self.atm_gossip(message.clone(), &packet, &origin, sequence_number) {
+                                if self.atm_gossip(message.clone(), &origin, sequence_number) {
                                     messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
                                 }
                             }
@@ -687,24 +684,22 @@ impl ReliableCommunication {
     }
 
     /// Handle the message
-    fn atm_gossip(&self, message: Vec<u8>, packet: &Packet,
-        origin: &SocketAddr, sequence_number: u32) -> bool {
-        let leader = self.leader.lock().expect("Erro ao fazer fofoca: Mutex lock do líder falhou");
-        // se a mensagem veio do líder, só fofoca
-        if packet.header.origin == leader.addr {
+    fn atm_gossip(
+        &self,
+        message: Vec<u8>,
+        origin: &SocketAddr,
+        sequence_number: u32
+    ) -> bool {
+        let origin_priority = self.get_leader_priority(&origin);
+        let own_priority = self.get_leader_priority(&self.host.addr);
+        if origin_priority < own_priority {
+            // Broadcast request
+            self.urb(message);
+            false
+        } else {
+            // Gossip
             self.gossip(message.clone(), *origin, sequence_number);
             true
-        } else {
-            // se a mensagem veio de outro lugar, verifica se é o líder
-            if self.host.agent_number != leader.agent_number {
-                // se um não-líder recebeu uma mensagem de broadcast, o líder morreu       
-                self.change_leader();
-                // troca o líder e verifica novo se é o líder
-                self.atm_gossip(message, packet, origin, sequence_number)
-            } else {
-                self.urb(message);
-                false
-            }
         }
     }
 
