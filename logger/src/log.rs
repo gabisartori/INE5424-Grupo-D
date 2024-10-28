@@ -47,7 +47,7 @@ use std::{fs::File, sync::{Arc, Mutex}};
 //     FailedToReceive,
 //     FailedToSend,
 //     Down,
-//    Unknown,
+//     Unknown,
 // }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +59,7 @@ pub enum PacketStatus {
     Waiting,
     LastPacket,
     Fragmenting,
+    Timeout,
     Unknown,
 }
 
@@ -69,9 +70,11 @@ pub enum MessageStatus {
     SentFailed,
     ReceivedFailed,
     Waiting,
+    Timeout,
     Unknown,    
 }
 
+// Defines sender type functions
 #[derive(Debug, Clone, Copy)]
 pub enum SenderType {
     Send,
@@ -89,37 +92,53 @@ pub enum LoggerState {
     PacketSender {
         state: PacketStatus,
         current_agent_id: usize,
-        target_agent_id: u16,
-        seq_num: u32,
+        target_agent_id: usize,
+        seq_num: usize,
         action: PacketStatus,
-         sender_type:  Option<SenderType>,
+        sender_type:  Option<SenderType>,
     },
 
     PacketReceiver {
         state: PacketStatus,
         current_agent_id: usize,
-        target_agent_id: u16,
-        seq_num: u32,
+        target_agent_id: usize,
+        seq_num: usize,
         action: PacketStatus,
-         sender_type:  Option<SenderType>,
+        sender_type:  Option<SenderType>,
+    },
+
+    PacketBroadcast {
+        state: PacketStatus,
+        current_agent_id: usize,
+        seq_num: usize,
+        action: PacketStatus,
+        sender_type:  Option<SenderType>,
     },
 
     MessageReceiver {
         state: MessageStatus,
         current_agent_id: usize,
-        target_agent_id: u16,
+        target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-         sender_type:  Option<SenderType>,
+        sender_type:  Option<SenderType>,
     },
 
     MessageSender {
         state: MessageStatus,
         current_agent_id: usize,
-        target_agent_id: u16,
+        target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-         sender_type:  SenderType,
+        sender_type:  Option<SenderType>,
+    },
+
+    MessageBroadcast {
+        state: MessageStatus,
+        current_agent_id: usize,
+        message_id: u32,
+        action: MessageStatus,
+        sender_type:  Option<SenderType>,
     },
 }
 
@@ -168,6 +187,19 @@ impl DebugLog {
                 )
             }
 
+            LoggerState::PacketBroadcast {
+                state,
+                current_agent_id,
+                seq_num,
+                action,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {}, state: {:?}, broadcasting packet {} . Next action : {:?}",
+                    current_agent_id, state, seq_num, action
+                )
+            }
+
             LoggerState::MessageSender {
                 state,
                 current_agent_id,
@@ -198,12 +230,24 @@ impl DebugLog {
                 )
             }
 
+            LoggerState::MessageBroadcast {
+                state,
+                current_agent_id,
+                message_id,
+                action,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {}, state: {:?}, broadcasting message {} . Next action : {:?}",
+                    current_agent_id, state, message_id, action
+                )
+            } 
+
         }
     }
 }
 
 pub type SharedLogger = Arc<Mutex<Logger>>;
-
 
 /// Creates the log files for each Agent, and writes the log messages obtained from the DebugLog struct.
 #[derive(Debug, Clone, Copy)]
@@ -221,12 +265,11 @@ impl Logger {
         logger
     }
 
-
-
     pub fn log(&mut self, logger_state: LoggerState) {
         // with the logger state, we can get the log message
         let log = DebugLog::new().get_log(logger_state);
         let msg_buffer = format!("{}\n", log);
+
         if self.debug_level > 0 {
             // write to the log file
             let agent_id = match logger_state {
@@ -236,19 +279,24 @@ impl Logger {
                 | LoggerState::PacketReceiver {
                     current_agent_id, ..
                 }
+                | LoggerState::PacketBroadcast {
+                    current_agent_id, ..
+                }
                 | LoggerState::MessageSender {
                     current_agent_id, ..
                 }
                 | LoggerState::MessageReceiver {
                     current_agent_id, ..
                 } => current_agent_id,
+                LoggerState::MessageBroadcast {
+                    current_agent_id, ..
+                } => current_agent_id,
             };
 
             // write to the agent log file
-            std::fs::write(format!("src/log/log_agent_{}.txt", agent_id), msg_buffer)
-                .expect(&format!("Erro ao escrever no arquivo de log do Agente {}",agent_id));
+            let path = format!("src/log/agent_{}.txt", agent_id);
+            debug_file!(path, msg_buffer.as_bytes());
+
         }
     }
 }
-
-// TODO : implement a simulator for agent actions
