@@ -239,6 +239,7 @@ impl ReliableCommunication {
     fn urb(&self, message: Vec<u8>) -> u32 {
         let (request, _) = SendRequest::new(message, SendRequestData::StartBroadcast {});
         self.register_to_sender_tx.send(request).unwrap();
+        // TODO: Make it so that URB waits for at least one node to receive the message
         self.group.lock().unwrap().len() as u32
     }
 
@@ -362,7 +363,7 @@ impl ReliableCommunication {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} expecting ack {} upon TIMEOUT LIMIT", self.host.agent_number, start_packet + next_seq_num as u32);
+                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().unwrap().header.dst_addr.port()%100);
                         return false;
                     }
                 },
@@ -412,10 +413,10 @@ impl ReliableCommunication {
                             }
                         }
                     },
-                    Broadcast::AB => {
-                        let leader = self.group.lock().unwrap()[self.leader.lock().unwrap().agent_number].addr;
-                        let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
-                        messages.push(packets);
+                Broadcast::AB => {
+                    let leader = self.group.lock().unwrap()[self.leader.lock().unwrap().agent_number].addr;
+                    let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
+                    messages.push(packets);
                 }
             },
             SendRequestData::Gossip { origin_address, start_sequence_number } => {
@@ -503,7 +504,7 @@ impl ReliableCommunication {
                                 debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
                                 messages_tx.send(message).unwrap();
                             }
-                            // URB: All broadcasts must be gossip   ed and delivered
+                            // URB: All broadcasts must be gossiped and delivered
                             Broadcast::URB => {
                                 self.gossip(message.clone(), origin, sequence_number);
                                 messages_tx.send(message).unwrap();
@@ -524,6 +525,7 @@ impl ReliableCommunication {
                                     let _ = waiter.send(message.clone());
                                 }
                                 // Handle the message ????????????????
+                                // TODO: Fix AB - When a leader dies, the new leader doesn't know it's the leader
                                 if self.host.agent_number == self.leader.lock().unwrap().agent_number {
                                     if packet.header.origin == self.host.addr {
                                         self.gossip(message.clone(), origin, sequence_number);
