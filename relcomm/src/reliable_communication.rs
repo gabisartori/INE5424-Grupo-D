@@ -42,7 +42,6 @@ pub enum NodeState {
 
 #[derive(PartialEq)]
 pub enum Broadcast {
-    NONE,
     BEB,
     URB,
     AB,
@@ -86,7 +85,6 @@ impl SendRequest {
 fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
     let args: Vec<String> = std::env::args().collect();
     let broadcast: Broadcast = match args[3].as_str() {
-        "NONE" => Broadcast::NONE,
         "BEB" => Broadcast::BEB,
         "URB" => Broadcast::URB,
         "AB" => Broadcast::AB,
@@ -265,11 +263,6 @@ impl ReliableCommunication {
     /// Broadcasts a message, reliability level may be configured in the config file
     pub fn broadcast(&self, message: Vec<u8>) -> u32 {
         match self.broadcast {
-            Broadcast::NONE => {
-                let group = self.group.lock().expect("Erro ao fazer broadcast: Mutex lock do grupo falhou");
-                let idx = (self.host.agent_number + 1) % group.len();
-                self.send(&group[idx].addr, message) as u32
-            }
             Broadcast::BEB => self.beb(message),
             Broadcast::URB => self.urb(message),
             Broadcast::AB => self.ab(message),
@@ -526,9 +519,6 @@ impl ReliableCommunication {
                 messages.push(packets);
             }
             SendRequestData::StartBroadcast {} => match self.broadcast {
-                Broadcast::NONE => {
-                    debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast");
-                }
                 Broadcast::BEB => {
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                         let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
@@ -642,7 +632,7 @@ impl ReliableCommunication {
                     if packet.header.must_gossip() {
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
-                            Broadcast::NONE | Broadcast::BEB => {
+                            Broadcast::BEB => {
                                 debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
                                 messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
                             }
