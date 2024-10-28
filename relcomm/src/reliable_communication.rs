@@ -115,10 +115,17 @@ impl ReliableCommunication {
         broadcast: Broadcast,
         broadcast_timeout: u64,
         logger: SharedLogger,
-    ) -> Arc<Self> {
-        let channel = Channel::new(host.addr);
+    ) -> Result<Arc<Self>, std::io::Error> {
+        let channel = Channel::new(host.addr)?;
         let leader = if broadcast == Broadcast::AB {
-            group.first().unwrap().clone()
+            match group.first() {
+                Some(node) => node.clone(),
+                None => {
+                    // TODO: Improve this error message
+                    debug_println!("Erro: Grupo vazio");
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Grupo vazio"));
+                }
+            }
         } else {
             host.clone()
         };
@@ -172,9 +179,11 @@ impl ReliableCommunication {
             );
         });
 
-        instance
+        Ok(instance)
     }
 
+    // TODO: Remove all of the unwraps from the functions that send a request to the sender thread
+    // I won't do this right now because I'm way too tired to think about it
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> u32 {
         self.send_nonblocking(dst_addr, message).recv().unwrap()
@@ -486,7 +495,13 @@ impl ReliableCommunication {
         let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
         let mut broadcast_waiters: Vec<(Sender<Vec<u8>>, SocketAddr)> = Vec::new();
         loop {
-            let packet = self.channel.receive();
+            let packet = match self.channel.receive() {
+                Ok(packet) => packet,
+                Err(_) => {
+                    debug_println!("Agente {} falhou em receber um pacote do socket", self.host.agent_number);
+                    return;
+                }
+            };
             if packet.header.is_ack() {
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
