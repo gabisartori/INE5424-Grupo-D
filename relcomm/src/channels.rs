@@ -4,11 +4,25 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::UdpSocket;
 use std::sync::Arc;
+use lazy_static::lazy_static;
 
-use crate::config::{BUFFER_SIZE, LOSS_RATE, CORRUPTION_RATE};
+//use crate::config::{BUFFER_SIZE} LOSS_RATE, CORRUPTION_RATE};
 use crate::packet::Packet;
 // use super::failure_detection;
 use logger::debug_println;
+
+fn get_args() -> (f32, f32) {
+    let args: Vec<String> = std::env::args().collect();
+    let loss_rate = args[12].parse::<f32>().unwrap();
+    let corruption_rate = args[13].parse::<f32>().unwrap();
+    (loss_rate, corruption_rate)
+}
+
+// global variables to read the loss_rate and corruption_rate
+lazy_static! {
+    static ref LOSS_RATE: f32 = get_args().0;
+    static ref CORRUPTION_RATE: f32 = get_args().1;
+}
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
@@ -34,7 +48,7 @@ impl Channel {
     /// Reads a packet from the socket or waits for a packet to arrive
     pub fn receive(&self) -> Result<Packet, std::io::Error> {
         loop {
-            let mut buffer = [0; BUFFER_SIZE];
+            let mut buffer = [0; Packet::BUFFER_SIZE];
             let (size, _) = self.socket.recv_from(&mut buffer)?;
 
             let mut packet = match Packet::from_bytes(buffer, size) {
@@ -47,9 +61,11 @@ impl Channel {
                     continue;
                 }
             };
-            // Simula perda de pacotes
-            if rand::random::<f32>() < LOSS_RATE { continue; }
-            if rand::random::<f32>() < CORRUPTION_RATE {
+            // Simula perda de pacotes, usand as referências staticas LOSS_RATE e CORRUPTION_RATE
+            if rand::random::<f32>() < *LOSS_RATE {
+                continue;
+            }
+            if rand::random::<f32>() < *CORRUPTION_RATE {
                 packet.header.checksum += 1;
             }
             // Verifica se o pacote foi corrompido

@@ -204,7 +204,7 @@ fn main() {
     let mut test = tests::broadcast_test_1();
     let agent_num = test.len();
 
-    if args.len() == 12 {
+    if args.len() == 14 {
 
         let mut childs = Vec::new();
 
@@ -223,16 +223,16 @@ fn main() {
         }
         // calculate_test(agent_num, n_msgs, args[3].as_str());
 
-    } else if args.len() == 13 {
+    } else if args.len() == 15 {
         // Se há 13 argumentos, então está rodando um subprocesso
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
-        let ip: IpAddr = args[7]
+        let ip: IpAddr = args[8]
             .parse()
             .expect("Falha ao converter ip para IpAddr");
-        let port: u16 = args[8]
+        let port: u16 = args[9]
             .parse()
             .expect("Falha ao converter port para u16");
-        let agent_id: usize = args[12]
+        let agent_id: usize = args.last().unwrap()
             .parse()
             .expect("Falha ao converter agent_id para u32");
         
@@ -249,8 +249,8 @@ fn main() {
             Err(e) => panic!("Falha ao criar agente {}: {}", agent_id, e),
         }
     } else {
-        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <timeout_limit>");
+        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <timeout_limit> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <loss_rate> <corruption_rate>");
         println!("enviado {:?}", args);
-        panic!("Número de argumentos inválido");
+        panic!("Número de argumentos {} inválido", args.len());
     }
 }
