@@ -266,13 +266,6 @@ impl ReliableCommunication {
             );
             self.register_to_sender_tx.send(request).unwrap();
 
-            let logger_state = log::LoggerState::MessageSender {
-                state: MessageStatus::Sent, current_agent_id: self.host.agent_number, 
-                target_agent_id: 0, message_id: 0, action: MessageStatus::Waiting, 
-                sender_type: SenderType::Unknown
-            };
-            self.logger.lock().unwrap().log(logger_state);
-
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
             if request_result_rx.recv().unwrap() == 0 {
@@ -327,6 +320,19 @@ impl ReliableCommunication {
                 let message_header = packets.first().unwrap().header.clone();
                 register_to_listener_tx.send(((message_header.dst_addr, message_header.origin), message_header.seq_num)).unwrap();
 
+                
+
+                let logger_state = log::LoggerState::MessageSender {
+                    state: MessageStatus::Sent, current_agent_id: self.host.agent_number, 
+                    target_agent_id: if packets[0].header.must_gossip() {
+                        usize::MAX
+                    } else {
+                        packets[0].header.dst_addr.port() as usize % 100
+                    }, message_id:  packets[0].header.seq_num , action: MessageStatus::Waiting, 
+                    sender_type: Some(SenderType::Unknown)
+                };
+                self.logger.lock().unwrap().log(logger_state);
+
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
@@ -349,6 +355,14 @@ impl ReliableCommunication {
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
                 next_seq_num += 1;
+
+                let logger_state = log::LoggerState::PacketSender {
+                    state: log::PacketStatus::Sent, current_agent_id: self.host.agent_number, 
+                    target_agent_id: usize::MAX, seq_num: next_seq_num, action: log::PacketStatus::Waiting, 
+                    sender_type: Some(SenderType::Unknown)
+                };
+                self.logger.lock().unwrap().log(logger_state);
+
             }
 
             // Wait for an ACK
@@ -358,6 +372,13 @@ impl ReliableCommunication {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
                     base = (packet.header.seq_num - start_packet as u32 + 1) as usize;
+
+                    let logger_state = log::LoggerState::PacketSender {
+                        state: log::PacketStatus::Received, current_agent_id: self.host.agent_number, 
+                        target_agent_id: usize::MAX, seq_num: packet.header.seq_num as usize, action: log::PacketStatus::Waiting, 
+                        sender_type: Some(SenderType::Unknown)
+                    };
+                    self.logger.lock().unwrap().log(logger_state);
                 },
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
@@ -559,6 +580,13 @@ impl ReliableCommunication {
         message.extend(&packet.data);
         let sequence_number = if packets.is_empty() { packet.header.seq_num } else { packets.first().unwrap().header.seq_num };
         packets.clear();
+
+        let logger_state = log::LoggerState::PacketReceiver {
+            state: log::PacketStatus::LastPacket, current_agent_id: usize::MAX, 
+            target_agent_id: usize::MAX, seq_num: sequence_number as usize, action: log::PacketStatus::Received, 
+            sender_type: Some(SenderType::Unknown)
+        };
+
         (message, packet.header.origin, sequence_number)
     }
 }

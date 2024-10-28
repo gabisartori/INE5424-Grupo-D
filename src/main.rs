@@ -8,6 +8,7 @@ use logger::log::SharedLogger;
 use logger::log::{Logger, LoggerState, MessageStatus, SenderType};
 use logger::{debug_file, debug_println, log};
 use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
+use tests::Action;
 
 // Importa as configurações de endereços dos processos
 mod tests;
@@ -81,9 +82,6 @@ impl Agent {
                 tests::Action::Send { destination, message } => {
                     let destination = &self.communication.group.lock().unwrap()[destination];
                     acertos  += self.communication.send(&destination.addr, message.as_bytes().to_vec());
-                    self.log_a_send();
-                    self.log_msg_fail();
-
                 },
                 tests::Action::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
@@ -93,30 +91,6 @@ impl Agent {
             }
         }
         return acertos;
-    }
-
-    pub fn log_msg_fail(&self) {
-        let logger_state = LoggerState::MessageSender {
-            state: MessageStatus::SentFailed,
-            current_agent_id: self.id,
-            message_id: 0,
-            target_agent_id: 0,
-            action: MessageStatus::SentFailed,
-            sender_type: SenderType::Unknown,
-        };
-        self.communication.logger.lock().unwrap().log(logger_state);
-    }
-
-    pub fn log_a_send(&self) {
-        let logger_state = LoggerState::MessageSender {
-            state: MessageStatus::Sent,
-            current_agent_id: self.id,
-            message_id: 0,
-            target_agent_id: 0,
-            action: MessageStatus::Sent,
-            sender_type: SenderType::Unknown,
-        };
-        self.communication.logger.lock().unwrap().log(logger_state);
     }
 
     pub fn run(self: Arc<Self>, actions: Vec<tests::Action>) {
@@ -202,10 +176,7 @@ fn create_agents(
             gossip_rate,
             broadcast,
             broadcast_timeout,
-            Arc::clone(&logger),
-
-
-        
+            logger,        
     ));
     agent
 }
@@ -255,17 +226,9 @@ fn _calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
 }
 
-pub fn init_log_files(n_agents: usize) {
-
-    for i in 0..n_agents {
-        let file = std::fs::File::create(format!("src/log/log_agent_{}.txt", i))
-            .expect("Erro ao criar arquivo de log");
-    }
-
-}
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_3();
+    let mut test = tests::broadcast_test_1();
     let agent_num = test.len();
 
     if args.len() == 12 {
@@ -332,9 +295,7 @@ fn main() {
         let agent_id: usize = args[12]
             .parse()
             .expect("Falha ao converter agent_id para u32");
-
-        init_log_files(agent_num);
-
+        
         let agent = create_agents(
             agent_id,
             agent_num,
