@@ -88,7 +88,7 @@ impl Packet {
         dst_addr: SocketAddr,
         origin: SocketAddr,
         data: Vec<u8>,
-        start_sequence_number: u32,
+        seq_num: u32,
         is_gossip: bool,
     ) -> Vec<Self> {
         let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - Header::HEADER_SIZE).collect();
@@ -98,7 +98,7 @@ impl Packet {
                 src_addr,
                 dst_addr,
                 origin,
-                start_sequence_number + i as u32,
+                seq_num + i as u32,
                 i == (chunks.len() - 1),
                 false,
                 is_gossip,
@@ -139,7 +139,7 @@ impl Header {
             origin,
             seq_num,
             flags,
-            checksum: checksum,
+            checksum,
         }
     }
 

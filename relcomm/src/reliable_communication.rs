@@ -101,7 +101,6 @@ pub struct ReliableCommunication {
     pub logger: SharedLogger,
 }
 
-// TODO: Fazer com que a inicialização seja de um grupo
 impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
     /// This thread will be responsible for handling the destination of each received packet
@@ -243,6 +242,17 @@ impl ReliableCommunication {
         self.group.lock().unwrap().len() as u32
     }
 
+    fn change_leader(&self) {
+        let mut ld = self.leader.lock().unwrap();
+        let mut group = self.group.lock().unwrap();
+        let mut idx = ld.agent_number;
+        group[idx].state = NodeState::DEAD;
+        while group[idx].state == NodeState::DEAD {
+            idx = (idx + 1) % group.len();
+        }
+        *ld = group[idx].clone();
+    }
+
     fn gossip(&self, data: Vec<u8>, origin: SocketAddr, sequence_number: u32) {
         let (request, _) = SendRequest::new(
             data,
@@ -269,14 +279,7 @@ impl ReliableCommunication {
             // If the chosen leader didn't receive the broadcast request
             // It means it died and we need to pick a new one
             if request_result_rx.recv().unwrap() == 0 {
-                let mut ld = self.leader.lock().unwrap();
-                let mut group = self.group.lock().unwrap();
-                let mut idx = ld.agent_number;
-                group[idx].state = NodeState::DEAD;
-                while group[idx].state == NodeState::DEAD {
-                    idx = (idx + 1) % group.len();
-                }
-                *ld = group[idx].clone();
+                self.change_leader();
                 continue;
             }
 
@@ -545,17 +548,7 @@ impl ReliableCommunication {
                                 for waiter in broadcast_waiters.iter() {
                                     let _ = waiter.send(message.clone());
                                 }
-                                // Handle the message ????????????????
-                                // TODO: Fix AB - When a leader dies, the new leader doesn't know it's the leader
-                                if self.host.agent_number == self.leader.lock().unwrap().agent_number {
-                                    if packet.header.origin == self.host.addr {
-                                        self.gossip(message.clone(), origin, sequence_number);
-                                        messages_tx.send(message).unwrap();
-                                    } else {
-                                        self.urb(message.clone());
-                                    }
-                                } else {
-                                    self.gossip(message.clone(), origin, sequence_number);
+                                if self.atm_gossip(message.clone(), &packet, &origin, sequence_number) {
                                     messages_tx.send(message).unwrap();
                                 }
                             }
@@ -565,6 +558,28 @@ impl ReliableCommunication {
                     }
                 }
                 packets.push(packet);
+            }
+        }
+    }
+
+    /// Handle the message
+    fn atm_gossip(&self, message: Vec<u8>, packet: &Packet,
+        origin: &SocketAddr, sequence_number: u32) -> bool {
+        let leader = self.leader.lock().unwrap();
+        // se a mensagem veio do líder, só fofoca
+        if packet.header.origin == leader.addr {
+            self.gossip(message.clone(), *origin, sequence_number);
+            true
+        } else {
+            // se a mensagem veio de outro lugar, verifica se é o líder
+            if self.host.agent_number != leader.agent_number {
+                // se um não-líder recebeu uma mensagem de broadcast, o líder morreu       
+                self.change_leader();
+                // troca o líder e verifica novo se é o líder
+                self.atm_gossip(message, packet, origin, sequence_number)
+            } else {
+                self.urb(message);
+                false
             }
         }
     }
