@@ -135,7 +135,7 @@ pub struct ReliableCommunication {
     w_size: usize,
     channel: Arc<Channel>,
     register_to_sender_tx: Sender<SendRequest>,
-    broadcast_waiters_tx: Sender<(Sender<Vec<u8>>, SocketAddr)>,
+    broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
     pub logger: SharedLogger,
@@ -345,7 +345,7 @@ impl ReliableCommunication {
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
-        match self.broadcast_waiters_tx.send((broadcast_tx, self.host.addr)) {
+        match self.broadcast_waiters_tx.send(broadcast_tx) {
             Ok(_) => {}
             Err(e) => {
                 debug_println!("Erro ao registrar broadcast waiter no AB: {e}");
@@ -590,11 +590,11 @@ impl ReliableCommunication {
         messages_tx: Sender<Vec<u8>>,
         acks_tx: Sender<Packet>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
-        register_broadcast_waiters_rx: Receiver<(Sender<Vec<u8>>, SocketAddr)>,
+        register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
         let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
         let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
-        let mut broadcast_waiters: Vec<(Sender<Vec<u8>>, SocketAddr)> = Vec::new();
+        let mut broadcast_waiters: Vec<Option<Sender<Vec<u8>>>> = Vec::new();
         loop {
             let packet = match self.channel.receive() {
                 Ok(packet) => packet,
@@ -663,11 +663,18 @@ impl ReliableCommunication {
                             Broadcast::AB => {
                                 // Check for anyone waiting for a broadcast
                                 while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
-                                    broadcast_waiters.push(broadcast_waiter);
+                                    broadcast_waiters.push(Some(broadcast_waiter));
                                 }
-                                for waiter in broadcast_waiters.iter() {
-                                    let _ = waiter.0.send(message.clone());
+                                for waiter in broadcast_waiters.iter_mut() {
+                                    let w = waiter.as_ref().unwrap();
+                                    match (*w).send(message.clone()) {
+                                        Ok(_) => {}
+                                        Err(_) => {
+                                            *waiter = None;
+                                        }
+                                    }
                                 }
+                                broadcast_waiters.retain(|w| w.is_some());
                                 
                                 if self.atm_gossip(message.clone(), &origin, sequence_number) {
                                     messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
