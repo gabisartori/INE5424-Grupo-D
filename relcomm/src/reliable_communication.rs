@@ -82,6 +82,48 @@ impl SendRequest {
     }
 }
 
+fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
+    let args: Vec<String> = std::env::args().collect();
+    let broadcast: Broadcast = match args[3].as_str() {
+        "NONE" => Broadcast::NONE,
+        "BEB" => Broadcast::BEB,
+        "URB" => Broadcast::URB,
+        "AB" => Broadcast::AB,
+        _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3]),
+    };
+    let timeout: u64 = args[4]
+        .parse()
+        .expect("Falha ao converter timeout para u64");
+    let message_timeout: u64 = args[5]
+        .parse()
+        .expect("Falha ao converter message_timeout para u64");
+    let broadcast_timeout: u64 = args[6]
+        .parse()
+        .expect("Falha ao converter broadcast_timeout para u64");
+    let gossip_rate: usize = args[9]
+        .parse()
+        .expect("Falha ao converter gossip_rate para usize");
+    let w_size: usize = args[10]
+        .parse()
+        .expect("Falha ao converter w_size para usize");
+    let timeout_limit: u32 = args[11]
+        .parse()
+        .expect("Falha ao converter timeout_limit para u32");
+
+    let timeout = Duration::from_millis(timeout);
+    let message_timeout = Duration::from_millis(message_timeout);
+    let broadcast_timeout = Duration::from_millis(broadcast_timeout);
+    (
+        broadcast,
+        timeout,
+        timeout_limit,
+        message_timeout,
+        broadcast_timeout,
+        gossip_rate,
+        w_size,
+    )
+}
+
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Mutex<Vec<Node>>,
@@ -107,16 +149,10 @@ impl ReliableCommunication {
     pub fn new(
         host: Node,
         group: Vec<Node>,
-        timeout: u64,
-        message_timeout: u64,
-        timeout_limit: u32,
-        w_size: usize,
-        gossip_rate: usize,
-        broadcast: Broadcast,
-        broadcast_timeout: u64,
         logger: SharedLogger,
     ) -> Result<Arc<Self>, std::io::Error> {
         let channel = Channel::new(host.addr)?;
+        let (broadcast, timeout, timeout_limit, message_timeout, broadcast_timeout, gossip_rate, w_size) = get_args();
         let leader = if broadcast == Broadcast::AB {
             match group.first() {
                 Some(node) => node.clone(),
@@ -138,10 +174,6 @@ impl ReliableCommunication {
         let (register_to_listener_tx, register_to_listener_rx) = mpsc::channel();
         let (broadcast_waiters_tx, broadcast_waiters_rx) = mpsc::channel();
         let receive_rx = Mutex::new(receive_rx);
-
-        let timeout = Duration::from_millis(timeout);
-        let message_timeout = Duration::from_millis(message_timeout);
-        let broadcast_timeout = Duration::from_millis(broadcast_timeout);
 
         let instance = Arc::new(Self {
             host,
