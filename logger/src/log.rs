@@ -31,7 +31,9 @@ macro_rules! debug_file {
         std::io::Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
     };
 }
-
+#[allow(unused_imports)]
+#[allow(unused_variables)]
+#[allow(unused_mut)]
 use std::{fs::File, sync::{Arc, Mutex}};
 
 // // Define states for the agents
@@ -152,6 +154,8 @@ impl DebugLog {
         Self {}
     }
 
+#[allow(unused_variables)]
+#[allow(unused_mut)]
     pub fn get_log(&self, log_type: LoggerState) -> String {
         match log_type {
             // LoggerState::AgentState { state, agent_id } => {
@@ -251,11 +255,13 @@ pub type SharedLogger = Arc<Mutex<Logger>>;
 
 /// Creates the log files for each Agent, and writes the log messages obtained from the DebugLog struct.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct Logger {
     debug_level: u8,
     n_agents: usize,
 }
 
+#[allow(unused_mut)]
 impl Logger {
     pub fn new(debug_level: u8, n_agents: usize) -> Self {
         let mut logger = Self {
