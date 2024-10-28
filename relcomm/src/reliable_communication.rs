@@ -535,7 +535,7 @@ impl ReliableCommunication {
                         }
                     },
                 Broadcast::AB => {
-                    let leader = self.group.lock().expect("Couldn't get grupo lock on get_messages")[self.leader.lock().expect("Couldn't get leader lock on get_messages").agent_number].addr;
+                    let leader = self.leader.lock().expect("Erro ao fazer broadcast: Mutex lock do líder falhou").addr;
                     let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
                     messages.push(packets);
                 }
