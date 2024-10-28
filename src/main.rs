@@ -155,7 +155,7 @@ fn create_agents(
 }
 
 // TODO: Fix this function so it works with the new logger
-fn _calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
+fn calculate_test(agent_num: usize) {
     let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
     let mut reader = std::io::BufReader::new(file);
 
@@ -191,12 +191,9 @@ fn _calculate_test(agent_num: usize, n_msgs: usize, broadcast: &str) {
     };
     std::io::Write::write_all(&mut file, result_str.as_bytes())
         .expect("Erro ao escrever no arquivo");
-    let expected = match broadcast {
-        "NONE" => agent_num * n_msgs,
-        _ => agent_num * agent_num * n_msgs,
-    };
-    println!("Total de Mensagens Enviadas : {total_sends}/{expected}");
-    println!("Total de Mensagens Recebidas: {total_receivs}/{expected}");
+
+    println!("Total de Mensagens Enviadas : {total_sends}");
+    println!("Total de Mensagens Recebidas: {total_receivs}");
 }
 
 fn main() {
@@ -221,7 +218,7 @@ fn main() {
         for mut c in childs {
             c.wait().expect("Falha ao esperar processo filho");
         }
-        // calculate_test(agent_num, n_msgs, args[3].as_str());
+        calculate_test(agent_num);
 
     } else if args.len() == 15 {
         // Se há 13 argumentos, então está rodando um subprocesso
