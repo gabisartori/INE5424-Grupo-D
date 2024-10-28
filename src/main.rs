@@ -37,7 +37,7 @@ impl Agent {
         })
     }
 
-    fn receiver(&self, actions: Vec<Action>, msg_limit: usize, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
+    fn receiver(&self, actions: Vec<Action>, msg_limit: u32, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -45,16 +45,21 @@ impl Agent {
             if !self.communication.receive(&mut message) {
                 break;
             }
-            debug_println!("Agent {}: Recebida mensagem {}", self.id, String::from_utf8(message.clone()).unwrap());
-            if actions.contains(&Action::Receive { message: String::from_utf8(message.clone()).unwrap() }) {
-                acertos += 1;
-            } else {
-                let path = format!("tests/erros{}_{i}.txt", self.id);
-                debug_file!(path, &message);
+            match String::from_utf8(message.clone()) {
+                Ok(msg) => {
+                    if actions.contains(&Action::Receive { message: msg.clone() }) {
+                        acertos += 1;
+                    } else {
+                        let path = format!("tests/erros{}_{i}.txt", self.id);
+                        debug_file!(path, &message);
+                    }
+                },
+                Err(e) => { debug_println!("Agent {}: Mensagem recebida não é uma string utf-8 válida: {}", self.id, e); },
             }
             i += 1;
-            if i == msg_limit {
-                death_tx.send(true).unwrap();
+            if acertos == msg_limit {
+                // Ignore send result because the run function cannot end until the receiver thread ends
+                let _ = death_tx.send(true);
                 break;
             }
         }
@@ -115,8 +120,20 @@ impl Agent {
             },
             Err(RecvError) => {
                 // listener encerrou sem receber instrução DIE, esperar sender encerrar também
-                r_acertos = listener.join().unwrap();
-                s_acertos = sender.join().unwrap();
+                r_acertos = match listener.join() {
+                    Ok(r) => r,
+                    Err(_) => {
+                        debug_println!("Agent {}: Erro ao esperar thread listener encerrar", self.id);
+                        0
+                    },
+                };
+                s_acertos = match sender.join() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        debug_println!("Agent {}: Erro ao esperar thread sender encerrar", self.id);
+                        0
+                    },
+                };
             }
         }
         let path = format!("tests/Resultado.txt");

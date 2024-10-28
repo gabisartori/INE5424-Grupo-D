@@ -11,7 +11,7 @@ pub enum Action {
         message: String
     },
     Die {
-        after_n_messages: usize
+        after_n_messages: u32
     }
 }
 
