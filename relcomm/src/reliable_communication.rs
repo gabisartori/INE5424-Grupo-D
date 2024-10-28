@@ -57,8 +57,8 @@ enum SendRequestData {
     StartBroadcast {},
     // Creates N messages to gossip to neighbors, keeping the original message information
     Gossip {
-        origin_address: SocketAddr,
-        start_sequence_number: u32,
+        origin: SocketAddr,
+        seq_num: u32,
     },
 }
 
@@ -82,6 +82,7 @@ impl SendRequest {
     }
 }
 
+// reads the arguments from the command line, parses them and returns them as a tuple
 fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
     let args: Vec<String> = std::env::args().collect();
     let broadcast: Broadcast = match args[3].as_str() {
@@ -214,13 +215,12 @@ impl ReliableCommunication {
         Ok(instance)
     }
 
-    // I won't do this right now because I'm way too tired to think about it
     /// Send a message to a specific destination
     pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> u32 {
         match self.send_nonblocking(dst_addr, message).recv() {
             Ok(result) => result,
-            Err(_) => {
-                debug_println!("Erro ao enviar mensagem: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao enviar mensagem na send: {e}");
                 0
             }
         }
@@ -235,8 +235,8 @@ impl ReliableCommunication {
         );
         match self.register_to_sender_tx.send(request) {
             Ok(_) => {}
-            Err(_) => {
-                debug_println!("Erro ao enviar mensagem: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao registrar request: {e}");
             }
         }
         result_rx
@@ -247,7 +247,7 @@ impl ReliableCommunication {
         match self
             .receive_rx
             .lock()
-            .expect("Erro ao receber mensagem: Mutex lock falhou")
+            .expect("Erro ao receber mensagem: Mutex lock o receive_rx falhou")
             .recv_timeout(self.message_timeout)
         {
             Ok(msg) => {
@@ -282,14 +282,14 @@ impl ReliableCommunication {
         let (request, result_rx) = SendRequest::new(message, SendRequestData::StartBroadcast {});
         match self.register_to_sender_tx.send(request) {
             Ok(_) => {}
-            Err(_) => {
-                debug_println!("Erro ao fazer broadcast: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao enviar request do BEB: {e}");
             }
         }
         match result_rx.recv() {
             Ok(result) => result,
-            Err(_) => {
-                debug_println!("Erro ao fazer broadcast: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao receber resultado do BEB: {e}");
                 0
             }
         }
@@ -301,8 +301,8 @@ impl ReliableCommunication {
         let (request, _) = SendRequest::new(message, SendRequestData::StartBroadcast {});
         match self.register_to_sender_tx.send(request) {
             Ok(_) => {}
-            Err(_) => {
-                debug_println!("Erro ao fazer broadcast: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao fazer URB: {e}");
             }
         }
         // TODO: Make it so that URB waits for at least one node to receive the message
@@ -321,18 +321,18 @@ impl ReliableCommunication {
         *ld = group[idx].clone();
     }
 
-    fn gossip(&self, data: Vec<u8>, origin: SocketAddr, sequence_number: u32) {
+    fn gossip(&self, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
         let (request, _) = SendRequest::new(
             data,
             SendRequestData::Gossip {
-                origin_address: origin,
-                start_sequence_number: sequence_number,
+                origin,
+                seq_num,
             },
         );
         match self.register_to_sender_tx.send(request) {
             Ok(_) => {}
-            Err(_) => {
-                debug_println!("Erro ao fazer fofoca: Canal de comunicação desconectado");
+            Err(e) => {
+                debug_println!("Erro ao fazer fofoca: {e}");
             }
         }
     }
@@ -343,8 +343,8 @@ impl ReliableCommunication {
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
         match self.broadcast_waiters_tx.send((broadcast_tx, self.host.addr)) {
             Ok(_) => {}
-            Err(_) => {
-                debug_println!("Erro ao fazer broadcast AB: Canal de broadcast waiters desconectado");
+            Err(e) => {
+                debug_println!("Erro ao registrar broadcast waiter no AB: {e}");
             }
         }
         loop {
@@ -354,8 +354,8 @@ impl ReliableCommunication {
             );
             match self.register_to_sender_tx.send(request) {
                 Ok(_) => {}
-                Err(_) => {
-                    debug_println!("Erro ao fazer broadcast AB: Canal de comunicação desconectado");
+                Err(e) => {
+                    debug_println!("Erro ao enviar request de AB: {e}");
                 }
             }
 
@@ -367,8 +367,8 @@ impl ReliableCommunication {
                     continue;
                 }
                 Ok(_) => {}
-                Err(_) => {
-                    debug_println!("Erro ao fazer broadcast AB: Canal de comunicação com o líder desconectado");
+                Err(e) => {
+                    debug_println!("Erro ao fazer requisitar AB para o lider: {e}");
                 }
             }
 
@@ -418,9 +418,9 @@ impl ReliableCommunication {
                 };
                 match register_to_listener_tx.send(((message_header.dst_addr, message_header.origin), message_header.seq_num)) {
                     Ok(_) => {}
-                    Err(_) => {
-                        debug_println!("Erro ao enviar mensagem: Canal de comunicação com o listener desconectado");
-                        return;
+                    Err(e) => {
+                        debug_println!("Erro ao enviar pedido de ACK para a Listener: {e}");
+                        continue;
                     }
                 }
 
@@ -494,12 +494,12 @@ impl ReliableCommunication {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("").header.dst_addr.port()%100);
+                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
                         return false;
                     }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
-                    debug_println!("Erro ao receber ACKS, Listener thread desconectada");
+                    debug_println!("Erro ao receber ACKS, thread Listener desconectada");
                     return false;
                 },
             }
@@ -530,14 +530,14 @@ impl ReliableCommunication {
                     debug_println!("Erro: Tentativa de broadcast em um sistema sem broadcast");
                 }
                 Broadcast::BEB => {
-                    for node in self.group.lock().expect("Couldn't get Group lock on get_messages").iter() {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
-                            messages.push(packets);
-                        }
+                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                        let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
+                        messages.push(packets);
+                    }
                 }
                 Broadcast::URB => {
                     let friends = self.get_friends();
-                    for node in self.group.lock().expect("Couldn't get Group lock on get_messages").iter() {
+                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
                             if friends.contains(node) {
                                 messages.push(packets);
@@ -545,19 +545,19 @@ impl ReliableCommunication {
                         }
                     },
                 Broadcast::AB => {
-                    let leader = self.group.lock().expect("Couldn't get Group lock on get_messages")[self.leader.lock().expect("Couldn't get leader lock on get_messages").agent_number].addr;
+                    let leader = self.group.lock().expect("Couldn't get grupo lock on get_messages")[self.leader.lock().expect("Couldn't get leader lock on get_messages").agent_number].addr;
                     let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
                     messages.push(packets);
                 }
             },
-            SendRequestData::Gossip { origin_address, start_sequence_number } => {
+            SendRequestData::Gossip { origin, seq_num } => {
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
                         self.host.addr,
                         node.addr,
-                        *origin_address,
+                        *origin,
                         request.data.clone(),
-                        *start_sequence_number,
+                        *seq_num,
                         true,
                     );
                     messages.push(packets);
@@ -569,7 +569,7 @@ impl ReliableCommunication {
     }
 
     fn get_friends(&self) -> Vec<Node> {
-        let group = self.group.lock().expect("Couldn't get Group lock on get_friends");
+        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
         let start = (self.host.agent_number + 1) % group.len();
         let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
@@ -595,9 +595,9 @@ impl ReliableCommunication {
         loop {
             let packet = match self.channel.receive() {
                 Ok(packet) => packet,
-                Err(_) => {
-                    debug_println!("Agente {} falhou em receber um pacote do socket", self.host.agent_number);
-                    return;
+                Err(e) => {
+                    debug_println!("Agente {} falhou em receber um pacote do socket, erro: {e}", self.host.agent_number);
+                    continue;
                 }
             };
             if packet.header.is_ack() {
@@ -611,13 +611,13 @@ impl ReliableCommunication {
                         *seq_num = packet.header.seq_num + 1;
                         match acks_tx.send(packet) {
                             Ok(_) => {}
-                            Err(_) => {
-                                debug_println!("Erro ao enviar ACK: Canal de comunicação desconectado");
+                            Err(e) => {
+                                debug_println!("Erro ao enviar ACK: {e}");
                             }
                         }
                     }
                     None => {
-                        debug_println!("->-> ACK recebido sem destinatário esperando");
+                        debug_println!("ACK recebido sem destinatário esperando");
                     }
                 }
             } else {

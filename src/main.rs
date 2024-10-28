@@ -31,7 +31,7 @@ impl Agent {
             communication: ReliableCommunication::new(
                 nodes[id].clone(),
                 nodes,
-                logger.clone(),
+                logger,
 
             )?,
         })
