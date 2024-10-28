@@ -32,8 +32,8 @@ impl Agent {
         broadcast: Broadcast,
         broadcast_timeout: u64,
         logger: SharedLogger,
-    ) -> Self {
-        Agent {
+    ) -> Result<Self, std::io::Error> {
+        Ok(Agent {
             id,
             communication: ReliableCommunication::new(
                 nodes[id].clone(),
@@ -47,8 +47,8 @@ impl Agent {
                 broadcast_timeout,
                 logger.clone(),
 
-            ),
-        }
+            )?,
+        })
     }
 
     fn receiver(&self, actions: Vec<Action>, msg_limit: usize, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
@@ -155,7 +155,7 @@ fn create_agents(
     port: u16,
     gossip_rate: usize,
     w_size: usize,
-) -> Arc<Agent> {
+) -> Result<Arc<Agent>, std::io::Error> {
     let mut nodes: Vec<Node> = Vec::new();
 
     // Contruir vetor unificando os nós locais e os remotos
@@ -177,8 +177,9 @@ fn create_agents(
             broadcast,
             broadcast_timeout,
             logger,        
-    ));
-    agent
+        )?
+    );
+    Ok(agent)
 }
 
 // TODO: Fix this function so it works with the new logger
@@ -311,7 +312,10 @@ fn main() {
             w_size,
         );
         let actions = test.remove(agent_id);
-        agent.run(actions);
+        match agent {
+            Ok(agent) => agent.run(actions),
+            Err(e) => panic!("Falha ao criar agente {}: {}", agent_id, e),
+        }
     } else {
         println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <timeout_limit>");
         println!("enviado {:?}", args);

@@ -18,9 +18,9 @@ pub struct Channel {
 
 impl Channel {
     /// Constructor
-    pub fn new(bind_addr: std::net::SocketAddr) -> Arc<Self> {
-        let socket = Arc::new(UdpSocket::bind(bind_addr).unwrap());
-        Arc::new(Self { socket })
+    pub fn new(bind_addr: std::net::SocketAddr) -> Result<Arc<Self>, std::io::Error> {
+        let socket = Arc::new(UdpSocket::bind(bind_addr)?);
+        Ok(Arc::new(Self { socket }))
     }
 
     /// Validates the received message
@@ -32,19 +32,21 @@ impl Channel {
     }
 
     /// Reads a packet from the socket or waits for a packet to arrive
-    pub fn receive(&self) -> Packet {
+    pub fn receive(&self) -> Result<Packet, std::io::Error> {
         loop {
             let mut buffer = [0; BUFFER_SIZE];
-            let size;
-            match self.socket.recv_from(&mut buffer) {
-                Ok((size_, _)) => { size = size_; },
+            let (size, _) = self.socket.recv_from(&mut buffer)?;
+
+            let mut packet = match Packet::from_bytes(buffer, size) {
+                Ok(packet) => packet,
                 Err(e) => {
-                    let agent = self.socket.local_addr().unwrap().port() % 100;
-                    debug_println!("->-> Erro {{{e}}} no Agente {agent} ao receber pacote pelo socket");
+                    // TODO: I'm pretty sure this error will never happen, but I can't make it so
+                    // that Packet::from_bytes builds the header from the buffer slice without checking if the size is correct
+                    // Which it'll aways be since the HEADER_SIZE is a constant
+                    debug_println!("->-> Erro {{{e}}} ao receber pacote pelo socket");
                     continue;
-                },
-            }
-            let mut packet = Packet::from_bytes(buffer, size);
+                }
+            };
             // Simula perda de pacotes
             if rand::random::<f32>() < LOSS_RATE { continue; }
             if rand::random::<f32>() < CORRUPTION_RATE {
@@ -52,7 +54,7 @@ impl Channel {
             }
             // Verifica se o pacote foi corrompido
             if !self.validate_message(&packet) { continue; }
-            return packet
+            return Ok(packet);
         }
     }
 

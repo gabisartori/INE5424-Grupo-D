@@ -56,10 +56,10 @@ impl Packet {
         bytes
     }
 
-    pub fn from_bytes(bytes: [u8; BUFFER_SIZE], data_size: usize) -> Self {
-        let header = Header::from_bytes(bytes[..Header::HEADER_SIZE].try_into().unwrap());
+    pub fn from_bytes(bytes: [u8; BUFFER_SIZE], data_size: usize) -> Result<Self, std::array::TryFromSliceError> {
+        let header = Header::from_bytes(bytes[..Header::HEADER_SIZE].try_into()?);
         let data = bytes[Header::HEADER_SIZE..data_size].to_vec();
-        Self { header, data }
+        Ok(Self { header, data })
     }
 
     fn sum_addr(addr: SocketAddr) -> u32 {
