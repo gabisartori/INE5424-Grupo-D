@@ -42,7 +42,7 @@ impl Channel {
                 Err(e) => {
                     // TODO: I'm pretty sure this error will never happen, but I can't make it so
                     // that Packet::from_bytes builds the header from the buffer slice without checking if the size is correct
-                    // Which it'll aways be since the HEADER_SIZE is a constant
+                    // Which it'll always be since the HEADER_SIZE is a constant
                     debug_println!("->-> Erro {{{e}}} ao receber pacote pelo socket");
                     continue;
                 }

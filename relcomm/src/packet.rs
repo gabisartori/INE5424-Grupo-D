@@ -2,11 +2,12 @@
 #![allow(dead_code)]
 
 // Importações necessárias
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 
 // Tamanho do buffer
 use crate::config::BUFFER_SIZE;
 use crate::flags::Flags;
+use crate::header::Header;
 
 #[derive(Clone)]
 pub struct Packet {
@@ -15,32 +16,33 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
-            seq_num: u32, is_last: bool,
+    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
+            origin: SocketAddr, seq_num: u32, is_last: bool,
             is_ack: bool, gossip: bool, is_syn: bool, is_fin: bool, data: Vec<u8>) -> Self {
         
         let flags = is_last & Flags::LST | is_ack & Flags::ACK | gossip & Flags::GSP | is_syn & Flags::SYN | is_fin & Flags::FIN;
 
-        let checksum = Self::checksum(&Header::new(src_addr, dst_addr, origin, seq_num, flags, 0), &data);
-        let header = Header::new(src_addr, dst_addr, origin, seq_num, flags, checksum);
+        let mut header = Header::new(src_addr, dst_addr, origin, seq_num, flags, 0);
+        let checksum = Self::checksum(&header, &data);
+        header.checksum = checksum;
         Self { header, data }
     }
 
     pub fn get_ack(&self) -> Self {
         let ack_header = self.header.get_ack();
-        Self {header: ack_header, data: Vec::new()}  
+        Self {header: ack_header, data: Vec::new()}
     }
 
     pub fn get_syn(
-        source_address: SocketAddr,
-        destination_address: SocketAddr,
-        sequence_number: u32,
+        src_addr: SocketAddr,
+        dst_addr: SocketAddr,
+        seq_num: u32,
     ) -> Self {
         Self::new(
-            source_address,
-            destination_address,
-            source_address,
-            sequence_number,
+            src_addr,
+            dst_addr,
+            src_addr,
+            seq_num,
             false,
             false,
             false,
@@ -62,21 +64,8 @@ impl Packet {
         Ok(Self { header, data })
     }
 
-    fn sum_addr(addr: SocketAddr) -> u32 {
-        let value = match addr.ip() {
-            IpAddr::V4(ipv4) => u32::from_be_bytes(ipv4.octets()),
-            IpAddr::V6(ipv6) => u128::from_be_bytes(ipv6.octets()) as u32,
-        };
-        value.wrapping_add(addr.port() as u32)
-    }
-
     pub fn checksum(header: &Header, data: &Vec<u8>) -> u32 {
-        let mut sum: u32 = 0;
-        sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
-        sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
-        sum = sum.wrapping_add(Self::sum_addr(header.origin));
-        sum = sum.wrapping_add(header.seq_num as u32);
-        sum = sum.wrapping_add(header.flags.value as u32);
+        let mut sum = Header::checksum(header);
         for byte in data {
             sum = sum.wrapping_add(*byte as u32);
         }
@@ -112,121 +101,7 @@ impl Packet {
 
 impl std::fmt::Debug for Packet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num, self.header.src_addr.port(), self.header.dst_addr.port(), self.header.origin.port())
-    }
-}
-
-#[derive(Clone)]
-pub struct Header {
-    pub src_addr: SocketAddr,   // 6 bytes
-    pub dst_addr: SocketAddr,   // 12 bytes
-    pub origin: SocketAddr,     // 18 bytes
-    pub seq_num: u32,           // 22 bytes
-    pub flags: Flags,           // 23 bytes
-    pub checksum: u32,          // 27 bytes
-}
-
-// Implementação para que o cabeçalho seja conversível em bytes e vice-versa
-impl Header {
-    // Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
-    pub const HEADER_SIZE: usize = 27;
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr, origin: SocketAddr,
-            seq_num: u32, flags: Flags, checksum: u32) -> Self {
-        // Gera um timestamp usando o relógio local
-        Self {
-            src_addr,
-            dst_addr,
-            origin,
-            seq_num,
-            flags,
-            checksum,
-        }
-    }
-
-    pub fn get_ack(&self) -> Self {
-        let flags = self.flags | Flags::ACK;
-        Self {
-            src_addr: self.dst_addr,
-            dst_addr: self.src_addr,
-            origin: self.origin,
-            seq_num: self.seq_num,
-            flags,
-            // TODO: Fix the checksum gambiarra
-            checksum: Packet::checksum(&self, &Vec::new())+1,
-        }
-    }
-
-    pub fn is_last(&self) -> bool {
-        self.flags.is_set(Flags::LST)
-    }
-
-    pub fn is_ack(&self) -> bool {
-        self.flags.is_set(Flags::ACK)
-    }
-
-    pub fn must_gossip(&self) -> bool {
-        self.flags.is_set(Flags::GSP)
-    }
-
-    pub fn is_syn(&self) -> bool {
-        self.flags.is_set(Flags::SYN)
-    }
-
-    pub fn is_fin(&self) -> bool {
-        self.flags.is_set(Flags::FIN)
-    }
-
-    fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        match addr.ip() {
-            IpAddr::V4(ipv4) => bytes.extend_from_slice(&ipv4.octets()),
-            IpAddr::V6(ipv6) => bytes.extend_from_slice(&ipv6.octets()),
-        }
-        bytes.extend_from_slice(&addr.port().to_be_bytes());
-        bytes
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.src_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.dst_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.origin));
-        bytes.extend_from_slice(&self.seq_num.to_be_bytes());
-        bytes.push(self.flags.value);
-        bytes.extend_from_slice(&self.checksum.to_be_bytes());
-        bytes
-    }
-
-    fn addr_from_bytes(bytes: &[u8], start: &mut usize) -> SocketAddr {
-        let ip = IpAddr::V4(Ipv4Addr::from([bytes[*start],
-            bytes[*start + 1], bytes[*start + 2], bytes[*start + 3]]));
-        let port = u16::from_be_bytes([bytes[*start + 4], bytes[*start + 5]]);
-        *start += 6;
-        SocketAddr::new(ip, port)
-    }
-
-    fn u32_from_bytes(bytes: &[u8], start: &mut usize) -> u32 {
-        let out = u32::from_be_bytes([bytes[*start], bytes[*start + 1], bytes[*start + 2], bytes[*start + 3]]);
-        *start += 4;
-        out
-    }
-
-    pub fn from_bytes(bytes: [u8; Header::HEADER_SIZE]) -> Self {
-        let mut start = 0;
-        let src_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let origin = Header::addr_from_bytes(&bytes, &mut start);
-        let seq_num = Header::u32_from_bytes(&bytes, &mut start);
-        let flags = bytes[start].into();
-        start += 1;
-        let checksum = Header::u32_from_bytes(&bytes, &mut start);
-        Header::new(
-            src_addr,
-            dst_addr,
-            origin,
-            seq_num,
-            flags,
-            checksum,
-        )
+        write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num,
+        self.header.src_addr.port(), self.header.dst_addr.port(), self.header.origin.port())
     }
 }
