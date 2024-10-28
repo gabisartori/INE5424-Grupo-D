@@ -1,4 +1,5 @@
 use std::net::{IpAddr, SocketAddr};
+use std::sync::mpsc::{RecvError, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 // use rand::Rng;
@@ -49,7 +50,7 @@ impl Agent {
         }
     }
 
-    fn receiver(&self, actions: Vec<tests::Action>) -> u32 {
+    fn receiver(&self, actions: Vec<tests::Action>, msg_limit: usize, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -65,6 +66,10 @@ impl Agent {
                 debug_file!(path, &message);
             }
             i += 1;
+            if i == msg_limit {
+                death_tx.send(true).unwrap();
+                break;
+            }
         }
         return acertos;
     }
@@ -84,6 +89,7 @@ impl Agent {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
                 },
                 tests::Action::Receive { .. } => { panic!("Agent {}: thread creater não deve receber ação de receber mensagem", self.id) },
+                tests::Action::Die { .. } => { panic!("Agent {}: thread creater não deve receber ação de morrer", self.id) },
             }
         }
         return acertos;
@@ -113,11 +119,10 @@ impl Agent {
         self.communication.logger.lock().unwrap().log(logger_state);
     }
 
-
     pub fn run(self: Arc<Self>, actions: Vec<tests::Action>) {
         let mut send_actions = Vec::new();
         let mut receive_actions = Vec::new();
-
+        let mut die = 0;
         for action in actions {
             match action {
                 tests::Action::Send { .. } | tests::Action::Broadcast { .. } => {
@@ -126,17 +131,34 @@ impl Agent {
                 tests::Action::Receive { .. } => {
                     receive_actions.push(action);
                 },
+                tests::Action::Die { after_n_messages } => die = after_n_messages,
             }
         }
     
 
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
+        
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
+        let (death_tx, death_rx) = std::sync::mpsc::channel();
         let sender = thread::spawn(move || sender_clone.creater(send_actions));
-        let listener = thread::spawn(move || listener_clone.receiver(receive_actions));
-        let s_acertos = sender.join().unwrap();
-        let r_acertos = listener.join().unwrap();
+        let listener = thread::spawn(move || listener_clone.receiver(receive_actions, die, death_tx));
+        
+        let s_acertos;
+        let r_acertos;
+
+        match death_rx.recv() {
+            Ok(_) => {
+                // listener recebeu instrução DIE, então a thread deve morrer
+                r_acertos = 0;
+                s_acertos = 0;
+            },
+            Err(RecvError) => {
+                // listener encerrou sem receber instrução DIE, esperar sender encerrar também
+                r_acertos = listener.join().unwrap();
+                s_acertos = sender.join().unwrap();
+            }
+        }
         let path = format!("tests/Resultado.txt");
         let msg = format!(
             "AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n",
@@ -243,7 +265,7 @@ pub fn init_log_files(n_agents: usize) {
 }
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::send_test_2();
+    let mut test = tests::broadcast_test_3();
     let agent_num = test.len();
 
     if args.len() == 12 {

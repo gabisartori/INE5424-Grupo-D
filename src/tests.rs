@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[derive(PartialEq)]
 pub enum Action {
     Send {
@@ -12,9 +10,9 @@ pub enum Action {
     Broadcast {
         message: String
     },
-    // Die {
-    //     time: u64
-    // }
+    Die {
+        after_n_messages: usize
+    }
 }
 
 const MSG: &str = "
@@ -52,6 +50,7 @@ END OF MESSAGE
 
 type Test = Vec<Vec<Action>>;
 
+#[allow(dead_code)]
 pub fn send_test_1() -> Test {
     vec![
         // Agent 0
@@ -70,6 +69,7 @@ pub fn send_test_1() -> Test {
     ]
 }
 
+#[allow(dead_code)]
 pub fn send_test_2() -> Test {
     vec![
         // Agent 0
@@ -95,6 +95,7 @@ pub fn send_test_2() -> Test {
     ] 
 }
 
+#[allow(dead_code)]
 pub fn broadcast_test_1() -> Test {
     vec![
         // Agent 0
@@ -119,6 +120,7 @@ pub fn broadcast_test_1() -> Test {
     ]
 }
 
+#[allow(dead_code)]
 pub fn broadcast_test_2() -> Test {
     vec![
         // Agent 0
@@ -139,6 +141,43 @@ pub fn broadcast_test_2() -> Test {
             Action::Receive {
                 message: MSG.to_string(),
             }
+        ]
+    ]
+}
+
+#[allow(dead_code)]
+pub fn broadcast_test_3() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Receive { message: "Mensagem 0".to_string() },
+            Action::Die { after_n_messages: 1 },
+            Action::Receive { message: "Mensagem 1".to_string() },
+            Action::Receive { message: "Mensagem 2".to_string() },
+
+        ],
+        // Agent 1
+        vec![
+            Action::Receive { message: "Mensagem 0".to_string() },
+            Action::Receive { message: "Mensagem 1".to_string() },
+            Action::Receive { message: "Mensagem 2".to_string() },
+        ],
+        // Agent 2
+        vec![
+            Action::Broadcast { message: "Mensagem 0".to_string() },
+            Action::Broadcast { message: "Mensagem 1".to_string() },
+
+            Action::Receive { message: "Mensagem 0".to_string() },
+            Action::Receive { message: "Mensagem 1".to_string() },
+            Action::Receive { message: "Mensagem 2".to_string() },
+
+        ],
+        // Agent 3
+        vec![
+            Action::Receive { message: "Mensagem 0".to_string() },
+            Action::Receive { message: "Mensagem 1".to_string() },
+            Action::Broadcast { message: "Mensagem 2".to_string() },
+            Action::Receive { message: "Mensagem 2".to_string() },
         ]
     ]
 }
