@@ -37,7 +37,7 @@ impl Agent {
         })
     }
 
-    fn receiver(&self, actions: Vec<Action>, msg_limit: u32, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
+    fn receiver(&self, actions: Vec<Action>, msg_limit: u32, death_tx: std::sync::mpsc::Sender<u32>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -59,7 +59,7 @@ impl Agent {
             i += 1;
             if acertos == msg_limit {
                 // Ignore send result because the run function cannot end until the receiver thread ends
-                let _ = death_tx.send(true);
+                let _ = death_tx.send(acertos);
                 break;
             }
         }
@@ -112,9 +112,9 @@ impl Agent {
         let r_acertos;
 
         match death_rx.recv() {
-            Ok(_) => {
+            Ok(n) => {
                 // listener recebeu instrução DIE, então a thread deve morrer
-                r_acertos = 0;
+                r_acertos = n;
                 s_acertos = 0;
             },
             Err(RecvError) => {
@@ -214,7 +214,7 @@ fn calculate_test(agent_num: usize) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_1();
+    let mut test = tests::broadcast_test_4();
     let agent_num = test.len();
 
     if args.len() == 14 {
