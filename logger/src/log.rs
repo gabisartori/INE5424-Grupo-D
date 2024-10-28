@@ -34,7 +34,10 @@ macro_rules! debug_file {
 #[allow(unused_imports)]
 #[allow(unused_variables)]
 #[allow(unused_mut)]
-use std::{fs::File, sync::{Arc, Mutex}};
+use std::{
+    fs::File,
+    sync::{Arc, Mutex},
+};
 
 // // Define states for the agents
 // #[derive(Debug, Clone, Copy)]
@@ -73,7 +76,7 @@ pub enum MessageStatus {
     ReceivedFailed,
     Waiting,
     Timeout,
-    Unknown,    
+    Unknown,
 }
 
 // Defines sender type functions
@@ -85,7 +88,7 @@ pub enum SenderType {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum LoggerState {
     // AgentState {
     //     state: AgentStatus,
@@ -97,7 +100,7 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
     },
 
     PacketReceiver {
@@ -106,7 +109,7 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
     },
 
     PacketBroadcast {
@@ -114,7 +117,28 @@ pub enum LoggerState {
         current_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
+        algorithm: String,
+    },
+
+    ReceivedLastPacket {
+        state: PacketStatus,
+        current_agent_id: usize,
+        target_agent_id: usize,
+        seq_num: usize,
+        action: PacketStatus,
+        algorithm: String,
+        sender_type: Option<SenderType>,
+    },
+
+    SentLastPacket {
+        state: PacketStatus,
+        current_agent_id: usize,
+        target_agent_id: usize,
+        seq_num: usize,
+        action: PacketStatus,
+        algorithm: String,
+        sender_type: Option<SenderType>,
     },
 
     MessageReceiver {
@@ -123,7 +147,7 @@ pub enum LoggerState {
         target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
     },
 
     MessageSender {
@@ -132,15 +156,28 @@ pub enum LoggerState {
         target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
     },
 
     MessageBroadcast {
         state: MessageStatus,
         current_agent_id: usize,
-        message_id: u32,
+        message_id: Option<u32>,
         action: MessageStatus,
-        sender_type:  Option<SenderType>,
+        sender_type: Option<SenderType>,
+        algorithm: String,
+    },
+    LogInfo {
+        current_agent_id: Option<usize>,
+        description: String,
+    },
+    LogFail {
+        current_agent_id: Option<usize>,
+        description: String,
+    },
+    LogWarning {
+        current_agent_id: Option<usize>,
+        description: String,
     },
 }
 
@@ -154,8 +191,8 @@ impl DebugLog {
         Self {}
     }
 
-#[allow(unused_variables)]
-#[allow(unused_mut)]
+    #[allow(unused_variables)]
+    #[allow(unused_mut)]
     pub fn get_log(&self, log_type: LoggerState) -> String {
         match log_type {
             // LoggerState::AgentState { state, agent_id } => {
@@ -167,7 +204,7 @@ impl DebugLog {
                 target_agent_id,
                 seq_num,
                 action,
-                sender_type
+                sender_type,
             } => {
                 format!(
                     "Agent {} , state: {:?}, sending packet {} to Agent {}. Next action : {:?}",
@@ -182,8 +219,6 @@ impl DebugLog {
                 seq_num,
                 action,
                 sender_type,
-
-
             } => {
                 format!(
                     "Agent {} , state: {:?}, receiving packet {} from Agent {}. Next action : {:?}",
@@ -197,10 +232,41 @@ impl DebugLog {
                 seq_num,
                 action,
                 sender_type,
+                algorithm,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, broadcasting packet {} . Next action : {:?}",
-                    current_agent_id, state, seq_num, action
+                    "Agent {}, state: {:?}, broadcasting packet {}, type {} . Next action : {:?}",
+                    current_agent_id, state, seq_num, algorithm, action
+                )
+            }
+
+            LoggerState::SentLastPacket {
+                state,
+                current_agent_id,
+                target_agent_id,
+                seq_num,
+                action,
+                algorithm,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {}, state: {:?}, sent last packet ({}), type {} . Next action : {:?}",
+                    current_agent_id, state, seq_num, algorithm, action
+                )
+            }
+
+            LoggerState::ReceivedLastPacket {
+                state,
+                current_agent_id,
+                target_agent_id,
+                seq_num,
+                action,
+                algorithm,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {}, state: {:?}, received last packet ({}), type {} . Next action : {:?}",
+                    current_agent_id, state, seq_num, algorithm, action
                 )
             }
 
@@ -211,7 +277,6 @@ impl DebugLog {
                 message_id,
                 action,
                 sender_type,
-
             } => {
                 format!(
                     "Agent {} , state: {:?}, sending message {} to Agent {}. Next action : {:?}",
@@ -226,7 +291,6 @@ impl DebugLog {
                 message_id,
                 action,
                 sender_type,
-
             } => {
                 format!(
                     "Agent {}, state: {:?}, receiving message {} from Agent {}. Next action : {:?}",
@@ -240,13 +304,31 @@ impl DebugLog {
                 message_id,
                 action,
                 sender_type,
+                algorithm,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, broadcasting message {} . Next action : {:?}",
-                    current_agent_id, state, message_id, action
+                    "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
+                    current_agent_id, state, message_id, algorithm, action
                 )
-            } 
-
+            }
+            LoggerState::LogInfo {
+                current_agent_id,
+                description,
+            } => {
+                format!("(Agente {:?}) INFO: {}", current_agent_id, description)
+            }
+            LoggerState::LogFail {
+                current_agent_id,
+                description,
+            } => {
+                format!("(Agente {:?}) FAIL: {}", current_agent_id, description)
+            }
+            LoggerState::LogWarning {
+                current_agent_id,
+                description,
+            } => {
+                format!("(Agente {:?}) WARNING: {}", current_agent_id, description)
+            }
         }
     }
 }
@@ -268,17 +350,42 @@ impl Logger {
             debug_level,
             n_agents,
         };
+
         logger
+    }
+
+    pub fn fail(&mut self, msg: String, agent_num: Option<usize>) {
+        let logger_state = LoggerState::LogFail {
+            current_agent_id: agent_num,
+            description: msg,
+        };
+        self.log(logger_state);
+    }
+
+    pub fn warning(&mut self, msg: String, agent_num: Option<usize>) {
+        let logger_state = LoggerState::LogWarning {
+            current_agent_id: agent_num,
+            description: msg,
+        };
+        self.log(logger_state);
+    }
+
+    pub fn info(&mut self, msg: String, agent_num: Option<usize>) {
+        let logger_state = LoggerState::LogInfo {
+            current_agent_id: agent_num,
+            description: msg,
+        };
+        self.log(logger_state);
     }
 
     pub fn log(&mut self, logger_state: LoggerState) {
         // with the logger state, we can get the log message
-        let log = DebugLog::new().get_log(logger_state);
+        let log = DebugLog::new().get_log(logger_state.clone());
         let msg_buffer = format!("{}\n", log);
 
         if self.debug_level > 0 {
             // write to the log file
-            let agent_id = match logger_state {
+            let agent_id = match logger_state.clone() {
                 LoggerState::PacketSender {
                     current_agent_id, ..
                 }
@@ -286,6 +393,12 @@ impl Logger {
                     current_agent_id, ..
                 }
                 | LoggerState::PacketBroadcast {
+                    current_agent_id, ..
+                }
+                | LoggerState::SentLastPacket {
+                    current_agent_id, ..
+                }
+                | LoggerState::ReceivedLastPacket {
                     current_agent_id, ..
                 }
                 | LoggerState::MessageSender {
@@ -297,12 +410,25 @@ impl Logger {
                 LoggerState::MessageBroadcast {
                     current_agent_id, ..
                 } => current_agent_id,
+                LoggerState::LogFail {
+                    current_agent_id, ..
+                } => current_agent_id.unwrap_or(usize::MAX),
+                LoggerState::LogInfo {
+                    current_agent_id, ..
+                } => current_agent_id.unwrap_or(usize::MAX),
+                LoggerState::LogWarning {
+                    current_agent_id, ..
+                } => current_agent_id.unwrap_or(usize::MAX),
             };
 
-            // write to the agent log file
-            let path = format!("src/log/agent_{}.txt", agent_id);
-            debug_file!(path, msg_buffer.as_bytes());
-
+            if agent_id == usize::MAX {
+                let path = format!("src/log/log_msgs.txt");
+                debug_file!(path, msg_buffer.as_bytes());
+            } else {
+                // write to the agent log file
+                let path = format!("src/log/agent_{}.txt", agent_id);
+                debug_file!(path, msg_buffer.as_bytes());
+            }
         }
     }
 }
