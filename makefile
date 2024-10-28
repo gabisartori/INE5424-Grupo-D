@@ -18,9 +18,9 @@ all:
 	@rm -rf relcomm/log
 	@mkdir -p src/log
 	@mkdir -p relcomm/log
-	@cargo run --release -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT) > tests/result.txt
-#	@clear
-	@cat tests/result.txt
+	@cargo run --release -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT)
+	@clear
+	@cat tests/Resultado.txt
 
 debug:
 	@mkdir -p tests
@@ -29,9 +29,9 @@ debug:
 	@rm -f relcomm/log
 	@mkdir -p src/log
 	@mkdir -p relcomm/log
-	@cargo run -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT) > tests/result.txt
-#	@clear
-	@cat tests/result.txt
+	@cargo run -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT)
+	@clear
+	@cat tests/Resultado.txt
 
 clean:
 	@cargo clean
