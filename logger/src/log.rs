@@ -207,8 +207,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {} , state: {:?}, sending packet {} to Agent {}. Next action : {:?}",
-                    current_agent_id, state, seq_num, target_agent_id, action
+                    // "Agent {} , state: {:?}, sending packet {} to Agent {}. Next action : {:?}",
+                    // current_agent_id, state, seq_num, target_agent_id, action
+                    "Agent {} , state: {:?}, sending packet {} to Agent {}.",
+                    current_agent_id, state, seq_num, target_agent_id
                 )
             }
 
@@ -221,8 +223,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {} , state: {:?}, receiving packet {} from Agent {}. Next action : {:?}",
-                    current_agent_id, state, seq_num, target_agent_id, action
+                    // "Agent {} , state: {:?}, receiving packet {} from Agent {}. Next action : {:?}",
+                    // current_agent_id, state, seq_num, target_agent_id, action
+                    "Agent {} , state: {:?}, receiving packet {} from Agent {}.",
+                    current_agent_id, state, seq_num, target_agent_id,
                 )
             }
 
@@ -235,8 +239,10 @@ impl DebugLog {
                 algorithm,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, broadcasting packet {}, type {} . Next action : {:?}",
-                    current_agent_id, state, seq_num, algorithm, action
+                    // "Agent {}, state: {:?}, broadcasting packet {}, type {} . Next action : {:?}",
+                    // current_agent_id, state, seq_num, algorithm, action
+                    "Agent {}, state: {:?}, broadcasting packet {}, type {} .",
+                    current_agent_id, state, seq_num, algorithm
                 )
             }
 
@@ -250,8 +256,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, sent last packet ({}), type {} . Next action : {:?}",
-                    current_agent_id, state, seq_num, algorithm, action
+                    // "Agent {}, state: {:?}, sent last packet ({}), type {} . Next action : {:?}",
+                    // current_agent_id, state, seq_num, algorithm, action
+                    "Agent {}, state: {:?}, sent last packet ({}), type {} .",
+                    current_agent_id, state, seq_num, algorithm
                 )
             }
 
@@ -265,8 +273,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, received last packet ({}), type {} . Next action : {:?}",
-                    current_agent_id, state, seq_num, algorithm, action
+                    // "Agent {}, state: {:?}, received last packet ({}), type {} . Next action : {:?}",
+                    // current_agent_id, state, seq_num, algorithm, action
+                    "Agent {}, state: {:?}, received last packet ({}), type {} .",
+                    current_agent_id, state, seq_num, algorithm
                 )
             }
 
@@ -279,8 +289,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {} , state: {:?}, sending message {} to Agent {}. Next action : {:?}",
-                    current_agent_id, state, message_id, target_agent_id, action
+                    // "Agent {} , state: {:?}, sending message {} to Agent {}. Next action : {:?}",
+                    // current_agent_id, state, message_id, target_agent_id, action
+                    "Agent {} , state: {:?}, sending message {} to Agent {}.",
+                    current_agent_id, state, message_id, target_agent_id
                 )
             }
 
@@ -293,8 +305,10 @@ impl DebugLog {
                 sender_type,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, receiving message {} from Agent {}. Next action : {:?}",
-                    current_agent_id, state, message_id, target_agent_id, action
+                    // "Agent {}, state: {:?}, receiving message {} from Agent {}. Next action : {:?}",
+                    // current_agent_id, state, message_id, target_agent_id, action
+                    "Agent {}, state: {:?}, receiving message {} from Agent {}.",
+                    current_agent_id, state, message_id, target_agent_id
                 )
             }
 
@@ -307,8 +321,10 @@ impl DebugLog {
                 algorithm,
             } => {
                 format!(
-                    "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
-                    current_agent_id, state, message_id, algorithm, action
+                    // "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
+                    // current_agent_id, state, message_id, algorithm, action
+                    "Agent {}, state: {:?}, broadcasting message {:?}, type {} .",
+                    current_agent_id, state, message_id, algorithm                   
                 )
             }
             LoggerState::LogInfo {
