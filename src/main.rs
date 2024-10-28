@@ -71,8 +71,7 @@ impl Agent {
         for action in actions {
             match action {
                 Action::Send { destination, message } => {
-                    let destination = &self.communication.group.lock().unwrap()[destination];
-                    acertos  += self.communication.send(&destination.addr, message.as_bytes().to_vec());
+                    acertos  += self.communication.send(destination, message.as_bytes().to_vec());
                 },
                 Action::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());

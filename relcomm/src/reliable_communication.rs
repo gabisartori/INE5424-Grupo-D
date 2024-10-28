@@ -214,14 +214,23 @@ impl ReliableCommunication {
     }
 
     /// Send a message to a specific destination
-    pub fn send(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> u32 {
-        match self.send_nonblocking(dst_addr, message).recv() {
-            Ok(result) => result,
-            Err(e) => {
-                debug_println!("Erro ao enviar mensagem na send: {e}");
+    pub fn send(&self, id: usize, message: Vec<u8>) -> u32 {
+        match self.group.lock().expect("Erro ao enviar mensagem: Mutex lock do grupo falhou").get(id) {
+            Some(node) => {
+                match self.send_nonblocking(&node.addr, message).recv() {
+                    Ok(result) => result,
+                    Err(e) => {
+                        debug_println!("Erro ao enviar mensagem na send: {e}");
+                        0
+                    }
+                }
+            },
+            None => {
+                debug_println!("Erro ao enviar mensagem: ID de destino não encontrado");
                 0
             }
         }
+        
     }
 
     fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
