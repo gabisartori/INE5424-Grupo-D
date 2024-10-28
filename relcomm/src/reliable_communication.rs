@@ -668,7 +668,7 @@ impl ReliableCommunication {
                                 for waiter in broadcast_waiters.iter_mut() {
                                     let w = waiter.as_ref().unwrap();
                                     match (*w).send(message.clone()) {
-                                        Ok(_) => {}
+                                        Ok(_) => {} 
                                         Err(_) => {
                                             *waiter = None;
                                         }
