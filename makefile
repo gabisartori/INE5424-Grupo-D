@@ -19,7 +19,7 @@ all:
 	@mkdir -p src/log
 	@mkdir -p relcomm/log
 	@cargo run --release -- $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(TIMEOUT_LIMIT)
-	@clear
+#	@clear
 	@cat tests/Resultado.txt
 
 debug:

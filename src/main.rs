@@ -7,7 +7,7 @@ use std::thread;
 use logger::log::SharedLogger;
 use logger::log::Logger;
 use logger::{debug_file, debug_println};
-use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
+use relcomm::reliable_communication::{Node, ReliableCommunication};
 use tests::Action;
 
 // Importa as configurações de endereços dos processos
@@ -24,13 +24,6 @@ impl Agent {
         nodes: Vec<Node>,
         // TODO: Update agent struct to match new test format
         _n_msgs: u32,
-        timeout: u64,
-        message_timeout: u64,
-        timeout_limit: u32,
-        w_size: usize,
-        gossip_rate: usize,
-        broadcast: Broadcast,
-        broadcast_timeout: u64,
         logger: SharedLogger,
     ) -> Result<Self, std::io::Error> {
         Ok(Agent {
@@ -38,13 +31,6 @@ impl Agent {
             communication: ReliableCommunication::new(
                 nodes[id].clone(),
                 nodes,
-                timeout,
-                message_timeout,
-                timeout_limit,
-                w_size,
-                gossip_rate,
-                broadcast,
-                broadcast_timeout,
                 logger.clone(),
 
             )?,
@@ -146,15 +132,8 @@ fn create_agents(
     id: usize,
     agent_num: usize,
     n_msgs: u32,
-    broadcast: Broadcast,
-    timeout: u64,
-    timeout_limit: u32,
-    message_timeout: u64,
-    broadcast_timeout: u64,
     ip: IpAddr,
     port: u16,
-    gossip_rate: usize,
-    w_size: usize,
 ) -> Result<Arc<Agent>, std::io::Error> {
     let mut nodes: Vec<Node> = Vec::new();
 
@@ -169,13 +148,6 @@ fn create_agents(
         Agent::new(
             id, nodes,
             n_msgs,
-            timeout,
-            message_timeout,
-            timeout_limit,
-            w_size,
-            gossip_rate,
-            broadcast,
-            broadcast_timeout,
             logger,        
         )?
     );
@@ -234,24 +206,12 @@ fn main() {
 
     if args.len() == 12 {
 
-        assert!(agent_num > 0, "Número de agentes deve ser maior que 0");
-
         let mut childs = Vec::new();
 
         // Inicializar os agentes locais
         for i in 0..agent_num {
             let c = std::process::Command::new(std::env::current_exe().unwrap())
-                .arg(args[1].clone()) // Passando o número de agentes
-                .arg(args[2].clone()) // Passando o número de mensagens
-                .arg(args[3].clone()) // Passando o tipo de broadcast
-                .arg(args[4].clone()) // Passando o timeout
-                .arg(args[5].clone()) // Passando o message_timeout
-                .arg(args[6].clone()) // Passando o broadcast_timeout
-                .arg(args[7].clone()) // Passando o IP
-                .arg(args[8].clone()) // Passando a Porta base
-                .arg(args[9].clone()) // Passando a taxa de gossip
-                .arg(args[10].clone()) // Passando o tamanho da janela
-                .arg(args[11].clone()) // Passando o limite de timeouts consecutivos
+                .args(args[1..].as_ref()) // Passando o número de agentes
                 .arg(i.to_string()) // Passando o ID do agente
                 .spawn()
                 .expect(format!("Falha ao spawnar processo {i}").as_str());
@@ -266,33 +226,12 @@ fn main() {
     } else if args.len() == 13 {
         // Se há 13 argumentos, então está rodando um subprocesso
         let n_msgs: u32 = args[2].parse().expect("Falha ao converter n_msgs para u32");
-        let broadcast: Broadcast = match args[3].as_str() {
-            "NONE" => Broadcast::NONE,
-            "BEB" => Broadcast::BEB,
-            "URB" => Broadcast::URB,
-            "AB" => Broadcast::AB,
-            _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3]),
-        };
-        let timeout: u64 = args[4]
+        let ip: IpAddr = args[7]
             .parse()
-            .expect("Falha ao converter timeout para u64");
-        let message_timeout: u64 = args[5]
+            .expect("Falha ao converter ip para IpAddr");
+        let port: u16 = args[8]
             .parse()
-            .expect("Falha ao converter message_timeout para u64");
-        let broadcast_timeout: u64 = args[6]
-            .parse()
-            .expect("Falha ao converter broadcast_timeout para u64");
-        let ip: IpAddr = args[7].parse().expect("Falha ao converter ip para IpAddr");
-        let port: u16 = args[8].parse().expect("Falha ao converter port para u16");
-        let gossip_rate: usize = args[9]
-            .parse()
-            .expect("Falha ao converter gossip_rate para usize");
-        let w_size: usize = args[10]
-            .parse()
-            .expect("Falha ao converter w_size para usize");
-        let timeout_limit: u32 = args[11]
-            .parse()
-            .expect("Falha ao converter timeout_limit para u32");
+            .expect("Falha ao converter port para u16");
         let agent_id: usize = args[12]
             .parse()
             .expect("Falha ao converter agent_id para u32");
@@ -301,15 +240,8 @@ fn main() {
             agent_id,
             agent_num,
             n_msgs,
-            broadcast,
-            timeout,
-            timeout_limit,
-            message_timeout,
-            broadcast_timeout,
             ip,
             port,
-            gossip_rate,
-            w_size,
         );
         let actions = test.remove(agent_id);
         match agent {
