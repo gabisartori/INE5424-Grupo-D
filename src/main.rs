@@ -5,8 +5,8 @@ use std::thread;
 // use rand::Rng;
 
 use logger::log::SharedLogger;
-use logger::log::{Logger, LoggerState, MessageStatus, SenderType};
-use logger::{debug_file, debug_println, log};
+use logger::log::Logger;
+use logger::{debug_file, debug_println};
 use relcomm::reliable_communication::{Broadcast, Node, ReliableCommunication};
 use tests::Action;
 
@@ -51,7 +51,7 @@ impl Agent {
         }
     }
 
-    fn receiver(&self, actions: Vec<tests::Action>, msg_limit: usize, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
+    fn receiver(&self, actions: Vec<Action>, msg_limit: usize, death_tx: std::sync::mpsc::Sender<bool>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         loop {
@@ -60,7 +60,7 @@ impl Agent {
                 break;
             }
             debug_println!("Agent {}: Recebida mensagem {}", self.id, String::from_utf8(message.clone()).unwrap());
-            if actions.contains(&tests::Action::Receive { message: String::from_utf8(message.clone()).unwrap() }) {
+            if actions.contains(&Action::Receive { message: String::from_utf8(message.clone()).unwrap() }) {
                 acertos += 1;
             } else {
                 let path = format!("tests/erros{}_{i}.txt", self.id);
@@ -75,37 +75,37 @@ impl Agent {
         return acertos;
     }
 
-    fn creater(&self, actions: Vec<tests::Action>) -> u32 {
+    fn creater(&self, actions: Vec<Action>) -> u32 {
         let mut acertos = 0;
         for action in actions {
             match action {
-                tests::Action::Send { destination, message } => {
+                Action::Send { destination, message } => {
                     let destination = &self.communication.group.lock().unwrap()[destination];
                     acertos  += self.communication.send(&destination.addr, message.as_bytes().to_vec());
                 },
-                tests::Action::Broadcast { message } => {
+                Action::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
                 },
-                tests::Action::Receive { .. } => { panic!("Agent {}: thread creater não deve receber ação de receber mensagem", self.id) },
-                tests::Action::Die { .. } => { panic!("Agent {}: thread creater não deve receber ação de morrer", self.id) },
+                Action::Receive { .. } => { panic!("Agent {}: thread creater não deve receber ação de receber mensagem", self.id) },
+                Action::Die { .. } => { panic!("Agent {}: thread creater não deve receber ação de morrer", self.id) },
             }
         }
         return acertos;
     }
 
-    pub fn run(self: Arc<Self>, actions: Vec<tests::Action>) {
+    pub fn run(self: Arc<Self>, actions: Vec<Action>) {
         let mut send_actions = Vec::new();
         let mut receive_actions = Vec::new();
         let mut die = 0;
         for action in actions {
             match action {
-                tests::Action::Send { .. } | tests::Action::Broadcast { .. } => {
+                Action::Send { .. } | Action::Broadcast { .. } => {
                     send_actions.push(action);
                 },
-                tests::Action::Receive { .. } => {
+                Action::Receive { .. } => {
                     receive_actions.push(action);
                 },
-                tests::Action::Die { after_n_messages } => die = after_n_messages,
+                Action::Die { after_n_messages } => die = after_n_messages,
             }
         }
     

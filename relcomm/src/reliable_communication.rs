@@ -8,8 +8,8 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 use crate::channels::Channel;
 use crate::packet::Packet;
 use logger::log::SharedLogger;
-use logger::log::{Logger, MessageStatus, SenderType};
-use logger::{debug_file, debug_println, log};
+use logger::log::{MessageStatus, SenderType};
+use logger::{debug_println, log};
 
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -603,7 +603,7 @@ impl ReliableCommunication {
         let sequence_number = if packets.is_empty() { packet.header.seq_num } else { packets.first().unwrap().header.seq_num };
         packets.clear();
 
-        let logger_state = log::LoggerState::PacketReceiver {
+        let _logger_state = log::LoggerState::PacketReceiver {
             state: log::PacketStatus::LastPacket, current_agent_id: usize::MAX, 
             target_agent_id: usize::MAX, seq_num: sequence_number as usize, action: log::PacketStatus::Received, 
             sender_type: Some(SenderType::Unknown)
