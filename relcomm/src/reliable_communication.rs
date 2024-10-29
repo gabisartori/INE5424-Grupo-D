@@ -8,7 +8,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 use crate::channels::Channel;
 use crate::packet::Packet;
 use logger::log::SharedLogger;
-use logger::log::{MessageStatus, SenderType};
+use logger::log::MessageStatus;
 use logger::{debug_println, log};
 
 use std::clone::Clone;
@@ -413,9 +413,8 @@ impl ReliableCommunication {
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
+        
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
-
-        // Message sending algorithm
         while let Ok(request) = register_from_user_rx.recv() {
             let messages_to_send = self.get_messages(&request);
             let mut success_count = 0;
