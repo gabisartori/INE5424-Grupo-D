@@ -273,20 +273,6 @@ impl ReliableCommunication {
             }
         }
 
-        let logger_state = log::LoggerState::MessageBroadcast {
-            state: MessageStatus::Sent,
-            current_agent_id: self.host.agent_number,
-            message_id: None,
-            action: MessageStatus::Waiting,
-            sender_type: Some(SenderType::Unknown),
-            algorithm: "BEB".to_owned(),
-        };
-
-        self.logger
-            .lock()
-            .expect("Couldn't aquire logger Lock on Sender")
-            .log(logger_state);
-
         match result_rx.recv() {
             Ok(result) => result,
             Err(e) => {
@@ -445,7 +431,7 @@ impl ReliableCommunication {
                             let logger_state = log::LoggerState::MessageBroadcast {
                                 state: MessageStatus::Sent,
                                 current_agent_id: self.host.agent_number,
-                                message_id: None,
+                                message_id: Some(message_header.seq_num),
                                 action: MessageStatus::Waiting,
                                 sender_type: None,
                                 algorithm: "".to_owned(),
@@ -519,7 +505,7 @@ impl ReliableCommunication {
                     let logger_state = log::LoggerState::PacketBroadcast {
                         state: log::PacketStatus::Sent,
                         current_agent_id: self.host.agent_number,
-                        seq_num: next_seq_num,
+                        seq_num: start_packet as usize + next_seq_num,
                         action: log::PacketStatus::Waiting,
                         sender_type: Some(SenderType::Unknown),
                         algorithm: "".to_owned(),
@@ -553,37 +539,7 @@ impl ReliableCommunication {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;
-
-                    if packet.header.must_gossip() == true {
-                        let logger_state = log::LoggerState::MessageBroadcast {
-                            state: MessageStatus::Sent,
-                            current_agent_id: self.host.agent_number,
-                            message_id: None,
-                            action: MessageStatus::Waiting,
-                            sender_type: None,
-                            algorithm: "".to_owned(),
-                        };
-
-                        self.logger
-                            .lock()
-                            .expect("Couldn't acquire logger Lock on Sender")
-                            .log(logger_state);
-                    } else {
-                        let logger_state = log::LoggerState::PacketSender {
-                            state: log::PacketStatus::Received,
-                            current_agent_id: packet.header.src_addr.port() as usize % 100,
-                            target_agent_id: packet.header.dst_addr.port() as usize % 100,
-                            seq_num: packet.header.seq_num as usize,
-                            action: log::PacketStatus::Waiting,
-                            sender_type: Some(SenderType::Unknown),
-                        };
-
-                        self.logger
-                            .lock()
-                            .expect("Couldn't acquire logger Lock on Sender")
-                            .log(logger_state);
-                    }
+                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
@@ -715,6 +671,22 @@ impl ReliableCommunication {
                 }
             };
             if packet.header.is_ack() {
+                let pkt = packet.clone();
+
+                let logger_state = log::LoggerState::PacketReceiver {
+                    state: log::PacketStatus::ReceivedAck,
+                    current_agent_id: pkt.header.dst_addr.port() as usize % 100,
+                    target_agent_id: pkt.header.src_addr.port() as usize % 100,
+                    seq_num: pkt.header.seq_num as usize,
+                    action: log::PacketStatus::Waiting,
+                    sender_type: Some(SenderType::Unknown),
+                };
+
+                self.logger
+                    .lock()
+                    .expect("Couldn't acquire logger Lock on Listener")
+                    .log(logger_state);
+
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
                     expected_acks.insert(key, start_seq);
@@ -727,14 +699,50 @@ impl ReliableCommunication {
                             Ok(_) => {}
                             Err(e) => {
                                 debug_println!("Erro ao enviar ACK: {e}");
-                            }
+                                let logger_state = log::LoggerState::SentAck {
+                                    state: log::PacketStatus::SentFailed,
+                                    current_agent_id: pkt.header.dst_addr.port() as usize % 100,
+                                    target_agent_id: pkt.header.src_addr.port() as usize % 100,
+                                    seq_num: pkt.header.seq_num as usize,
+                                    action: log::PacketStatus::ReceivedFailed,
+                                    sender_type: Some(SenderType::Unknown),
+                                };
+
+                                self.logger
+                                .lock()
+                                .expect("Couldn't acquire logger Lock on Listener")
+                                .log(logger_state);                            }
                         }
                     }
                     None => {
                         debug_println!("ACK recebido sem destinatário esperando");
+                        let logger_state = log::LoggerState::SentAck {
+                            state: log::PacketStatus::SentFailed,
+                            current_agent_id: pkt.header.dst_addr.port() as usize % 100,
+                            target_agent_id: pkt.header.src_addr.port() as usize % 100,
+                            seq_num: pkt.header.seq_num as usize,
+                            action: log::PacketStatus::ReceivedFailed,
+                            sender_type: Some(SenderType::Unknown),
+                        };
+
+                        self.logger
+                        .lock()
+                        .expect("Couldn't acquire logger Lock on Listener")
+                        .log(logger_state);    
                     }
                 }
             } else {
+                let logger_state = log::LoggerState::PacketReceiver {
+                    state: log::PacketStatus::Received,
+                    current_agent_id: packet.header.dst_addr.port() as usize % 100,
+                    target_agent_id: packet.header.src_addr.port() as usize % 100,
+                    seq_num: packet.header.seq_num as usize,
+                    action: log::PacketStatus::Waiting,
+                    sender_type: Some(SenderType::Unknown),
+                };
+
+                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+
                 // Handle data
                 let packets = pkts_per_origin
                     .entry(packet.header.origin)
@@ -747,6 +755,17 @@ impl ReliableCommunication {
                 }
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
+                let logger_state = log::LoggerState::SentAck {
+                    state: log::PacketStatus::SentAck,
+                    current_agent_id: packet.header.dst_addr.port() as usize % 100,
+                    target_agent_id: packet.header.src_addr.port() as usize % 100,
+                    seq_num: packet.header.seq_num as usize,
+                    action: log::PacketStatus::Waiting,
+                    sender_type: Some(SenderType::Unknown),
+                };
+
+                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+
                 if packet.header.seq_num < expected { continue; }
                 
                 if packet.header.is_last() {
@@ -870,7 +889,7 @@ impl ReliableCommunication {
         };
 
         let logger_state = log::LoggerState::ReceivedLastPacket {
-            state: log::PacketStatus::Sent,
+            state: log::PacketStatus::Received,
             current_agent_id: curr_agent_id,
             target_agent_id: t_agent_id,
             seq_num: sequence_number as usize,
