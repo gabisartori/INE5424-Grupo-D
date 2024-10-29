@@ -20,7 +20,7 @@ all:
 	@mkdir -p src/log
 	@mkdir -p relcomm/log
 	@cargo build --release
-#	@clear
+	@clear
 	@target/release/INE5424 $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(TIMEOUT_LIMIT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(LOSS_RATE) $(CORRUPTION_RATE)
 	@echo "---------------------------------------"
 	@cat tests/Resultado.txt
@@ -33,7 +33,7 @@ debug:
 	@mkdir -p src/log
 	@mkdir -p relcomm/log
 	@cargo build
-#	@clear
+	@clear
 	@target/debug/INE5424 $(AGENT_NUM) $(N_MSGS) $(BROADCAST) $(TIMEOUT) $(TIMEOUT_LIMIT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(IP) $(PORT) $(GOSSIP_RATE) $(W_SIZE) $(LOSS_RATE) $(CORRUPTION_RATE)
 	@echo "---------------------------------------"
 	@cat tests/Resultado.txt

@@ -214,7 +214,7 @@ fn calculate_test(agent_num: usize) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_2();
+    let mut test = tests::broadcast_test_3();
     let agent_num = test.len();
 
     if args.len() == 14 {
