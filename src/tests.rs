@@ -319,10 +319,5 @@ pub fn broadcast_test_5() -> Test {
             Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
             Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
         ],
-        vec![
-            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
-            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
-            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
-        ]
     ]
 }

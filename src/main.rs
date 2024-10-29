@@ -82,8 +82,8 @@ impl Agent {
         match death_rx.recv() {
             Ok(n) => {
                 // TODO: Decidir o que fazer com o valor recebido, se foi enviado pela creater ou pela receiver
-                r_acertos = n;
-                s_acertos = n;
+                r_acertos = 0;
+                s_acertos = 0;
             },
             Err(RecvError) => {
                 r_acertos = match listener.join() {
@@ -176,7 +176,7 @@ impl Agent {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_2();
+    let mut test = tests::broadcast_test_5();
     let agent_num = test.len();
 
     if args.len() == 14 {
