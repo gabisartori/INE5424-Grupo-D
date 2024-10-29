@@ -54,6 +54,7 @@ enum SendRequestData {
     },
     // Creates as many messages as needed to broadcast to the group
     StartBroadcast {},
+    RequestLeader {},
     // Creates N messages to gossip to neighbors, keeping the original message information
     Gossip {
         origin: SocketAddr,
@@ -304,11 +305,6 @@ impl ReliableCommunication {
     /// Atomic Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
-        let leader = self.get_leader();
-        if leader.addr == self.host.addr {
-            self.gossip(message.clone(), self.host.addr, 0);
-            return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
-        }
         
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
         match self.broadcast_waiters_tx.send(broadcast_tx) {
@@ -317,10 +313,23 @@ impl ReliableCommunication {
                 debug_println!("Erro ao registrar broadcast waiter no AB: {e}");
             }
         }
+        
+        // Constantly try to get a leader and ask it to broadcast
         loop {
+            let leader = self.get_leader();
+            if leader == self.host {
+                // Start the broadcast
+                let (request, _) = SendRequest::new(
+                    message.clone(),
+                    SendRequestData::StartBroadcast {},
+                );
+                self.register_to_sender_tx.send(request).expect("Erro ao fazer AB, não conseguiu enviar request para o sender");
+                return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
+            }
+            // Ask the leader to broadcast and wait for confirmation
             let (request, request_result_rx) = SendRequest::new (
                 message.clone(),
-                SendRequestData::StartBroadcast {},
+                SendRequestData::RequestLeader {},
             );
             match self.register_to_sender_tx.send(request) {
                 Ok(_) => {}
@@ -329,8 +338,7 @@ impl ReliableCommunication {
                 }
             }
 
-            // If the chosen leader didn't receive the broadcast request
-            // It means it died and we need to pick a new one
+            // Wait for the request result
             match request_result_rx.recv() {
                 Ok(0) => {
                     debug_println!("Agente {} falhou em enviar mensagem para o líder, tentando novamente...", self.host.agent_number);
@@ -590,7 +598,7 @@ impl ReliableCommunication {
                         }
                     }
                 }
-                Broadcast::URB => {
+                Broadcast::URB | Broadcast::AB => {
                     let friends = self.get_friends();
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
@@ -598,28 +606,13 @@ impl ReliableCommunication {
                                 messages.push(packets);
                             }
                         }
-                    },
-                Broadcast::AB => {
-                    debug_println!("Agente {} está fazendo broadcast", self.host.agent_number);
-                    let leader = self.get_leader().addr;
-                    if leader == self.host.addr {
-                        // If I'm the leader: URB
-                        let friends = self.get_friends();
-                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                        let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                        if friends.contains(node) && node.state == NodeState::ALIVE {
-                            messages.push(packets);
-                        }
-                      }                   
-                    } else {
-                        // If not: Request the leader to broadcast
-                        let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
-                        messages.push(packets);
                     }
-                    
-
-                }
             },
+            SendRequestData::RequestLeader {} => {
+                let leader = self.get_leader();
+                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
+                messages.push(packets);
+            }
             SendRequestData::Gossip { origin, seq_num } => {
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
