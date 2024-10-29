@@ -4,17 +4,15 @@ disponibilizada pela camada de difusão confiável (Reliable Communication),
 permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
-// Importa a camada de canais
 use crate::channels::Channel;
 use crate::packet::Packet;
-use logger::log::SharedLogger;
-use logger::log::MessageStatus;
-use logger::{debug_println, log};
+
+use logger::{debug_println, log::{self, SharedLogger, MessageStatus}};
 
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,6 +22,7 @@ pub struct Node {
     pub agent_number: usize,
     pub state: NodeState,
 }
+
 impl Node {
     pub fn new(addr: SocketAddr, agent_number: usize) -> Self {
         Self {
@@ -33,11 +32,12 @@ impl Node {
         }
     }
 }
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeState {
     ALIVE,
-    //    SUSPECT,
     DEAD,
+    // SUSPECT,
 }
 
 #[derive(PartialEq)]
@@ -81,7 +81,7 @@ impl SendRequest {
     }
 }
 
-// reads the arguments from the command line, parses them and returns them as a tuple
+/// Reads the arguments from the command line, parses them and returns them as a tuple
 fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
     let args: Vec<String> = std::env::args().collect();
     let broadcast: Broadcast = match args[3].as_str() {
@@ -301,53 +301,6 @@ impl ReliableCommunication {
         .expect("Falha ao fazer o URB, Não obteve lock de Grupo").len() as u32
     }
 
-    fn mark_as_dead(&self, addr: &SocketAddr) {
-        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
-        for node in group.iter_mut() {
-            if node.addr == *addr {
-                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
-                node.state = NodeState::DEAD;
-            }
-        }
-    }
-
-    fn get_leader(&self) -> Node {
-        for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state == NodeState::ALIVE {
-                debug_println!("Agente {} escolheu {} como líder", self.host.agent_number, node.agent_number);
-                return node.clone();
-            }
-        }
-        return self.host.clone();
-    }
-
-    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
-        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
-        let x = group.len();
-        for (i, n) in group.iter().enumerate() {
-            if n.addr == *node_address {
-                return x-i;
-            }
-        }
-        0
-    }
-
-    fn gossip(&self, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
-        let (request, _) = SendRequest::new(
-            data,
-            SendRequestData::Gossip {
-                origin,
-                seq_num,
-            },
-        );
-        match self.register_to_sender_tx.send(request) {
-            Ok(_) => {}
-            Err(e) => {
-                debug_println!("Erro ao fazer fofoca: {e}");
-            }
-        }
-    }
-
     /// Atomic Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
@@ -402,6 +355,61 @@ impl ReliableCommunication {
                         panic!("{:?}", e)
                     }
                 }
+            }
+        }
+    }
+
+    /// Marks a node as dead
+    fn mark_as_dead(&self, addr: &SocketAddr) {
+        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
+        for node in group.iter_mut() {
+            if node.addr == *addr {
+                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
+                node.state = NodeState::DEAD;
+            }
+        }
+    }
+
+    /// Returns the node with the highest priority (currently the first one alive in the group vector)
+    fn get_leader(&self) -> Node {
+        for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
+            if node.state == NodeState::ALIVE {
+                debug_println!("Agente {} escolheu {} como líder", self.host.agent_number, node.agent_number);
+                return node.clone();
+            }
+        }
+        return self.host.clone();
+    }
+
+    /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
+    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
+        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
+        for (i, n) in group.iter().enumerate() {
+            if n.addr == *node_address {
+                return group.len()-i;
+            }
+        }
+        0
+    }
+
+    /// Picks the node "friends" and retransmits the message to them
+    /// This retransmission preserves the original message information about the origin and sequence number
+    /// The friends are any group of N nodes in the group, where N is the gossip rate. Currently it's the next N nodes in the group vector
+    /// 
+    /// Since gossip algorithms are meant to ensure that the message will be successfully difused even if there are failing nodes
+    /// This function doesn't need to wait for the result of the gossip. (It's also important to not block the listener thread when it needs to gossip a message)
+    fn gossip(&self, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
+        let (request, _) = SendRequest::new(
+            data,
+            SendRequestData::Gossip {
+                origin,
+                seq_num,
+            },
+        );
+        match self.register_to_sender_tx.send(request) {
+            Ok(_) => {}
+            Err(e) => {
+                debug_println!("Erro ao fazer fofoca: {e}");
             }
         }
     }
@@ -488,6 +496,7 @@ impl ReliableCommunication {
         }
     }
 
+    /// Go-Back-N algorithm to send packets
     fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
@@ -559,17 +568,8 @@ impl ReliableCommunication {
         true
     }
 
-    fn get_pkts(&self, src_addr: &SocketAddr, dst_addr: &SocketAddr,  origin: &SocketAddr,
-        data: Vec<u8>, is_gossip: bool) -> Vec<Packet> {
-        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
-        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
-        let packets = Packet::packets_from_message(
-            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
-        );
-        *start_seq += packets.len() as u32;
-        packets
-        }
-
+    /// Handles a request for the sender, returning what messages the request generates
+    /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
     fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
         let mut messages = Vec::new();
         match &request.options {
@@ -620,11 +620,15 @@ impl ReliableCommunication {
         messages
     }
 
+    /// Returns the nodes that are considered friends of the current node
+    /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
     fn get_friends(&self) -> Vec<Node> {
         let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+
         let start = (self.host.agent_number + 1) % group.len();
         let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
+
         if start < end {
             friends.extend_from_slice(&group[start..end]);
         } else {
@@ -635,6 +639,25 @@ impl ReliableCommunication {
         friends
     }
 
+    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    fn get_pkts(
+        &self,
+        src_addr: &SocketAddr,
+        dst_addr: &SocketAddr,
+        origin: &SocketAddr,
+        data: Vec<u8>,
+        is_gossip: bool
+    ) -> Vec<Packet> {
+        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
+        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
+        let packets = Packet::packets_from_message(
+            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
+        );
+        *start_seq += packets.len() as u32;
+        packets
+    }
+
+    /// Thread to handle the reception of messages
     fn listener(
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
@@ -798,7 +821,9 @@ impl ReliableCommunication {
         }
     }
 
-    /// Handle the message
+    /// Decides what to do with a broadcast message in the AB algorithm
+    /// Based on your priority and the priority of the origin of the message
+    /// The return boolean is used to tell the listener thread whether the message should be delivered or not (in case it's a broadcast request for the leader)
     fn atm_gossip(
         &self,
         message: Vec<u8>,
@@ -808,26 +833,27 @@ impl ReliableCommunication {
         let origin_priority = self.get_leader_priority(&origin);
         let own_priority = self.get_leader_priority(&self.host.addr);
         if origin_priority < own_priority {
-            // Broadcast request
+            // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
             self.urb(message);
             false
         } else {
-            // Gossip
+            // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
             self.gossip(message.clone(), *origin, sequence_number);
             true
         }
     }
 
+    /// When a packet marked as last is received, the packets are merged and the message is returned
     fn receive_last_packet(
-        &self, // TODO : check if change causes issues
-        packets: &mut Vec<Packet>, packet: &Packet) -> (Vec<u8>, SocketAddr, u32) {
+        &self,
+        packets: &mut Vec<Packet>,
+        packet: &Packet
+    ) -> (Vec<u8>, SocketAddr, u32) {
         let mut message = Vec::new();
         // Ignore the first packet if its the remnant of a previous message
         match packets.first() { 
             Some(p) => {
-                if p.header.is_last() {
-                    packets.remove(0);
-                }
+                if p.header.is_last() { packets.remove(0); }
             }
             None => {}
          }
@@ -836,35 +862,22 @@ impl ReliableCommunication {
             message.extend(&packet.data);
         }
         message.extend(&packet.data);
+
         let sequence_number: u32;
         let curr_agent_id: usize;
         let t_agent_id: usize;
-
-        if packets.is_empty() {
-            sequence_number = packet.header.seq_num;
-            curr_agent_id = packet.header.src_addr.port() as usize % 100;
-            t_agent_id = packet.header.dst_addr.port() as usize % 100;
-        } else {
-            sequence_number = packets
-                .first()
-                .expect("packets shouldn't be empty on receive_last_packet")
-                .header
-                .seq_num;
-            curr_agent_id = packets
-                .first()
-                .expect("packets shouldn't be empty on receive_last_packet")
-                .header
-                .src_addr
-                .port() as usize
-                % 100;
-            t_agent_id = packets
-                .first()
-                .expect("packets shouldn't be empty on receive_last_packet")
-                .header
-                .dst_addr
-                .port() as usize
-                % 100;
-        };
+        match packets.first() {
+            Some(p) => {
+                sequence_number = p.header.seq_num;
+                curr_agent_id = p.header.src_addr.port() as usize % 100;
+                t_agent_id = p.header.dst_addr.port() as usize % 100;
+        }
+            None => {
+                sequence_number = packet.header.seq_num;
+                curr_agent_id = packet.header.src_addr.port() as usize % 100;
+                t_agent_id = packet.header.dst_addr.port() as usize % 100;
+            }
+        }
 
         let logger_state = log::LoggerState::ReceivedLastPacket {
             state: log::PacketStatus::Received,
