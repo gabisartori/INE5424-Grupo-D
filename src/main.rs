@@ -80,7 +80,7 @@ impl Agent {
         // Waits for either any of the threads to send in the channel, meaning the agent should die
         // If both threads end without sending anything, the agent should wait for them to finish
         match death_rx.recv() {
-            Ok(n) => {
+            Ok(_n) => {
                 // TODO: Decidir o que fazer com o valor recebido, se foi enviado pela creater ou pela receiver
                 r_acertos = 0;
                 s_acertos = 0;
@@ -139,6 +139,8 @@ impl Agent {
             match String::from_utf8(message.clone()) {
                 Ok(msg) => {
                     if expected_messages.contains(&msg) {
+                        let path = format!("tests/acertos_{}.txt", self.id);
+                        debug_file!(path, &message);
                         acertos += 1;
                     } else {
                         let path = format!("tests/erros{}_{i}.txt", self.id);
@@ -176,7 +178,7 @@ impl Agent {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_5();
+    let mut test = tests::broadcast_test_6();
     let agent_num = test.len();
 
     if args.len() == 14 {

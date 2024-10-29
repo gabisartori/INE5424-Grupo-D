@@ -321,3 +321,65 @@ pub fn broadcast_test_5() -> Test {
         ],
     ]
 }
+
+/// 10 Nodos, vários fazem broadcast
+pub fn broadcast_test_6() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })
+        ],
+        // Agent 1
+        vec![
+            Action::Send(SendAction::Broadcast { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })
+
+        ],
+        vec![
+            Action::Send(SendAction::Broadcast { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Send(SendAction::Broadcast { message: "2".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: "0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
+        ],
+    ]
+}
