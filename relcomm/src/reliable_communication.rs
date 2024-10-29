@@ -435,7 +435,6 @@ impl ReliableCommunication {
                                 current_agent_id: self.host.agent_number,
                                 message_id: Some(message_header.seq_num),
                                 action: MessageStatus::Waiting,
-                                sender_type: None,
                                 algorithm: "".to_owned(),
                             };
                             self.logger
@@ -449,7 +448,6 @@ impl ReliableCommunication {
                                 target_agent_id: message_header.dst_addr.port() as usize % 100,
                                 message_id: message_header.seq_num,
                                 action: MessageStatus::Waiting,
-                                sender_type: Some(SenderType::Unknown),
                             };
 
                             self.logger
@@ -509,7 +507,6 @@ impl ReliableCommunication {
                         current_agent_id: self.host.agent_number,
                         seq_num: start_packet as usize + next_seq_num,
                         action: log::PacketStatus::Waiting,
-                        sender_type: Some(SenderType::Unknown),
                         algorithm: "".to_owned(),
                     };
                     self.logger
@@ -524,7 +521,6 @@ impl ReliableCommunication {
                         target_agent_id: packets[0].header.dst_addr.port() as usize % 100,
                         seq_num: next_seq_num,
                         action: log::PacketStatus::Waiting,
-                        sender_type: Some(SenderType::Unknown),
                     };
                     self.logger
                         .lock()
@@ -663,7 +659,6 @@ impl ReliableCommunication {
                     target_agent_id: pkt.header.src_addr.port() as usize % 100,
                     seq_num: pkt.header.seq_num as usize,
                     action: log::PacketStatus::Waiting,
-                    sender_type: Some(SenderType::Unknown),
                 };
 
                 self.logger
@@ -689,7 +684,6 @@ impl ReliableCommunication {
                                     target_agent_id: pkt.header.src_addr.port() as usize % 100,
                                     seq_num: pkt.header.seq_num as usize,
                                     action: log::PacketStatus::ReceivedFailed,
-                                    sender_type: Some(SenderType::Unknown),
                                 };
 
                                 self.logger
@@ -706,7 +700,6 @@ impl ReliableCommunication {
                             target_agent_id: pkt.header.src_addr.port() as usize % 100,
                             seq_num: pkt.header.seq_num as usize,
                             action: log::PacketStatus::ReceivedFailed,
-                            sender_type: Some(SenderType::Unknown),
                         };
 
                         self.logger
@@ -722,7 +715,6 @@ impl ReliableCommunication {
                     target_agent_id: packet.header.src_addr.port() as usize % 100,
                     seq_num: packet.header.seq_num as usize,
                     action: log::PacketStatus::Waiting,
-                    sender_type: Some(SenderType::Unknown),
                 };
 
                 self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
@@ -745,7 +737,6 @@ impl ReliableCommunication {
                     target_agent_id: packet.header.src_addr.port() as usize % 100,
                     seq_num: packet.header.seq_num as usize,
                     action: log::PacketStatus::Waiting,
-                    sender_type: Some(SenderType::Unknown),
                 };
 
                 self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
@@ -879,7 +870,6 @@ impl ReliableCommunication {
             seq_num: sequence_number as usize,
             action: log::PacketStatus::Waiting,
             algorithm: "".to_owned(),
-            sender_type: Some(SenderType::Unknown),
         };
 
         self.logger
