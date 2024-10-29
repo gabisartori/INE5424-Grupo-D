@@ -301,6 +301,7 @@ impl ReliableCommunication {
         let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
         for node in group.iter_mut() {
             if node.addr == *addr {
+                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
                 node.state = NodeState::DEAD;
             }
         }
@@ -309,6 +310,7 @@ impl ReliableCommunication {
     fn get_leader(&self) -> Node {
         for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
             if node.state == NodeState::ALIVE {
+                debug_println!("Agente {} escolheu {} como líder", self.host.agent_number, node.agent_number);
                 return node.clone();
             }
         }
@@ -427,7 +429,7 @@ impl ReliableCommunication {
                     message_header.seq_num,
                 )) {
                     Ok(_) => {
-                        if message_header.must_gossip() == true {
+                        if message_header.must_gossip() {
                             let logger_state = log::LoggerState::MessageBroadcast {
                                 state: MessageStatus::Sent,
                                 current_agent_id: self.host.agent_number,
@@ -475,7 +477,7 @@ impl ReliableCommunication {
                     success_count += 1;
                 } else {
                     // If the message wasn't sent, mark the destination as dead
-                    self.mark_as_dead(&packets[0].header.dst_addr);
+                    self.mark_as_dead(&message_header.dst_addr);
                 }
             }
 
