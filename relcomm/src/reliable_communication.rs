@@ -305,7 +305,6 @@ impl ReliableCommunication {
     /// Atomic Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
-        
         let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
         match self.broadcast_waiters_tx.send(broadcast_tx) {
             Ok(_) => {}
