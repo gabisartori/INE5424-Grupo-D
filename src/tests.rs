@@ -131,9 +131,9 @@ type Test = Vec<Vec<Action>>;
 pub fn send_test_1() -> Test {
     vec![
         // Agent 0
-        vec![Action::Send(SendAction::Send { destination: 1, message: "message_0".to_string() })],
+        vec![Action::Send(SendAction::Send { destination: 1, message: MSG_0.to_string() })],
         // Agent 1
-        vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })]
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })]
     ]
 }
 
@@ -141,11 +141,11 @@ pub fn send_test_1() -> Test {
 pub fn send_test_2() -> Test {
     vec![
         // Agent 0
-        vec![Action::Send(SendAction::Send { destination: 1, message: "message_0".to_string() })],
+        vec![Action::Send(SendAction::Send { destination: 1, message: MSG_0.to_string() })],
         // Agent 1
         vec![
             Action::Send(SendAction::Send { destination: 2, message: MSG_0.to_string() }),
-            Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })
         ],
         // Agent 2
         vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })]
@@ -173,7 +173,7 @@ pub fn send_test_4() -> Test {
         // Agent 0
         vec![Action::Send(SendAction::Send { destination: 1, message: "message_0".to_string() })],
         // Agent 1
-        vec![Action::Receive(ReceiveAction::DieAfterReceive { after_n_messages: 0 })]
+        vec![Action::Die()]
     ]
 }
 
@@ -181,12 +181,34 @@ pub fn send_test_4() -> Test {
 pub fn broadcast_test_1() -> Test {
     vec![
         // Agent 0
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
         vec![
-            Action::Send(SendAction::Broadcast { message: "message_0".to_string() }),
-            Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() }),
+            Action::Send(SendAction::Broadcast { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })
         ],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+        vec![Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() })],
+    ]
+}
+
+/// 10 Nodos, um faz broadcast e um nem nasce
+pub fn broadcast_test_2() -> Test {
+    vec![
+        // Agent 0
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
-        vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
+        // Agent 1
+        vec![Action::Die()],
+        // Agent 2
+        vec![
+            Action::Send(SendAction::Broadcast {  message: "message_0".to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })
+            ],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
@@ -197,16 +219,18 @@ pub fn broadcast_test_1() -> Test {
     ]
 }
 
-/// 10 Nodos, um faz broadcast e um nem nasce
-pub fn broadcast_test_2() -> Test {
+/// 10 Nodos, um faz broadcast e o líder nem nasce
+pub fn broadcast_test_3() -> Test {
     vec![
         // Agent 0
+        vec![Action::Die()],
+        // Agent 1
+        vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
+        // Agent 2
         vec![
             Action::Send(SendAction::Broadcast {  message: "message_0".to_string() }),
-            Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() }),
-        ],
-        vec![Action::Receive(ReceiveAction::DieAfterReceive { after_n_messages: 0 })],
-        vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
+            Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })
+            ],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
@@ -218,7 +242,7 @@ pub fn broadcast_test_2() -> Test {
 }
 
 /// 10 Nodos, um faz broadcast e morre
-pub fn broadcast_test_3() -> Test {
+pub fn broadcast_test_4() -> Test {
     vec![
         // Agent 0
         vec![
@@ -235,5 +259,70 @@ pub fn broadcast_test_3() -> Test {
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
+    ]
+}
+  
+/// 10 Nodos, um faz vários broadcasts, o líder morre em algum momento
+pub fn broadcast_test_5() -> Test {
+    vec![
+        // Agent 0
+        vec![
+            Action::Receive(ReceiveAction::DieAfterReceive { after_n_messages: 0 })
+            ],
+        // Agent 1
+        vec![
+            Action::Send(SendAction::Broadcast { message: MSG_0.to_string() }),
+            Action::Send(SendAction::Broadcast { message: MSG_1.to_string() }),
+            Action::Send(SendAction::Broadcast { message: MSG_2.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })
+
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ],
+        vec![
+            Action::Receive(ReceiveAction::Receive { message: MSG_0.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_1.to_string() }),
+            Action::Receive(ReceiveAction::Receive { message: MSG_2.to_string() })    
+        ]
     ]
 }
