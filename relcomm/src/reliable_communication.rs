@@ -598,19 +598,8 @@ impl ReliableCommunication {
                     },
                 Broadcast::AB => {
                     let leader = self.get_leader().addr;
-                    if leader == self.host.addr {
-                        // If I'm the leader, I can just start broadcasting
-                        let friends = self.get_friends();
-                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) {
-                                messages.push(packets);
-                            }
-                        }
-                    } else {
-                        let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
-                        messages.push(packets);
-                    }
+                    let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
+                    messages.push(packets);
                 }
             },
             SendRequestData::Gossip { origin, seq_num } => {
@@ -634,21 +623,14 @@ impl ReliableCommunication {
 
     fn get_friends(&self) -> Vec<Node> {
         let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let mut alive =  Vec::new();
-        for node in group.iter() {
-            debug_println!("Node: {:?}", node);
-            if node.state == NodeState::ALIVE {
-                alive.push(node.clone());
-            }
-        }
-        let start = (self.host.agent_number + 1) % alive.len();
-        let end = (start + self.gossip_rate) % alive.len();
+        let start = (self.host.agent_number + 1) % group.len();
+        let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
         if start < end {
-            friends.extend_from_slice(&alive[start..end]);
+            friends.extend_from_slice(&group[start..end]);
         } else {
-            friends.extend_from_slice(&alive[start..]);
-            friends.extend_from_slice(&alive[..end]);
+            friends.extend_from_slice(&group[start..]);
+            friends.extend_from_slice(&group[..end]);
         }
 
         friends
