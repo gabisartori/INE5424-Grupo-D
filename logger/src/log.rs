@@ -102,7 +102,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type: Option<SenderType>,
     },
 
     PacketReceiver {
@@ -111,7 +110,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type: Option<SenderType>,
     },
 
     PacketBroadcast {
@@ -119,7 +117,6 @@ pub enum LoggerState {
         current_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type: Option<SenderType>,
         algorithm: String,
     },
 
@@ -130,7 +127,6 @@ pub enum LoggerState {
         seq_num: usize,
         action: PacketStatus,
         algorithm: String,
-        sender_type: Option<SenderType>,
     },
 
     SentLastPacket {
@@ -140,7 +136,6 @@ pub enum LoggerState {
         seq_num: usize,
         action: PacketStatus,
         algorithm: String,
-        sender_type: Option<SenderType>,
     },
 
     SentAck {
@@ -149,7 +144,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type: Option<SenderType>,
     },
 
     ReceivedAck {
@@ -158,7 +152,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         seq_num: usize,
         action: PacketStatus,
-        sender_type: Option<SenderType>,
     },
 
     MessageReceiver {
@@ -167,7 +160,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-        sender_type: Option<SenderType>,
     },
 
     MessageSender {
@@ -176,7 +168,6 @@ pub enum LoggerState {
         target_agent_id: usize,
         message_id: u32,
         action: MessageStatus,
-        sender_type: Option<SenderType>,
     },
 
     MessageBroadcast {
@@ -184,7 +175,6 @@ pub enum LoggerState {
         current_agent_id: usize,
         message_id: Option<u32>,
         action: MessageStatus,
-        sender_type: Option<SenderType>,
         algorithm: String,
     },
     LogInfo {
@@ -224,7 +214,6 @@ impl DebugLog {
                 target_agent_id,
                 seq_num,
                 action,
-                sender_type,
             } => {
                 format!(
                     // "Agent {} , state: {:?}, sending packet {} to Agent {}. Next action : {:?}",
@@ -240,7 +229,6 @@ impl DebugLog {
                 target_agent_id,
                 seq_num,
                 action,
-                sender_type,
             } => {
                 format!(
                     // "Agent {} , state: {:?}, receiving packet {} from Agent {}. Next action : {:?}",
@@ -255,13 +243,12 @@ impl DebugLog {
                 current_agent_id,
                 seq_num,
                 action,
-                sender_type,
                 algorithm,
             } => {
                 format!(
                     // "Agent {}, state: {:?}, broadcasting packet {}, type {} . Next action : {:?}",
                     // current_agent_id, state, seq_num, algorithm, action
-                    "Agent {}, state: {:?}, broadcasting packet {}, type {} .",
+                    "Agent {}, state: {:?}, broadcasting packet {}, algorithm {}",
                     current_agent_id, state, seq_num, algorithm
                 )
             }
@@ -273,12 +260,11 @@ impl DebugLog {
                 seq_num,
                 action,
                 algorithm,
-                sender_type,
             } => {
                 format!(
                     // "Agent {}, state: {:?}, sent last packet ({}), type {} . Next action : {:?}",
                     // current_agent_id, state, seq_num, algorithm, action
-                    "Agent {}, state: {:?}, sent last packet ({}), type {} .",
+                    "Agent {}, state: {:?}, sent last packet ({}), algorithm {}",
                     current_agent_id, state, seq_num, algorithm
                 )
             }
@@ -290,12 +276,11 @@ impl DebugLog {
                 seq_num,
                 action,
                 algorithm,
-                sender_type,
             } => {
                 format!(
                     // "Agent {}, state: {:?}, received last packet ({}), type {} . Next action : {:?}",
                     // current_agent_id, state, seq_num, algorithm, action
-                    "Agent {}, state: {:?}, received last packet ({}), type {} .",
+                    "Agent {}, state: {:?}, received last packet ({}), algorithm {}",
                     current_agent_id, state, seq_num, algorithm
                 )
             }
@@ -306,7 +291,6 @@ impl DebugLog {
                 target_agent_id,
                 seq_num,
                 action,
-                sender_type,
             } => {
                 format!(
                     "Agent {} , state: {:?}, sending ack {} to Agent {}.",
@@ -320,7 +304,6 @@ impl DebugLog {
                 target_agent_id,
                 seq_num,
                 action,
-                sender_type,
             } => {
                 format!(
                     "Agent {} , state: {:?}, received ack {} from Agent {}.",
@@ -334,7 +317,6 @@ impl DebugLog {
                 target_agent_id,
                 message_id,
                 action,
-                sender_type,
             } => {
                 format!(
                     // "Agent {} , state: {:?}, sending message {} to Agent {}. Next action : {:?}",
@@ -350,7 +332,6 @@ impl DebugLog {
                 target_agent_id,
                 message_id,
                 action,
-                sender_type,
             } => {
                 format!(
                     // "Agent {}, state: {:?}, receiving message {} from Agent {}. Next action : {:?}",
@@ -365,13 +346,12 @@ impl DebugLog {
                 current_agent_id,
                 message_id,
                 action,
-                sender_type,
                 algorithm,
             } => {
                 format!(
                     // "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
                     // current_agent_id, state, message_id, algorithm, action
-                    "Agent {}, state: {:?}, broadcasting message {:?}, type {} .",
+                    "Agent {}, state: {:?}, broadcasting message {:?}, algorithm {} .",
                     current_agent_id, state, message_id, algorithm
                 )
             }
@@ -502,3 +482,5 @@ impl Logger {
         }
     }
 }
+
+// TODO: Implement timeout controller, improve log types
