@@ -58,8 +58,10 @@ use std::{
 #[derive(Debug, Clone, Copy)]
 pub enum PacketStatus {
     Sent,
-    Received,
     SentFailed,
+    SentAck,
+    Received,
+    ReceivedAck,
     ReceivedFailed,
     Waiting,
     LastPacket,
@@ -138,6 +140,24 @@ pub enum LoggerState {
         seq_num: usize,
         action: PacketStatus,
         algorithm: String,
+        sender_type: Option<SenderType>,
+    },
+
+    SentAck {
+        state: PacketStatus,
+        current_agent_id: usize,
+        target_agent_id: usize,
+        seq_num: usize,
+        action: PacketStatus,
+        sender_type: Option<SenderType>,
+    },
+
+    ReceivedAck {
+        state: PacketStatus,
+        current_agent_id: usize,
+        target_agent_id: usize,
+        seq_num: usize,
+        action: PacketStatus,
         sender_type: Option<SenderType>,
     },
 
@@ -280,6 +300,34 @@ impl DebugLog {
                 )
             }
 
+            LoggerState::SentAck {
+                state,
+                current_agent_id,
+                target_agent_id,
+                seq_num,
+                action,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {} , state: {:?}, sending ack {} to Agent {}.",
+                    current_agent_id, state, seq_num, target_agent_id
+                )
+            }
+
+            LoggerState::ReceivedAck {
+                state,
+                current_agent_id,
+                target_agent_id,
+                seq_num,
+                action,
+                sender_type,
+            } => {
+                format!(
+                    "Agent {} , state: {:?}, received ack {} from Agent {}.",
+                    current_agent_id, state, seq_num, target_agent_id
+                )
+            }
+
             LoggerState::MessageSender {
                 state,
                 current_agent_id,
@@ -324,7 +372,7 @@ impl DebugLog {
                     // "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
                     // current_agent_id, state, message_id, algorithm, action
                     "Agent {}, state: {:?}, broadcasting message {:?}, type {} .",
-                    current_agent_id, state, message_id, algorithm                   
+                    current_agent_id, state, message_id, algorithm
                 )
             }
             LoggerState::LogInfo {
@@ -415,6 +463,12 @@ impl Logger {
                     current_agent_id, ..
                 }
                 | LoggerState::ReceivedLastPacket {
+                    current_agent_id, ..
+                }
+                | LoggerState::SentAck {
+                    current_agent_id, ..
+                }
+                | LoggerState::ReceivedAck {
                     current_agent_id, ..
                 }
                 | LoggerState::MessageSender {
