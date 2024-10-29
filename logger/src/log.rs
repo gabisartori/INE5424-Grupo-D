@@ -58,14 +58,18 @@ use std::{
 #[derive(Debug, Clone, Copy)]
 pub enum PacketStatus {
     Sent,
+    SentBroadcast,
     SentFailed,
     SentAck,
+    SentAckFailed,
+    SentLastPacket,
     Received,
+    ReceivedBroadcast,
     ReceivedAck,
     ReceivedFailed,
+    ReceivedAckFailed,
+    ReceivedLastPacket,
     Waiting,
-    LastPacket,
-    Fragmenting,
     Timeout,
     Unknown,
 }
@@ -73,20 +77,14 @@ pub enum PacketStatus {
 #[derive(Debug, Clone, Copy)]
 pub enum MessageStatus {
     Sent,
+    SentBroadcast,
     Received,
+    ReceivedBroadcast,
     SentFailed,
     ReceivedFailed,
     Waiting,
+    Fragmenting,
     Timeout,
-    Unknown,
-}
-
-// Defines sender type functions
-#[derive(Debug, Clone, Copy)]
-pub enum SenderType {
-    Send,
-    SendNonblocking,
-    Broadcast,
     Unknown,
 }
 
@@ -96,87 +94,23 @@ pub enum LoggerState {
     //     state: AgentStatus,
     //     agent_id: u16,
     // },
-    PacketSender {
+    Packet {
         state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
+        current_agent_id: Option<usize>,
+        target_agent_id: Option<usize>,
         seq_num: usize,
-        action: PacketStatus,
+        // action: PacketAction,
+        // algorithm: PacketAlgorithm,
     },
-
-    PacketReceiver {
-        state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-    },
-
-    PacketBroadcast {
-        state: PacketStatus,
-        current_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-        algorithm: String,
-    },
-
-    ReceivedLastPacket {
-        state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-        algorithm: String,
-    },
-
-    SentLastPacket {
-        state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-        algorithm: String,
-    },
-
-    SentAck {
-        state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-    },
-
-    ReceivedAck {
-        state: PacketStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        seq_num: usize,
-        action: PacketStatus,
-    },
-
-    MessageReceiver {
+    Message {
         state: MessageStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        message_id: u32,
-        action: MessageStatus,
+        current_agent_id: Option<usize>,
+        target_agent_id: Option<usize>,
+        message_id: usize,
+        // action: MessageAction,
+        // algorithm: MessageAlgorithm,
     },
 
-    MessageSender {
-        state: MessageStatus,
-        current_agent_id: usize,
-        target_agent_id: usize,
-        message_id: u32,
-        action: MessageStatus,
-    },
-
-    MessageBroadcast {
-        state: MessageStatus,
-        current_agent_id: usize,
-        message_id: Option<u32>,
-        action: MessageStatus,
-        algorithm: String,
-    },
     LogInfo {
         current_agent_id: Option<usize>,
         description: String,
@@ -205,156 +139,216 @@ impl DebugLog {
     #[allow(unused_mut)]
     pub fn get_log(&self, log_type: LoggerState) -> String {
         match log_type {
-            // LoggerState::AgentState { state, agent_id } => {
-            //     format!("Agent {} , state: {:?}", agent_id, state)
-            // }
-            LoggerState::PacketSender {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-            } => {
-                format!(
-                    // "Agent {} , state: {:?}, sending packet {} to Agent {}. Next action : {:?}",
-                    // current_agent_id, state, seq_num, target_agent_id, action
-                    "state: {:?}, sending packet {} to Agent {}.",
-                    state, seq_num, target_agent_id
-                )
-            }
-
-            LoggerState::PacketReceiver {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-            } => {
-                format!(
-                    // "Agent {} , state: {:?}, receiving packet {} from Agent {}. Next action : {:?}",
-                    // current_agent_id, state, seq_num, target_agent_id, action
-                    "state: {:?}, receiving packet {} from Agent {}.",
-                    state, seq_num, target_agent_id,
-                )
-            }
-
-            LoggerState::PacketBroadcast {
-                state,
-                current_agent_id,
-                seq_num,
-                action,
-                algorithm,
-            } => {
-                format!(
-                    // "Agent {}, state: {:?}, broadcasting packet {}, type {} . Next action : {:?}",
-                    // current_agent_id, state, seq_num, algorithm, action
-                    "state: {:?}, broadcasting packet {}, algorithm {}",
-                    state, seq_num, algorithm
-                )
-            }
-
-            LoggerState::SentLastPacket {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-                algorithm,
-            } => {
-                format!(
-                    // "Agent {}, state: {:?}, sent last packet ({}), type {} . Next action : {:?}",
-                    // current_agent_id, state, seq_num, algorithm, action
-                    "state: {:?}, sent last packet ({}), algorithm {}",
-                    state, seq_num, algorithm
-                )
-            }
-
-            LoggerState::ReceivedLastPacket {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-                algorithm,
-            } => {
-                format!(
-                    // "Agent {}, state: {:?}, received last packet ({}), type {} . Next action : {:?}",
-                    // current_agent_id, state, seq_num, algorithm, action
-                    "state: {:?}, received last packet ({}), algorithm {}",
-                    state, seq_num, algorithm
-                )
-            }
-
-            LoggerState::SentAck {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-            } => {
-                format!(
-                    "state: {:?}, sending ack {} to Agent {}.",
-                    state, seq_num, target_agent_id
-                )
-            }
-
-            LoggerState::ReceivedAck {
-                state,
-                current_agent_id,
-                target_agent_id,
-                seq_num,
-                action,
-            } => {
-                format!(
-                    "state: {:?}, received ack {} from Agent {}.",
-                    state, seq_num, target_agent_id
-                )
-            }
-
-            LoggerState::MessageSender {
+            LoggerState::Message {
                 state,
                 current_agent_id,
                 target_agent_id,
                 message_id,
-                action,
-            } => {
-                format!(
-                    // "Agent {} , state: {:?}, sending message {} to Agent {}. Next action : {:?}",
-                    // current_agent_id, state, message_id, target_agent_id, action
-                    "state: {:?}, sending message {} to Agent {}.",
-                    state, message_id, target_agent_id
-                )
-            }
-
-            LoggerState::MessageReceiver {
+            } => match state {
+                MessageStatus::Sent => {
+                    format!(
+                        "(State: {:?}) sent message {} to Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::SentBroadcast => {
+                    format!(
+                        "(State: {:?}) broadcasted message {} (target: {})",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::Received => {
+                    format!(
+                        "(State: {:?}) received message {} from Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::ReceivedBroadcast => {
+                    format!(
+                        "(State: {:?}) received broadcast message {} (leader: {})",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::SentFailed => {
+                    format!(
+                        "(State: {:?}) failed to send message {} to Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::ReceivedFailed => {
+                    format!(
+                        "(State: {:?}) failed to receive message {} from Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::Waiting => {
+                    format!(
+                        "(State: {:?}) waiting for message {} from Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::Timeout => {
+                    format!(
+                        "(State: {:?}) timed out waiting for message {} from Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+                MessageStatus::Unknown => {
+                    format!(
+                        "(State: {:?}) unknown state",
+                        state,
+                    )
+                }
+                MessageStatus::Fragmenting => {
+                    format!(
+                        "(State: {:?}) fragmenting message {} to Agent {}",
+                        state,
+                        message_id,
+                        target_agent_id.unwrap()
+                    )
+                }
+            },
+            LoggerState::Packet {
                 state,
                 current_agent_id,
                 target_agent_id,
-                message_id,
-                action,
-            } => {
-                format!(
-                    // "Agent {}, state: {:?}, receiving message {} from Agent {}. Next action : {:?}",
-                    // current_agent_id, state, message_id, target_agent_id, action
-                    "state: {:?}, receiving message {} from Agent {}.",
-                    state, message_id, target_agent_id
-                )
-            }
-
-            LoggerState::MessageBroadcast {
-                state,
-                current_agent_id,
-                message_id,
-                action,
-                algorithm,
-            } => {
-                format!(
-                    // "Agent {}, state: {:?}, broadcasting message {:?}, type {} . Next action : {:?}",
-                    // current_agent_id, state, message_id, algorithm, action
-                    "state: {:?}, broadcasting message {:?}, algorithm {} .",
-                    state, message_id, algorithm
-                )
-            }
+                seq_num,
+            } => match state {
+                PacketStatus::Sent => {
+                    format!(
+                        "(State: {:?}) sending packet {} to Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::SentBroadcast => {
+                    format!(
+                        "(State: {:?}) broadcasting packet {} (target: {})",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::SentFailed => {
+                    format!(
+                        "(State: {:?}) failed to send packet {} to Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::SentAck => {
+                    format!(
+                        "(State: {:?}) sent ACK for packet {} to Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::SentAckFailed => {
+                    format!(
+                        "(State: {:?}) failed to send ACK for packet {} to Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::SentLastPacket => {
+                    format!(
+                        "(State: {:?}) sent last packet {} to Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::Received => {
+                    format!(
+                        "(State: {:?}) received packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::ReceivedBroadcast => {
+                    format!(
+                        "(State: {:?}) received broadcast packet {} (leader: {})",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::ReceivedAck => {
+                    format!(
+                        "(State: {:?}) received ACK for packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::ReceivedFailed => {
+                    format!(
+                        "(State: {:?}) failed to receive packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::ReceivedAckFailed => {
+                    format!(
+                        "(State: {:?}) failed to receive ACK for packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::ReceivedLastPacket => {
+                    format!(
+                        "(State: {:?}) received last packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::Waiting => {
+                    format!(
+                        "(State: {:?}) waiting for packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::Timeout => {
+                    format!(
+                        "(State: {:?}) timed out waiting for packet {} from Agent {}",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )
+                }
+                PacketStatus::Unknown => {
+                    format!(
+                        "(State: {:?}) unknown state",
+                        state,
+                    )
+                }
+            },
             LoggerState::LogInfo {
                 current_agent_id,
                 description,
@@ -430,36 +424,12 @@ impl Logger {
         if self.debug_level > 0 {
             // write to the log file
             let agent_id = match logger_state.clone() {
-                LoggerState::PacketSender {
+                LoggerState::Message {
                     current_agent_id, ..
-                }
-                | LoggerState::PacketReceiver {
+                } => current_agent_id.unwrap_or(usize::MAX),
+                LoggerState::Packet {
                     current_agent_id, ..
-                }
-                | LoggerState::PacketBroadcast {
-                    current_agent_id, ..
-                }
-                | LoggerState::SentLastPacket {
-                    current_agent_id, ..
-                }
-                | LoggerState::ReceivedLastPacket {
-                    current_agent_id, ..
-                }
-                | LoggerState::SentAck {
-                    current_agent_id, ..
-                }
-                | LoggerState::ReceivedAck {
-                    current_agent_id, ..
-                }
-                | LoggerState::MessageSender {
-                    current_agent_id, ..
-                }
-                | LoggerState::MessageReceiver {
-                    current_agent_id, ..
-                } => current_agent_id,
-                LoggerState::MessageBroadcast {
-                    current_agent_id, ..
-                } => current_agent_id,
+                } => current_agent_id.unwrap_or(usize::MAX),
                 LoggerState::LogFail {
                     current_agent_id, ..
                 } => current_agent_id.unwrap_or(usize::MAX),
@@ -471,16 +441,18 @@ impl Logger {
                 } => current_agent_id.unwrap_or(usize::MAX),
             };
 
-            if agent_id == usize::MAX {
-                let path = format!("src/log/log_msgs.txt");
-                debug_file!(path, msg_buffer.as_bytes());
-            } else {
+            // if logger isnt message or packet and agent_id is MAX, write to log_msgs.txt
+            if agent_id != usize::MAX {
                 // write to the agent log file
                 let path = format!("src/log/agent_{}.txt", agent_id);
+                debug_file!(path, msg_buffer.as_bytes());
+            } else {
+                // couldnt identify the agent, so write to the general log file
+                let path = format!("src/log/log_msgs.txt");
                 debug_file!(path, msg_buffer.as_bytes());
             }
         }
     }
 }
 
-// TODO: Implement timeout controller, improve log types
+// TODO: Implement timeout controller
