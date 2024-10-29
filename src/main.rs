@@ -1,5 +1,5 @@
 use std::net::{IpAddr, SocketAddr};
-use std::sync::mpsc::RecvError;
+use std::sync::mpsc::{RecvError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 // use rand::Rng;
@@ -8,7 +8,7 @@ use logger::log::SharedLogger;
 use logger::log::Logger;
 use logger::{debug_file, debug_println};
 use relcomm::reliable_communication::{Node, ReliableCommunication};
-use tests::Action;
+use tests::{Action, ReceiveAction, SendAction};
 
 // Importa as configurações de endereços dos processos
 mod tests;
@@ -37,17 +37,33 @@ impl Agent {
         })
     }
 
-    fn receiver(&self, actions: Vec<Action>, msg_limit: u32, death_tx: std::sync::mpsc::Sender<u32>) -> u32 {
+    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<u32>) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
+        let mut expected_messages = Vec::new();
+        let mut msg_limit = u32::MAX;
+        for action in actions {
+            match action {
+                ReceiveAction::Receive { message } => { expected_messages.push(message); },
+                ReceiveAction::DieAfterReceive { after_n_messages } => { msg_limit = after_n_messages; },
+            }
+        }
         loop {
+            // Die if the message limit is reached
+            if acertos >= msg_limit {
+                // Ignore send result because the run function cannot end until the receiver thread ends
+                let _ = death_tx.send(acertos);
+                break;
+            }
+            // Receive the next message
             let mut message: Vec<u8> = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
             }
+            // Check if the message is the expected one
             match String::from_utf8(message.clone()) {
                 Ok(msg) => {
-                    if actions.contains(&Action::Receive { message: msg.clone() }) {
+                    if expected_messages.contains(&msg) {
                         acertos += 1;
                     } else {
                         let path = format!("tests/erros{}_{i}.txt", self.id);
@@ -57,27 +73,25 @@ impl Agent {
                 Err(e) => { debug_println!("Agent {}: Mensagem recebida não é uma string utf-8 válida: {}", self.id, e); },
             }
             i += 1;
-            if acertos == msg_limit {
-                // Ignore send result because the run function cannot end until the receiver thread ends
-                let _ = death_tx.send(acertos);
-                break;
-            }
         }
         return acertos;
     }
 
-    fn creater(&self, actions: Vec<Action>) -> u32 {
+    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<u32>) -> u32 {
         let mut acertos = 0;
         for action in actions {
             match action {
-                Action::Send { destination, message } => {
-                    acertos  += self.communication.send(destination, message.as_bytes().to_vec());
+                SendAction::Send { destination, message } => {
+                    acertos += self.communication.send(destination, message.as_bytes().to_vec());
                 },
-                Action::Broadcast { message } => {
+                SendAction::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
                 },
-                Action::Receive { .. } => { panic!("Agent {}: thread creater não deve receber ação de receber mensagem", self.id) },
-                Action::Die { .. } => { panic!("Agent {}: thread creater não deve receber ação de morrer", self.id) },
+                SendAction::DieAfterSend {} => {
+                    // Ignore send result because the run function cannot end until the receiver thread ends
+                    let _ = death_tx.send(acertos);
+                    break;
+                }
             }
         }
         return acertos;
@@ -86,27 +100,34 @@ impl Agent {
     pub fn run(self: Arc<Self>, actions: Vec<Action>) {
         let mut send_actions = Vec::new();
         let mut receive_actions = Vec::new();
-        let mut die = 0;
         for action in actions {
             match action {
-                Action::Send { .. } | Action::Broadcast { .. } => {
+                Action::Send(action) => {
                     send_actions.push(action);
                 },
-                Action::Receive { .. } => {
+                Action::Receive(action) => {
                     receive_actions.push(action);
                 },
-                Action::Die { after_n_messages } => die = after_n_messages,
+                Action::Die() => {
+                    let path = format!("tests/Resultado.txt");
+                    let msg = format!(
+                        "AGENTE {} -> ENVIOS: 0 - RECEBIDOS: 0\n",
+                        self.id
+                    );
+                    debug_file!(path, &msg.as_bytes());
+                    return;
+                }
             }
         }
     
-
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
         
         // Cria threads para enviar e receber mensagens e recupera o retorno delas
         let (death_tx, death_rx) = std::sync::mpsc::channel();
-        let sender = thread::spawn(move || sender_clone.creater(send_actions));
-        let listener = thread::spawn(move || listener_clone.receiver(receive_actions, die, death_tx));
+        let death_tx_clone = death_tx.clone();
+        let sender = thread::spawn(move || sender_clone.creater(send_actions, death_tx_clone));
+        let listener = thread::spawn(move || listener_clone.receiver(receive_actions, death_tx));
         
         let s_acertos;
         let r_acertos;
@@ -214,7 +235,7 @@ fn calculate_test(agent_num: usize) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_3();
+    let mut test = tests::send_test_2();
     let agent_num = test.len();
 
     if args.len() == 14 {
