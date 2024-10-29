@@ -200,7 +200,11 @@ impl ReliableCommunication {
 
     /// Send a message to a specific destination
     pub fn send(&self, id: usize, message: Vec<u8>) -> u32 {
-        match self.group.lock().expect("Erro ao enviar mensagem: Mutex lock do grupo falhou").get(id) {
+        let node = {
+            let g = self.group.lock().expect("Erro ao enviar mensagem: Mutex lock do grupo falhou");
+            g.get(id).cloned()
+        };
+        match node {
             Some(node) => {
                 match self.send_nonblocking(&node.addr, message).recv() {
                     Ok(result) => result,
