@@ -345,10 +345,12 @@ impl ReliableCommunication {
                 match msg {
                     Ok(msg) => {
                         if msg == message {
+                            debug_println!("Agente {} recebeu a mensagem de broadcast de volta", self.host.agent_number);
                             return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
                         }
                     }
                     Err(RecvTimeoutError::Timeout) => {
+                        debug_println!("Agent {} timed out when waiting broadcast from leader, will try again", self.host.agent_number);
                         break;
                     }
                     Err(e) => {
@@ -596,9 +598,24 @@ impl ReliableCommunication {
                         }
                     },
                 Broadcast::AB => {
+                    debug_println!("Agente {} está fazendo broadcast", self.host.agent_number);
                     let leader = self.get_leader().addr;
-                    let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
-                    messages.push(packets);
+                    if leader == self.host.addr {
+                        // If I'm the leader: URB
+                        let friends = self.get_friends();
+                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                        let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
+                        if friends.contains(node) && node.state == NodeState::ALIVE {
+                            messages.push(packets);
+                        }
+                      }                   
+                    } else {
+                        // If not: Request the leader to broadcast
+                        let packets = self.get_pkts(&self.host.addr, &leader, &self.host.addr, request.data.clone(), true);
+                        messages.push(packets);
+                    }
+                    
+
                 }
             },
             SendRequestData::Gossip { origin, seq_num } => {
@@ -834,7 +851,7 @@ impl ReliableCommunication {
         let own_priority = self.get_leader_priority(&self.host.addr);
         if origin_priority < own_priority {
             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-            self.urb(message);
+            self.ab(message);
             false
         } else {
             // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
