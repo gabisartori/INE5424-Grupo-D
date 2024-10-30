@@ -21,8 +21,13 @@
 
 ## Sobre <a name = "about"></a>
 
-Slides da entrega 1:
+# Slides da entrega 1:
 
 ```
 https://www.canva.com/design/DAGRm6bWnwc/qEeIQ6RPytZut8Np-IAKaA/edit?utm_content=DAGRm6bWnwc&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+```
+
+# Slides da entrega 3:
+```
+https://www.canva.com/design/DAGU_iLvZ2Y/H34CzSa8yhMFCtW5I0MSvA/view?utm_content=DAGU_iLvZ2Y&utm_campaign=share_your_design&utm_medium=link&utm_source=shareyourdesignpanel
 ```
