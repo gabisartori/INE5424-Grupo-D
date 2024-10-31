@@ -1,12 +1,12 @@
 use std::net::{IpAddr, SocketAddr};
-use std::sync::mpsc::{RecvError, Sender, self};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc::{RecvError, Sender, self}};
 use std::thread;
-// use rand::Rng;
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 
 use logger::log::SharedLogger;
 use logger::log::Logger;
-use logger::{debug_file, debug_println};
+use logger::{debug_file, debug_println, initializate_files_and_folders};
 use relcomm::reliable_communication::{Node, ReliableCommunication};
 use tests::{Action, ReceiveAction, SendAction};
 
@@ -37,7 +37,7 @@ impl Agent {
 
     /// Start both creater and receiver threads
     /// Also runs some logic for if any of the threads is supposed to trigger the death of the entire agent in the test
-    pub fn run(self: Arc<Self>, actions: Vec<Action>) {
+    pub fn run(self: Arc<Self>, actions: Vec<Action>, test_id: usize) -> (u32, u32) {
         // Builds the instruction vectors
         let mut send_actions = Vec::new();
         let mut receive_actions = Vec::new();
@@ -51,13 +51,7 @@ impl Agent {
                 },
                 // Die instruction means the agent shouldn't even start running
                 Action::Die() => {
-                    let path = format!("tests/Resultado.txt");
-                    let msg = format!(
-                        "AGENTE {} -> ENVIOS: 0 - RECEBIDOS: 0\n",
-                        self.id
-                    );
-                    debug_file!(path, &msg.as_bytes());
-                    return;
+                    return (0, 0);
                 }
             }
         }
@@ -70,8 +64,10 @@ impl Agent {
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
         
-        let sender = thread::spawn(move || sender_clone.creater(send_actions, death_tx_clone));
-        let listener = thread::spawn(move || listener_clone.receiver(receive_actions, death_tx));
+        let sender = thread::spawn(move ||
+            sender_clone.creater(send_actions, death_tx_clone));
+        let listener = thread::spawn(move ||
+            listener_clone.receiver(receive_actions, death_tx, test_id));
         
         // Threads results
         let s_acertos;
@@ -80,10 +76,23 @@ impl Agent {
         // Waits for either any of the threads to send in the channel, meaning the agent should die
         // If both threads end without sending anything, the agent should wait for them to finish
         match death_rx.recv() {
-            Ok(_n) => {
-                // TODO: Decidir o que fazer com o valor recebido, se foi enviado pela creater ou pela receiver
-                r_acertos = 0;
-                s_acertos = 0;
+            Ok((t, n)) => {
+                // TODO: Descobirir o outro valor
+                match t {
+                    "C" => {
+                        s_acertos = n;
+                        r_acertos = 0;
+                    },
+                    "R" => {
+                        s_acertos = 0;
+                        r_acertos = n;
+                    },
+                e => {
+                        debug_println!("Agent {}: Identificador {e}", self.id);
+                        s_acertos = 0;
+                        r_acertos = 0;
+                    }
+                }
             },
             Err(RecvError) => {
                 r_acertos = match listener.join() {
@@ -102,17 +111,11 @@ impl Agent {
                 };
             }
         }
-        
-        // Output the results to a file
-        let msg = format!(
-            "AGENTE {} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n",
-            self.id
-        );
-        debug_file!("tests/Resultado.txt", &msg.as_bytes());
+        return (s_acertos, r_acertos);
     }
 
     /// Agent thread that always receives messages and checks if they are the expected ones from the selected test
-    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<u32>) -> u32 {
+    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<(&str, u32)>, test_id: usize) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         let mut expected_messages = Vec::new();
@@ -127,7 +130,7 @@ impl Agent {
             // Die if the message limit is reached
             if acertos >= msg_limit {
                 // Ignore send result because the run function cannot end until the receiver thread ends
-                let _ = death_tx.send(acertos);
+                let _ = death_tx.send(("R", acertos));
                 break;
             }
             // Receive the next message
@@ -139,11 +142,11 @@ impl Agent {
             match String::from_utf8(message.clone()) {
                 Ok(msg) => {
                     if expected_messages.contains(&msg) {
-                        let path = format!("tests/acertos_{}.txt", self.id);
+                        let path = format!("tests/test_{test_id}/acertos_{}.txt", self.id);
                         debug_file!(path, &message);
                         acertos += 1;
                     } else {
-                        let path = format!("tests/erros{}_{i}.txt", self.id);
+                        let path = format!("tests/test_{test_id}/erros{}_{i}.txt", self.id);
                         debug_file!(path, &message);
                     }
                 },
@@ -155,7 +158,7 @@ impl Agent {
     }
 
     /// Agent thread that sends preset messages from the selected test
-    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<u32>) -> u32 {
+    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<(&str, u32)>) -> u32 {
         let mut acertos = 0;
         for action in actions {
             match action {
@@ -167,7 +170,7 @@ impl Agent {
                 },
                 SendAction::DieAfterSend {} => {
                     // Ignore send result because the run function cannot end until the receiver thread ends
-                    let _ = death_tx.send(acertos);
+                    let _ = death_tx.send(("C", acertos));
                     break;
                 }
             }
@@ -178,26 +181,33 @@ impl Agent {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut test = tests::broadcast_test_6();
-    let agent_num = test.len();
-
+    // Processo principal inicializando os agentes
     if args.len() == 14 {
-        // Processo principal inicializando os agentes
-        let mut children = Vec::new();
-        for i in 0..agent_num {
-            let c = std::process::Command::new(std::env::current_exe().unwrap())
-                .args(args[1..].as_ref()) // Passando o número de agentes
-                .arg(i.to_string()) // Passando o ID do agente
-                .spawn()
-                .expect(format!("Falha ao spawnar processo {i}").as_str());
-            children.push(c);
+        let tests = tests::all_tests();
+        let test_num = tests.len();
+        initializate_files_and_folders!(test_num);
+        for (test_id, test) in tests.iter().enumerate() {
+            let mut children = Vec::new();
+            let agent_num = test.len();
+            for i in 0..agent_num {
+                let c = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(args[1..].as_ref()) // Passando o número de agentes
+                    .arg(test_id.to_string()) // Passando o ID do teste
+                    .arg(i.to_string()) // Passando o ID do agente
+                    .spawn()
+                    .expect(format!("Falha ao spawnar processo {i}").as_str());
+                children.push(c);
+            }
+            // Aguardar a finalização de todos os agentes
+            for mut c in children {
+                c.wait().expect("Falha ao esperar processo filho");
+            }
+            let file_path = format!("tests/test_{test_id}/Resultado.txt");
+            let file_path = file_path.as_str();
+            let final_path = "tests/Resultado.txt";
+            calculate_test(file_path, final_path, agent_num, test_id);
         }
-        // Aguardar a finalização de todos os agentes
-        for mut c in children {
-            c.wait().expect("Falha ao esperar processo filho");
-        }
-        calculate_test(agent_num);
-    } else if args.len() == 15 {
+    } else if args.len() == 16 {
         // Sub-processo: Execução do agente
         let ip: IpAddr = args[8]
             .parse()
@@ -205,9 +215,14 @@ fn main() {
         let port: u16 = args[9]
             .parse()
             .expect("Falha ao converter port para u16");
+        let test_id: usize = args[args.len() - 2]
+            .parse()
+            .expect("Falha ao converter test_id para usize");
         let agent_id: usize = args.last().unwrap()
             .parse()
-            .expect("Falha ao converter agent_id para u32");
+            .expect("Falha ao converter agent_id para usize");
+        let mut test = tests::all_tests()[test_id].clone();
+        let agent_num = test.len();
         
         let agent = create_agents(
             agent_id,
@@ -216,10 +231,14 @@ fn main() {
             port,
         );
         let actions = test.remove(agent_id);
-        match agent {
-            Ok(agent) => agent.run(actions),
+        let (s_acertos, r_acertos) = match agent {
+            Ok(agent) => agent.run(actions, test_id),
             Err(e) => panic!("Falha ao criar agente {}: {}", agent_id, e),
-        }
+        };
+        // Output the results to a file
+        let file_path = format!("tests/test_{test_id}/Resultado.txt");
+        let msg = format!("AGENTE {agent_id} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n");
+        debug_file!(file_path, &msg.as_bytes());
     } else {
         println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <timeout_limit> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <loss_rate> <corruption_rate>");
         println!("enviado {:?}", args);
@@ -249,17 +268,21 @@ fn create_agents(
 }
 
 // TODO: Comentar melhor essa função
-/// Reads and organizes the output of all sub-processes
-fn calculate_test(agent_num: usize) {
-    let file = std::fs::File::open("tests/Resultado.txt").expect("Erro ao abrir o arquivo de log");
-    let mut reader = std::io::BufReader::new(file);
+// TODO: Fazer com que ela receba o teste e compare os resultados
+/// Reads and organizes the output file of all sub-processes in a test,
+/// then writes the results to a final file.
+/// The lines of output file must be formated as "AGENTE X -> ENVIOS: X - RECEBIDOS: X"
+fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_id: usize) {
+    let file = File::open(file_path).expect("Erro ao abrir o arquivo de log");
+    let mut reader = BufReader::new(file);
 
     let mut total_sends: u32 = 0;
     let mut total_receivs: u32 = 0;
     let mut line = String::new();
     // a vector to store the results, with a preset size
     let mut resultados: Vec<String> = vec![String::new(); agent_num];
-    while std::io::BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
+    // for each line, extract the sends and receivs
+    while BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
         let sends: u32 = words[4].parse().unwrap();
         let receivs: u32 = words[7].parse().unwrap();
@@ -276,17 +299,27 @@ fn calculate_test(agent_num: usize) {
         result_str.push_str(&a);
     }
     // clear the file and rewrite the results in order
-    let mut file: std::fs::File = match std::fs::OpenOptions::new()
+    let mut file: File = match OpenOptions::new()
         .write(true)
         .truncate(true)
-        .open("tests/Resultado.txt")
+        .open(file_path)
     {
         Ok(f) => f,
         Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
     };
-    std::io::Write::write_all(&mut file, result_str.as_bytes())
+    Write::write_all(&mut file, result_str.as_bytes())
         .expect("Erro ao escrever no arquivo");
 
-    println!("Total de Mensagens Enviadas : {total_sends}");
-    println!("Total de Mensagens Recebidas: {total_receivs}");
+    let mut file: File = match OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(final_path)
+    {
+        Ok(f) => f,
+        Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
+    };
+
+    let result = format!("\n----------\nTeste {test_id}\n----------\nTotal de Mensagens Enviadas: {total_sends}\nTotal de Mensagens Recebidas: {total_receivs}\n");
+    Write::write_all(&mut file, result.as_bytes())
+        .expect("Erro ao escrever no arquivo");
 }
