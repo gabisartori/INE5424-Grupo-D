@@ -1,12 +1,11 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, mpsc::{RecvError, Sender, self}};
 use std::thread;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 
 use logger::log::SharedLogger;
 use logger::log::Logger;
-use logger::{debug_file, debug_println, initializate_files_and_folders};
+use logger::{debug_file, debug_println, initializate_folders};
 use relcomm::reliable_communication::{Node, ReliableCommunication};
 use tests::{Action, ReceiveAction, SendAction};
 
@@ -186,7 +185,7 @@ fn main() {
     if args.len() == main_len {
         let tests = tests::all_tests();
         let test_num = tests.len();
-        initializate_files_and_folders!(test_num);
+        initializate_folders!(test_num);
         for (test_id, (test_name, test)) in tests.iter().enumerate() {
             let mut children = Vec::new();
             let agent_num = test.len();
@@ -210,8 +209,6 @@ fn main() {
         }
     } else if args.len() == main_len + 2 {
         // Sub-processo: Execução do agente
-        pub const IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-        pub const PORT: u16 = 3000;
         let test_id: usize = args[main_len]
             .parse()
             .expect("Falha ao converter test_id para usize");
@@ -224,8 +221,6 @@ fn main() {
         let agent = create_agents(
             agent_id,
             agent_num,
-            IP,
-            PORT,
         );
         let actions = test.remove(agent_id);
         let (s_acertos, r_acertos) = match agent {
@@ -249,9 +244,9 @@ fn main() {
 fn create_agents(
     id: usize,
     agent_num: usize,
-    ip: IpAddr,
-    port: u16,
 ) -> Result<Arc<Agent>, std::io::Error> {
+    let ip: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let port: u16 = 3000;
     let nodes: Vec<Node> = (0..agent_num)
         .map(|i| Node::new(SocketAddr::new(ip, port + (i as u16)), i))
         .collect();
@@ -264,7 +259,6 @@ fn create_agents(
     Ok(agent)
 }
 
-// TODO: Comentar melhor essa função
 // TODO: Fazer com que ela receba o teste e compare os resultados
 /// Reads and organizes the output file of all sub-processes in a test,
 /// then writes the results to a final file.
@@ -306,17 +300,9 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_name
     };
     Write::write_all(&mut file, result_str.as_bytes())
         .expect("Erro ao escrever no arquivo");
-
-    let mut file: File = match OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(final_path)
-    {
-        Ok(f) => f,
-        Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
-    };
-
-    let result = format!("\n----------\nTeste {test_name}\n----------\nTotal de Mensagens Enviadas: {total_sends}\nTotal de Mensagens Recebidas: {total_receivs}\n");
-    Write::write_all(&mut file, result.as_bytes())
-        .expect("Erro ao escrever no arquivo");
+    // write the final results to the final file
+    let msg = format!("\n----------\nTeste {test_name
+    }\n----------\nTotal de Mensagens Enviadas: {total_sends
+    }\nTotal de Mensagens Recebidas: {total_receivs}\n");
+    debug_file!(final_path, &msg.as_bytes());
 }
