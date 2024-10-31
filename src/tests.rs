@@ -385,17 +385,17 @@ pub fn broadcast_test_6() -> Test {
 }
 
 // a vec of function pointers to the tests
-pub fn all_tests() -> Vec<Test> {
+pub fn all_tests() -> Vec<(&'static str, Test)> {
     vec![
-        send_test_1(),
-        send_test_2(),
-        send_test_3(),
-        send_test_4(),
-        broadcast_test_1(),
-        broadcast_test_2(),
-        broadcast_test_3(),
-        broadcast_test_4(),
-        broadcast_test_5(),
-        broadcast_test_6()
+        ("send_1", send_test_1()),
+        ("send_2", send_test_2()),
+        ("send_3", send_test_3()),
+        ("send_4", send_test_4()),
+        ("broadcast_1", broadcast_test_1()),
+        ("broadcast_2", broadcast_test_2()),
+        ("broadcast_3", broadcast_test_3()),
+        ("broadcast_4", broadcast_test_4()),
+        ("broadcast_5", broadcast_test_5()),
+        ("broadcast_6", broadcast_test_6())
     ]
 }

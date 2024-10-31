@@ -4,4 +4,4 @@ mod failure_detection;
 mod packet;
 mod header;
 mod flags;
-mod config;
+pub mod config;

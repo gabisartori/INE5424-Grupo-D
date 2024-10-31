@@ -6,15 +6,16 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 use lazy_static::lazy_static;
 
-//use crate::config::{BUFFER_SIZE} LOSS_RATE, CORRUPTION_RATE};
 use crate::packet::Packet;
-// use super::failure_detection;
 use logger::debug_println;
 
+/// reads the loss_rate and corruption_rate from the command line arguments
+/// they should be the last two arguments exept for the agent and test id
 fn get_args() -> (f32, f32) {
     let args: Vec<String> = std::env::args().collect();
-    let loss_rate = args[12].parse::<f32>().unwrap();
-    let corruption_rate = args[13].parse::<f32>().unwrap();
+    let size = args.len() - 3;
+    let loss_rate = args[size].parse::<f32>().unwrap();
+    let corruption_rate = args[size - 1].parse::<f32>().unwrap();
     (loss_rate, corruption_rate)
 }
 
