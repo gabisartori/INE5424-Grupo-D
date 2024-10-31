@@ -1,9 +1,56 @@
+/// creates a folder for each tests, receives the number of tests as an argument
+#[macro_export]
+macro_rules! initializate_folders {
+    ($tests_num:expr) => {
+        use std::fs::{self, File};
+        // deletes the needed folder if they exists
+        fs::remove_dir_all("tests").expect("Erro ao deletar a pasta 'tests'");
+        fs::remove_dir_all("src/log").expect("Erro ao deletar a pasta 'src/log'");
+        fs::remove_dir_all("relcomm/log").expect("Erro ao deletar a pasta 'relcomm/log'");
+        // creates the needed folder
+        fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
+        fs::create_dir_all("src/log").expect("Erro ao criar a pasta 'src/log'");
+        fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
+        // creates a folder for each test
+        for i in 0..$tests_num {
+            let path = format!("tests/test_{}", i);
+            let error_msg = format!("Erro ao criar a pasta '{}'", path);
+            fs::create_dir_all(path.clone()).expect(&error_msg);
+            // creates a result file for each test
+            let path = format!("{}/Resultado.txt", path);
+            // File::create(path).expect("Erro ao criar o arquivo de resultado");
+        }
+        // File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
+        
+    };
+}
+
+/// writes a message in a file
+#[macro_export]
+macro_rules! debug_file {
+    ($file_path:expr, $msg:expr) => {
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open($file_path)
+        {
+            Ok(f) => f,
+            Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
+        };
+        // connverts the message to a string
+        // Implements Logger for creating a debug log file
+        std::io::Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
+    };
+}
+
+
 // TODO: Fazer com que cada teste tenha um debug próprio
+/// writes a message in tests/debug.txt
 #[macro_export]
 macro_rules! debug_println {
-    // This pattern accepts format arguments like println!
     ($($arg:tt)*) => {
         use std::{fs::{File, OpenOptions}, io::Write};
+use std::env;
         let path = format!("tests/debug.txt");
         let mut file: File = match OpenOptions::new()
                                             .create(true)
@@ -17,43 +64,6 @@ macro_rules! debug_println {
     };
 }
 
-#[macro_export]
-macro_rules! debug_file {
-    ($file_path:expr, $msg:expr) => {
-        use std::{fs::{File, OpenOptions}, io::Write};
-        let mut file: File = match OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open($file_path)
-        {
-            Ok(f) => f,
-            Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
-        };
-        // connverts the message to a string
-        // Implements Logger for creating a debug log file
-        Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
-    };
-}
-/// creates a folder for each tests, receives the number of tests as an argument
-#[macro_export]
-macro_rules! initializate_files_and_folders {
-    ($tests_num:expr) => {
-        use std::fs::{self, File};
-        // creates a 'tests' folder
-        fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
-        // creates a folder for each test
-        for i in 0..$tests_num {
-            let path = format!("tests/test_{}", i);
-            let error_msg = format!("Erro ao criar a pasta '{}'", path);
-            fs::create_dir_all(path.clone()).expect(&error_msg);
-            // creates a result file for each test
-            let path = format!("{}/Resultado.txt", path);
-            File::create(path).expect("Erro ao criar o arquivo de resultado");
-        }
-        File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
-        
-    };
-}
 
 #[allow(unused_imports)]
 #[allow(unused_variables)]
