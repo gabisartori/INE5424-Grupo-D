@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, mpsc::{RecvError, Sender, self}};
 use std::thread;
 use std::fs::{File, OpenOptions};
@@ -181,12 +181,13 @@ impl Agent {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let main_len = 10;
     // Processo principal inicializando os agentes
-    if args.len() == 14 {
+    if args.len() == main_len {
         let tests = tests::all_tests();
         let test_num = tests.len();
         initializate_files_and_folders!(test_num);
-        for (test_id, test) in tests.iter().enumerate() {
+        for (test_id, (test_name, test)) in tests.iter().enumerate() {
             let mut children = Vec::new();
             let agent_num = test.len();
             for i in 0..agent_num {
@@ -205,30 +206,26 @@ fn main() {
             let file_path = format!("tests/test_{test_id}/Resultado.txt");
             let file_path = file_path.as_str();
             let final_path = "tests/Resultado.txt";
-            calculate_test(file_path, final_path, agent_num, test_id);
+            calculate_test(file_path, final_path, agent_num, test_name);
         }
-    } else if args.len() == 16 {
+    } else if args.len() == main_len + 2 {
         // Sub-processo: Execução do agente
-        let ip: IpAddr = args[8]
-            .parse()
-            .expect("Falha ao converter ip para IpAddr");
-        let port: u16 = args[9]
-            .parse()
-            .expect("Falha ao converter port para u16");
-        let test_id: usize = args[args.len() - 2]
+        pub const IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        pub const PORT: u16 = 3000;
+        let test_id: usize = args[main_len]
             .parse()
             .expect("Falha ao converter test_id para usize");
         let agent_id: usize = args.last().unwrap()
             .parse()
             .expect("Falha ao converter agent_id para usize");
-        let mut test = tests::all_tests()[test_id].clone();
+        let (_, mut test) = tests::all_tests()[test_id].clone();
         let agent_num = test.len();
         
         let agent = create_agents(
             agent_id,
             agent_num,
-            ip,
-            port,
+            IP,
+            PORT,
         );
         let actions = test.remove(agent_id);
         let (s_acertos, r_acertos) = match agent {
@@ -240,7 +237,7 @@ fn main() {
         let msg = format!("AGENTE {agent_id} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n");
         debug_file!(file_path, &msg.as_bytes());
     } else {
-        println!("uso: cargo run <agent_num> <n_msgs> <broadcast> <timeout> <timeout_limit> <message_timeout> <broadcast_timeout> <ip> <port> <gossip_rate> <w_size> <buffer_size> <loss_rate> <corruption_rate>");
+        println!("uso: cargo run <broadcast> <timeout> <timeout_limit> <message_timeout> <broadcast_timeout> <gossip_rate> <w_size> <loss_rate> <corruption_rate>");
         println!("enviado {:?}", args);
         panic!("Número de argumentos {} inválido", args.len());
     }
@@ -272,7 +269,7 @@ fn create_agents(
 /// Reads and organizes the output file of all sub-processes in a test,
 /// then writes the results to a final file.
 /// The lines of output file must be formated as "AGENTE X -> ENVIOS: X - RECEBIDOS: X"
-fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_id: usize) {
+fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_name: &str) {
     let file = File::open(file_path).expect("Erro ao abrir o arquivo de log");
     let mut reader = BufReader::new(file);
 
@@ -319,7 +316,7 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_id: 
         Err(e) => panic!("Erro ao abrir o arquivo: {}", e),
     };
 
-    let result = format!("\n----------\nTeste {test_id}\n----------\nTotal de Mensagens Enviadas: {total_sends}\nTotal de Mensagens Recebidas: {total_receivs}\n");
+    let result = format!("\n----------\nTeste {test_name}\n----------\nTotal de Mensagens Enviadas: {total_sends}\nTotal de Mensagens Recebidas: {total_receivs}\n");
     Write::write_all(&mut file, result.as_bytes())
         .expect("Erro ao escrever no arquivo");
 }
