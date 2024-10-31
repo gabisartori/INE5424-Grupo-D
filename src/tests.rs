@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum SendAction {
     Send {
         destination: usize,
@@ -12,7 +12,7 @@ pub enum SendAction {
     DieAfterSend {}
 } 
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum ReceiveAction {
     Receive {
         message: String
@@ -22,7 +22,7 @@ pub enum ReceiveAction {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Action {
     Send(SendAction),
     Receive(ReceiveAction),
@@ -381,5 +381,21 @@ pub fn broadcast_test_6() -> Test {
             Action::Receive(ReceiveAction::Receive { message: "1".to_string() }),
             Action::Receive(ReceiveAction::Receive { message: "2".to_string() })    
         ],
+    ]
+}
+
+// a vec of function pointers to the tests
+pub fn all_tests() -> Vec<Test> {
+    vec![
+        send_test_1(),
+        send_test_2(),
+        send_test_3(),
+        send_test_4(),
+        broadcast_test_1(),
+        broadcast_test_2(),
+        broadcast_test_3(),
+        broadcast_test_4(),
+        broadcast_test_5(),
+        broadcast_test_6()
     ]
 }

@@ -1,9 +1,11 @@
+// TODO: Fazer com que cada teste tenha um debug próprio
 #[macro_export]
 macro_rules! debug_println {
     // This pattern accepts format arguments like println!
     ($($arg:tt)*) => {
+        use std::{fs::{File, OpenOptions}, io::Write};
         let path = format!("tests/debug.txt");
-        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+        let mut file: File = match OpenOptions::new()
                                             .create(true)
                                             .append(true)
                                             .open(path) {
@@ -11,14 +13,15 @@ macro_rules! debug_println {
             Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
         };
         let msf = format!("----------\n{}\n----------\n", format!($($arg)*));
-        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
+        Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     };
 }
 
 #[macro_export]
 macro_rules! debug_file {
     ($file_path:expr, $msg:expr) => {
-        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+        use std::{fs::{File, OpenOptions}, io::Write};
+        let mut file: File = match OpenOptions::new()
             .create(true)
             .append(true)
             .open($file_path)
@@ -28,9 +31,30 @@ macro_rules! debug_file {
         };
         // connverts the message to a string
         // Implements Logger for creating a debug log file
-        std::io::Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
+        Write::write_all(&mut file, $msg).expect("Erro ao escrever no arquivo");
     };
 }
+/// creates a folder for each tests, receives the number of tests as an argument
+#[macro_export]
+macro_rules! initializate_files_and_folders {
+    ($tests_num:expr) => {
+        use std::fs::{self, File};
+        // creates a 'tests' folder
+        fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
+        // creates a folder for each test
+        for i in 0..$tests_num {
+            let path = format!("tests/test_{}", i);
+            let error_msg = format!("Erro ao criar a pasta '{}'", path);
+            fs::create_dir_all(path.clone()).expect(&error_msg);
+            // creates a result file for each test
+            let path = format!("{}/Resultado.txt", path);
+            File::create(path).expect("Erro ao criar o arquivo de resultado");
+        }
+        File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
+        
+    };
+}
+
 #[allow(unused_imports)]
 #[allow(unused_variables)]
 #[allow(unused_mut)]
