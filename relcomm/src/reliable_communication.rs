@@ -5,7 +5,9 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 use crate::channels::Channel;
-use crate::packet::Packet;
+// use crate::packet::Packet;
+use crate::types_packet::Packet;
+use crate::types_header::HeaderAck;
 use logger::{debug_println, log::{self, SharedLogger, MessageStatus}};
 
 use std::clone::Clone;
@@ -431,7 +433,7 @@ impl ReliableCommunication {
     /// Thread to handle the sending of messages
     fn sender(
         self: Arc<Self>,
-        acks_rx: Receiver<Packet>,
+        acks_rx: Receiver<HeaderAck>,
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
@@ -441,41 +443,46 @@ impl ReliableCommunication {
             let mut success_count = 0;
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
-                let message_header = match packets.first() {
-                    Some(packet) => packet.header.clone(),
+                let first = match packets.first() {
+                    Some(packet) => packet,
                     None => {
                         debug_println!("Erro ao enviar mensagem: Pacote vazio");
                         continue;
                     }
                 };
-                match register_to_listener_tx.send((
-                    (message_header.dst_addr, message_header.origin),
-                    message_header.seq_num,
-                )) {
+                match register_to_listener_tx.send(
+                    ((first.get_dst_addr(),
+                    first.get_origin_addr()),
+                    first.get_seq_num(),)
+                ) {
                     Ok(_) => {
-                        if message_header.must_gossip() {
-                            let logger_state = log::LoggerState::Message{
-                                state: MessageStatus::SentBroadcast,
-                                current_agent_id: Some(self.host.agent_number),
-                                target_agent_id: Some(message_header.dst_addr.port() as usize % 100),
-                                message_id: message_header.seq_num as usize,
-                            };
-                            self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Sender")
-                                .log(logger_state);
-                        } else {
-                            let logger_state = log::LoggerState::Message{
-                                state: MessageStatus::Sent,
-                                current_agent_id: Some(self.host.agent_number),
-                                target_agent_id: Some(message_header.dst_addr.port() as usize % 100),
-                                message_id: message_header.seq_num as usize,
-                            };
+                        match first {
+                            Packet::Send {header, ..} => {
+                                let logger_state = log::LoggerState::Message{
+                                    state: MessageStatus::SentBroadcast,
+                                    current_agent_id: Some(self.host.agent_number),
+                                    target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                    message_id: header.seq_num as usize,
+                                };
+                                self.logger
+                                    .lock()
+                                    .expect("Couldn't acquire logger Lock on Sender")
+                                    .log(logger_state);
+                            } 
+                            Packet::Broadcast { header, .. } => {
+                                let logger_state = log::LoggerState::Message{
+                                    state: MessageStatus::Sent,
+                                    current_agent_id: Some(self.host.agent_number),
+                                    target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                    message_id: header.seq_num as usize,
+                                };
 
-                            self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Sender")
-                                .log(logger_state);
+                                self.logger
+                                    .lock()
+                                    .expect("Couldn't acquire logger Lock on Sender")
+                                    .log(logger_state);
+                            }
+                            Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Acks não devem ser enviados por Sender"),
                         }
                     }
                     Err(e) => {
@@ -485,7 +492,7 @@ impl ReliableCommunication {
                             .fail(
                                 format!("Erro ao enviar pedido de ACK para a Listener: {e}")
                                     .to_owned(),
-                                Some(packets[0].header.src_addr.port() as usize % 100),
+                                Some(self.host.agent_number),
                             );
                         debug_println!("Erro ao enviar pedido de ACK para a Listener: {e}");
                         continue;
@@ -497,7 +504,7 @@ impl ReliableCommunication {
                     success_count += 1;
                 } else {
                     // If the message wasn't sent, mark the destination as dead
-                    self.mark_as_dead(&message_header.dst_addr);
+                    self.mark_as_dead(&first.get_dst_addr());
                 }
             }
 
@@ -508,12 +515,17 @@ impl ReliableCommunication {
     }
 
     /// Go-Back-N algorithm to send packets
-    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
+    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<HeaderAck>) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
         let start_packet = match packets.first() {
-            Some(packet) => packet.header.seq_num,
+            Some(packet) => {
+                match packet {
+                    Packet::Send {header, ..} => header.seq_num,
+                    Packet::Broadcast {header, ..} => header.seq_num,
+                    Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Pacote de ACK não deve ser enviado por Go-Back-N"),
+                }},
             None => {
                 debug_println!("Erro ao enviar mensagem: Pacote vazio");
                 return false;
@@ -523,30 +535,37 @@ impl ReliableCommunication {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
+                
+                // logger
+                {
+                    match &packets[0] {
+                        Packet::Broadcast {header, ..} => {
+                            let logger_state = log::LoggerState::Packet{
+                                state: log::PacketStatus::SentBroadcast,
+                                current_agent_id: Some(self.host.addr.port() as usize % 100),
+                                target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                seq_num: next_seq_num,
+                            };
+                            self.logger
+                                .lock()
+                                .expect("Couldn't aquire logger Lock on Go-Back-N")
+                                .log(logger_state);
 
-                if packets[0].header.must_gossip() == true {
-                    let logger_state = log::LoggerState::Packet{
-                        state: log::PacketStatus::SentBroadcast,
-                        current_agent_id: Some(packets[0].header.src_addr.port() as usize % 100),
-                        target_agent_id: Some(packets[0].header.dst_addr.port() as usize % 100),
-                        seq_num: next_seq_num,
-                    };
-                    self.logger
-                        .lock()
-                        .expect("Couldn't aquire logger Lock on Go-Back-N")
-                        .log(logger_state);
-
-                } else {
-                    let logger_state = log::LoggerState::Packet{
-                        state: log::PacketStatus::Sent,
-                        current_agent_id: Some(packets[0].header.src_addr.port() as usize % 100),
-                        target_agent_id: Some(packets[0].header.dst_addr.port() as usize % 100),
-                        seq_num: next_seq_num,
-                    };
-                    self.logger
-                        .lock()
-                        .expect("Couldn't aquire logger Lock on Go-Back-N")
-                        .log(logger_state);
+                        }
+                        Packet::Send {header, .. } => {
+                            let logger_state = log::LoggerState::Packet{
+                                state: log::PacketStatus::Sent,
+                                current_agent_id: Some(self.host.addr.port() as usize % 100),
+                                target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                seq_num: next_seq_num,
+                            };
+                            self.logger
+                                .lock()
+                                .expect("Couldn't aquire logger Lock on Go-Back-N")
+                                .log(logger_state);
+                        }
+                        Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Pacote de ACK não deve ser enviado por Go-Back-N"),
+                    }
                 }
                 next_seq_num += 1;
             }
@@ -555,16 +574,16 @@ impl ReliableCommunication {
             // Wait for an ACK
             // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
             match acks_rx.recv_timeout(self.timeout) {
-                Ok(packet) => {
+                Ok(ack) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
+                    base = (ack.seq_num - start_packet as u32 + 1) as usize;                    
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
+                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").get_dst_addr().port()%100);
                         return false;
                     }
                 },
@@ -612,13 +631,12 @@ impl ReliableCommunication {
             }
             SendRequestData::Gossip { origin, seq_num } => {
                 for node in self.get_friends() {
-                    let packets = Packet::packets_from_message(
+                    let packets = Packet::brdcst_pkts_from_message(
                         self.host.addr,
                         node.addr,
                         *origin,
-                        request.data.clone(),
                         *seq_num,
-                        true,
+                        request.data.clone(),
                     );
                     if node.state == NodeState::ALIVE {
                         messages.push(packets);
@@ -655,13 +673,19 @@ impl ReliableCommunication {
         dst_addr: &SocketAddr,
         origin: &SocketAddr,
         data: Vec<u8>,
-        is_gossip: bool
+        is_brd: bool
     ) -> Vec<Packet> {
         let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
         let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
-        let packets = Packet::packets_from_message(
-            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
-        );
+        let packets = if is_brd {
+            Packet::brdcst_pkts_from_message(
+            *src_addr, *dst_addr, *origin, *start_seq, data,
+            )
+        } else {
+            Packet::send_pkts_from_message(
+                *src_addr, *dst_addr, *start_seq, data,
+            )
+        };
         *start_seq += packets.len() as u32;
         packets
     }
@@ -670,7 +694,7 @@ impl ReliableCommunication {
     fn listener(
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
-        acks_tx: Sender<Packet>,
+        acks_tx: Sender<HeaderAck>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
@@ -685,99 +709,112 @@ impl ReliableCommunication {
                     continue;
                 }
             };
-            if packet.header.is_ack() {
-                let pkt = packet.clone();
+            match &packet {
+                Packet::Ack { header, .. } => {
 
-                let logger_state = log::LoggerState::Packet{
-                    state: log::PacketStatus::ReceivedAck,
-                    current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                    seq_num: pkt.header.seq_num as usize,
-                };
-
-                self.logger
-                    .lock()
-                    .expect("Couldn't acquire logger Lock on Listener")
-                    .log(logger_state);
-
-                // Handle ack
-                while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
-                    expected_acks.insert(key, start_seq);
-                }
-                match expected_acks.get_mut(&(packet.header.src_addr, packet.header.origin)) {
-                    Some(seq_num) => {
-                        if packet.header.seq_num < *seq_num { continue; }
-                        *seq_num = packet.header.seq_num + 1;
-                        match acks_tx.send(packet) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                debug_println!("Erro ao enviar ACK: {e}");
-                                let logger_state = log::LoggerState::Packet{
-                                    state: log::PacketStatus::ReceivedAckFailed,
-                                    current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                                    target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                                    seq_num: pkt.header.seq_num as usize,
-                                };
-                                self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Listener")
-                                .log(logger_state);                            }
-                        }
-                    }
-                    None => {
-                        debug_println!("ACK recebido sem destinatário esperando");
-                        let logger_state = log::LoggerState::Packet{
-                            state: log::PacketStatus::ReceivedAckFailed,
-                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                            seq_num: pkt.header.seq_num as usize,
+                    {
+                            let logger_state = log::LoggerState::Packet{
+                            state: log::PacketStatus::ReceivedAck,
+                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                            seq_num: header.seq_num as usize,
                         };
 
                         self.logger
-                        .lock()
-                        .expect("Couldn't acquire logger Lock on Listener")
-                        .log(logger_state);    
+                            .lock()
+                            .expect("Couldn't acquire logger Lock on Listener")
+                            .log(logger_state);
                     }
-                }
-            } else {
-                let logger_state = log::LoggerState::Packet{
-                    state: log::PacketStatus::Received,
-                    current_agent_id: Some(packet.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(packet.header.src_addr.port() as usize % 100),
-                    seq_num: packet.header.seq_num as usize,
 
-                };
+                    // Handle ack
+                    while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
+                        expected_acks.insert(key, start_seq);
+                    }
+                    match expected_acks.get_mut(&(header.src_addr, header.src_addr)) {
+                        Some(seq_num) => {
+                            if header.seq_num < *seq_num { continue; }
+                            *seq_num = header.seq_num + 1;
+                            match acks_tx.send(header.clone()) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    debug_println!("Erro ao enviar ACK: {e}");
+                                        {
+                                            let logger_state = log::LoggerState::Packet{
+                                                state: log::PacketStatus::ReceivedAckFailed,
+                                                current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                                target_agent_id: Some(header.src_addr.port() as usize % 100),
+                                                seq_num: header.seq_num as usize,
+                                            };
+                                            self.logger
+                                            .lock()
+                                            .expect("Couldn't acquire logger Lock on Listener")
+                                            .log(logger_state);
+                                    }
+                                }
+                            }
+                        }
+                        None => {
+                            debug_println!("ACK recebido sem destinatário esperando");
+                            let logger_state = log::LoggerState::Packet{
+                                state: log::PacketStatus::ReceivedAckFailed,
+                                current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                target_agent_id: Some(header.src_addr.port() as usize % 100),
+                                seq_num: header.seq_num as usize,
+                            };
 
-                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                            self.logger
+                            .lock()
+                            .expect("Couldn't acquire logger Lock on Listener")
+                            .log(logger_state);    
+                        }
+                    }
+                } 
+                Packet::Broadcast { header, .. } => {
+                    {
+                        let logger_state = log::LoggerState::Packet{
+                            state: log::PacketStatus::Received,
+                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                            seq_num: header.seq_num as usize,
 
-                // Handle data
-                let packets = pkts_per_origin
-                    .entry(packet.header.origin)
-                    .or_insert(Vec::new());
-                let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
+                        };
 
-                // Ignore the packet if the sequence number is higher than expected
-                if packet.header.seq_num > expected {
-                    continue;
-                }
-                // Send ack otherwise
-                self.channel.send(&packet.get_ack());
-                let logger_state = log::LoggerState::Packet {
-                    state: log::PacketStatus::SentAck,
-                    current_agent_id: Some(packet.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(packet.header.src_addr.port() as usize % 100),
-                    seq_num: packet.header.seq_num as usize,
-                };
+                        self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                    }
 
-                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                    // Handle data
+                    let packets = pkts_per_origin
+                        .entry(header.origin)
+                        .or_insert(Vec::new());
+                    let expected = match packets.last() {
+                        Some(p) => match p {
+                            Packet::Broadcast { header, .. } => header.seq_num + 1,
+                            _ => panic!("Erro ao receber mensagem: Último pacote não é um Broadcast"),
+                        },
+                        None => 0,
+                    };
 
-                if packet.header.seq_num < expected { continue; }
-                
-                if packet.header.is_last() {
-                    let (message, origin, sequence_number) =
-                        ReliableCommunication::receive_last_packet(&self, packets, &packet);
-                    // Handling broadcasts
-                    if packet.header.must_gossip() {
+                    // Ignore the packet if the sequence number is higher than expected
+                    if header.seq_num > expected {
+                        continue;
+                    }
+                    // Send ack otherwise
+                    self.channel.send(&packet.get_ack());
+                    {
+                        let logger_state = log::LoggerState::Packet {
+                            state: log::PacketStatus::SentAck,
+                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                            seq_num: header.seq_num as usize,
+                        };
+                        self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                    }
+
+                    if header.seq_num < expected { continue; }
+                    
+                    if header.is_last {
+                        let (message, origin, sequence_number) =
+                            ReliableCommunication::receive_last_packet(&self, packets, &packet);
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {
@@ -816,13 +853,61 @@ impl ReliableCommunication {
                                 }
                             }
                         }
-                    } else {
+                    }
+                    packets.push(packet);
+                }
+                Packet::Send { header, .. } => {
+                    {
+                        let logger_state = log::LoggerState::Packet{
+                            state: log::PacketStatus::Received,
+                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                            seq_num: header.seq_num as usize,
+
+                        };
+
+                        self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                    }
+
+                    // Handle data
+                    let packets = pkts_per_origin
+                        .entry(header.src_addr)
+                        .or_insert(Vec::new());
+                    let expected = match packets.last() {
+                        Some(p) => match p {
+                            Packet::Send { header, .. } => header.seq_num + 1,
+                            _ => panic!("Erro ao receber mensagem: Último pacote não é um Send"),
+                        },
+                        None => 0,
+                    };
+
+                    // Ignore the packet if the sequence number is higher than expected
+                    if header.seq_num > expected {
+                        continue;
+                    }
+                    // Send ack otherwise
+                    self.channel.send(&packet.get_ack());
+                    {
+                        let logger_state = log::LoggerState::Packet {
+                            state: log::PacketStatus::SentAck,
+                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                            seq_num: header.seq_num as usize,
+                        };
+                        self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                    }
+
+                    if header.seq_num < expected { continue; }
+                    
+                    if header.is_last {
+                        let (message, _, _) =
+                            ReliableCommunication::receive_last_packet(&self, packets, &packet);
                         messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
                     }
+                    packets.push(packet);
                 }
-                packets.push(packet);
-            }
         }
+    }
     }
 
     /// Decides what to do with a broadcast message in the AB algorithm
@@ -857,47 +942,47 @@ impl ReliableCommunication {
         // Ignore the first packet if its the remnant of a previous message
         match packets.first() { 
             Some(p) => {
-                if p.header.is_last() { packets.remove(0); }
+                if p.is_last() { packets.remove(0); }
             }
             None => {}
          }
 
-        for packet in packets.iter() {
-            message.extend(&packet.data);
+        for packet in packets.iter() {            
+            message.extend(&packet.get_data());
         }
-        message.extend(&packet.data);
+        message.extend(&packet.get_data());
 
         let sequence_number: u32;
-        let curr_agent_id: usize;
-        let t_agent_id: usize;
-        match packets.first() {
-            Some(p) => {
-                sequence_number = p.header.seq_num;
-                curr_agent_id = p.header.src_addr.port() as usize % 100;
-                t_agent_id = p.header.dst_addr.port() as usize % 100;
-        }
-            None => {
-                sequence_number = packet.header.seq_num;
-                curr_agent_id = packet.header.src_addr.port() as usize % 100;
-                t_agent_id = packet.header.dst_addr.port() as usize % 100;
+        {
+            let curr_agent_id: usize;
+            let t_agent_id: usize;
+            match packets.first() {
+                Some(p) => {
+                    sequence_number = p.get_seq_num();
+                    curr_agent_id = p.get_src_addr().port() as usize % 100;
+                    t_agent_id = p.get_dst_addr().port() as usize % 100;
             }
+                None => {
+                    sequence_number = packet.get_seq_num();
+                    curr_agent_id = packet.get_src_addr().port() as usize % 100;
+                    t_agent_id = packet.get_dst_addr().port() as usize % 100;
+                }
+            }
+
+            let logger_state = log::LoggerState::Packet {
+                state: log::PacketStatus::ReceivedLastPacket,
+                current_agent_id: Some(curr_agent_id),
+                target_agent_id: Some(t_agent_id),
+                seq_num: sequence_number as usize,
+            };
+
+            self.logger
+                .lock()
+                .expect("Couldn't acquire logger Lock on Sender")
+                .log(logger_state);
         }
-
-        let logger_state = log::LoggerState::Packet {
-            state: log::PacketStatus::ReceivedLastPacket,
-            current_agent_id: Some(curr_agent_id),
-            target_agent_id: Some(t_agent_id),
-            seq_num: sequence_number as usize,
-        };
-
-        self.logger
-            .lock()
-            .expect("Couldn't acquire logger Lock on Sender")
-            .log(logger_state);
 
         packets.clear();
-
-
-        (message, packet.header.origin, sequence_number)
+        (message, packet.get_origin_addr(), sequence_number)
     }
 }

@@ -5,9 +5,9 @@ e implementa sockets para comunicação entre os processos participantes.
 use std::net::UdpSocket;
 use std::sync::Arc;
 use lazy_static::lazy_static;
-
-use crate::packet::Packet;
-use logger::debug_println;
+use std::io::Error;
+// use crate::packet::Packet;
+use crate::types_packet::Packet;
 
 /// reads the loss_rate and corruption_rate from the command line arguments
 /// they should be the last two arguments exept for the agent and test id
@@ -42,32 +42,24 @@ impl Channel {
     /// For now, only validates the checksum
     fn validate_message(&self, packet: &Packet) -> bool {
         // Checksum
-        let c1: bool = packet.header.checksum == Packet::checksum(&packet.header, &packet.data);
+        let c1: bool = packet.get_checksum() == Packet::checksum(packet);
         c1
     }
 
     /// Reads a packet from the socket or waits for a packet to arrive
-    pub fn receive(&self) -> Result<Packet, std::io::Error> {
+    pub fn receive(&self) -> Result<Packet, Error> {
         loop {
             let mut buffer = [0; Packet::BUFFER_SIZE];
             let (size, _) = self.socket.recv_from(&mut buffer)?;
+            let buffer = buffer[..size].to_vec();
 
-            let mut packet = match Packet::from_bytes(buffer, size) {
-                Ok(packet) => packet,
-                Err(e) => {
-                    // TODO: I'm pretty sure this error will never happen, but I can't make it so
-                    // that Packet::from_bytes builds the header from the buffer slice without checking if the size is correct
-                    // Which it'll always be since the HEADER_SIZE is a constant
-                    debug_println!("->-> Erro {{{e}}} ao receber pacote pelo socket");
-                    continue;
-                }
-            };
+            let mut packet = Packet::from_bytes(buffer);
             // Simula perda de pacotes, usand as referências staticas LOSS_RATE e CORRUPTION_RATE
             if rand::random::<f32>() < *LOSS_RATE {
                 continue;
             }
             if rand::random::<f32>() < *CORRUPTION_RATE {
-                packet.header.checksum += 1;
+                packet.set_checksum(1);
             }
             // Verifica se o pacote foi corrompido
             if !self.validate_message(&packet) { continue; }
@@ -76,21 +68,11 @@ impl Channel {
     }
 
     /// Wrapper for UdpSocket::send_to, with some print statements
-    pub fn send(&self, packet: &Packet) -> bool { 
-        let agent_s = packet.header.src_addr.port() % 100;
-        let agent_d = packet.header.dst_addr.port() % 100;
-        let pk = packet.header.seq_num;
-        let is_ack = packet.header.is_ack();
-        match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
+    pub fn send(&self, packet: &Packet) -> bool {
+        let dst = packet.get_dst_addr();
+        match self.socket.send_to(&packet.to_bytes(), dst) {
             Ok(_) => true,
-            Err(e) => {
-                if is_ack {
-                    debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
-                }
-                else {
-                    debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
-                false
-            }
+            Err(_) => false
         }
     }
 }
