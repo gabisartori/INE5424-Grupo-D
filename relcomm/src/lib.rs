@@ -5,3 +5,5 @@ mod packet;
 mod header;
 mod flags;
 pub mod config;
+mod types_packet;
+mod types_header;
