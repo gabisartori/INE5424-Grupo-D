@@ -7,7 +7,7 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use std::io::Error;
 // use crate::packet::Packet;
-use crate::types_packet::Packet;
+use crate::types_packet::{PacketType, Get, FromBytes, Set};
 
 /// reads the loss_rate and corruption_rate from the command line arguments
 /// they should be the last two arguments exept for the agent and test id
@@ -40,20 +40,20 @@ impl Channel {
 
     /// Validates the received message
     /// For now, only validates the checksum
-    fn validate_message(&self, packet: &Packet) -> bool {
+    fn validate_message(&self, packet: &PacketType) -> bool {
         // Checksum
-        let c1: bool = packet.get_checksum() == Packet::checksum(packet);
+        let c1: bool = packet.get_checksum() == PacketType::checksum(packet);
         c1
     }
 
     /// Reads a packet from the socket or waits for a packet to arrive
-    pub fn receive(&self) -> Result<Packet, Error> {
+    pub fn receive(&self) -> Result<PacketType, Error> {
         loop {
-            let mut buffer = [0; Packet::BUFFER_SIZE];
+            let mut buffer = [0; PacketType::BUFFER_SIZE];
             let (size, _) = self.socket.recv_from(&mut buffer)?;
             let buffer = buffer[..size].to_vec();
 
-            let mut packet = Packet::from_bytes(buffer);
+            let mut packet = PacketType::from_bytes(buffer);
             // Simula perda de pacotes, usand as referências staticas LOSS_RATE e CORRUPTION_RATE
             if rand::random::<f32>() < *LOSS_RATE {
                 continue;
@@ -68,9 +68,8 @@ impl Channel {
     }
 
     /// Wrapper for UdpSocket::send_to, with some print statements
-    pub fn send(&self, packet: &Packet) -> bool {
-        let dst = packet.get_dst_addr();
-        match self.socket.send_to(&packet.to_bytes(), dst) {
+    pub fn send(&self, packet: &PacketType) -> bool {
+        match self.socket.send_to(&packet.to_bytes(), packet.get_dst_addr()) {
             Ok(_) => true,
             Err(_) => false
         }
