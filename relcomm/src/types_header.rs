@@ -1,18 +1,10 @@
 // Importações necessárias
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-#[derive(Clone)]
-pub enum Header {
-    Send(HeaderSend),
-    Broadcast(HeaderBroadcast),
-    #[allow(dead_code)]
-    /// because ACK should be built only from another header
-    Ack(Ack),
-}
 
-impl Header {
-    pub const SD: u8 = 0;
-    pub const BD: u8 = 1;
-    pub const ACK: u8 = 2;
+pub trait Header {
+    const SD: u8 = 0;
+    const BD: u8 = 1;
+    const ACK: u8 = 2;
     fn sum_addr(addr: SocketAddr) -> u32 {
         let value = match addr.ip() {
             IpAddr::V4(ipv4) => u32::from_be_bytes(ipv4.octets()),
@@ -44,68 +36,6 @@ impl Header {
         bytes.extend_from_slice(&addr.port().to_be_bytes());
         bytes
     }
-
-    /*
-    pub fn get_dst_addr(&self) -> SocketAddr {
-        match self {
-            Header::Send(header) => header.dst_addr,
-            Header::Broadcast(header) => header.dst_addr,
-            Header::Ack(header) => header.dst_addr,
-        }
-    }
-    
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let bytes = match self {
-            Header::Send(header) => header.to_bytes(),
-            Header::Broadcast(header) => header.to_bytes(),
-            Header::Ack(header) => header.to_bytes(),        
-        };
-        bytes
-    }
-
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        match bytes[0] {
-            Header::SD => {
-                let header = HeaderSend::from_bytes(bytes[1..HeaderSend::size()].to_vec());
-                Header::Send(header)
-            },
-            Header::BD => {
-                let header = HeaderBroadcast::from_bytes(bytes[1..HeaderBroadcast::size()].to_vec());
-                Header::Broadcast(header)
-            },
-            Header::ACK => {
-                let header = Ack::from_bytes(bytes[1..Ack::size()].to_vec());
-                Header::Ack(header)
-            },
-            _ => panic!("Invalid header type"),            
-        }
-    }
-
-    pub fn checksum(header: &Header) -> u32 {
-        match header {
-            Header::Send(header) => {
-                HeaderSend::checksum(header)
-            },
-            Header::Broadcast(header) => {
-                HeaderBroadcast::checksum(header)
-            },
-            Header::Ack(header) => {
-                Ack::checksum(header)
-            },
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            Header::Send(_) => HeaderSend::size(),
-            Header::Broadcast(_) => HeaderBroadcast::size(),
-            Header::Ack(_) => Ack::size(),
-        }
-    }
-    */
-}
-
-pub trait IsHeader {
     fn checksum(header: &Self) -> u32;
     fn to_bytes(&self) -> Vec<u8>;
     fn from_bytes(bytes: Vec<u8>) -> Self;
@@ -135,11 +65,11 @@ impl HeaderSend {
     }
 }
 
-impl IsHeader for HeaderSend {
+impl Header for HeaderSend {
     fn checksum(header: &HeaderSend) -> u32 {
         let mut sum: u32 = 0;
-        sum = sum.wrapping_add(Header::sum_addr(header.src_addr));
-        sum = sum.wrapping_add(Header::sum_addr(header.dst_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
         sum = sum.wrapping_add(header.seq_num as u32);
         sum = sum.wrapping_add(header.is_last as u32);
         sum
@@ -147,9 +77,9 @@ impl IsHeader for HeaderSend {
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.push(Header::SD);
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.src_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.dst_addr));
+        bytes.push(Self::SD);
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.src_addr));
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.dst_addr));
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.push(self.is_last as u8);
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
@@ -158,12 +88,12 @@ impl IsHeader for HeaderSend {
 
     fn from_bytes(bytes: Vec<u8>) -> Self {
         let mut start = 0;
-        let src_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let seq_num = Header::u32_from_bytes(&bytes, &mut start);
+        let src_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let dst_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let seq_num = Self::u32_from_bytes(&bytes, &mut start);
         let is_last = bytes[start] != 0;
         start += 1;
-        let checksum = Header::u32_from_bytes(&bytes, &mut start);
+        let checksum = Self::u32_from_bytes(&bytes, &mut start);
         Self {
             src_addr,
             dst_addr,
@@ -180,7 +110,7 @@ impl IsHeader for HeaderSend {
 }
 
 #[derive(Clone)]
-pub struct HeaderBroadcast {
+pub struct HeaderBrd {
     pub src_addr: SocketAddr,   // 06 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
     pub origin: SocketAddr,     // 18 bytes
@@ -189,7 +119,7 @@ pub struct HeaderBroadcast {
     pub checksum: u32,          // 27 bytes
 }
 
-impl HeaderBroadcast {
+impl HeaderBrd {
     pub const SIZE: usize = 27;
     pub fn get_ack(&self) -> Ack {
         let mut ack = Ack {
@@ -203,12 +133,12 @@ impl HeaderBroadcast {
     }
 }
 
-impl IsHeader for HeaderBroadcast {
-    fn checksum(header: &HeaderBroadcast) -> u32 {
+impl Header for HeaderBrd {
+    fn checksum(header: &HeaderBrd) -> u32 {
         let mut sum: u32 = 0;
-        sum = sum.wrapping_add(Header::sum_addr(header.src_addr));
-        sum = sum.wrapping_add(Header::sum_addr(header.dst_addr));
-        sum = sum.wrapping_add(Header::sum_addr(header.origin));
+        sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.origin));
         sum = sum.wrapping_add(header.seq_num as u32);
         sum = sum.wrapping_add(header.is_last as u32);
         sum
@@ -216,10 +146,10 @@ impl IsHeader for HeaderBroadcast {
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.push(Header::BD);
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.src_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.dst_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.origin));
+        bytes.push(Self::BD);
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.src_addr));
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.dst_addr));
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.origin));
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.push(self.is_last as u8);
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
@@ -228,12 +158,12 @@ impl IsHeader for HeaderBroadcast {
 
     fn from_bytes(bytes: Vec<u8>) -> Self {
         let mut start = 0;
-        let src_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let origin = Header::addr_from_bytes(&bytes, &mut start);
-        let seq_num = Header::u32_from_bytes(&bytes, &mut start);
+        let src_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let dst_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let origin = Self::addr_from_bytes(&bytes, &mut start);
+        let seq_num = Self::u32_from_bytes(&bytes, &mut start);
         let is_last = bytes[start] != 0;        start += 1;
-        let checksum = Header::u32_from_bytes(&bytes, &mut start);
+        let checksum = Self::u32_from_bytes(&bytes, &mut start);
         Self {
             src_addr,
             dst_addr,
@@ -261,19 +191,19 @@ impl Ack {
     pub const SIZE: usize = 20;    
 }
 
-impl IsHeader for Ack {
+impl Header for Ack {
     fn checksum(header: &Ack) -> u32 {
         let mut sum: u32 = 0;
-        sum = sum.wrapping_add(Header::sum_addr(header.src_addr));
-        sum = sum.wrapping_add(Header::sum_addr(header.dst_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
         sum = sum.wrapping_add(header.seq_num as u32);
         sum
     }
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.push(Header::ACK);
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.src_addr));
-        bytes.extend_from_slice(&Header::addr_to_bytes(self.dst_addr));
+        bytes.push(Self::ACK);
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.src_addr));
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.dst_addr));
         bytes.extend_from_slice(&self.seq_num.to_be_bytes());
         bytes.extend_from_slice(&self.checksum.to_be_bytes());
         bytes
@@ -281,10 +211,10 @@ impl IsHeader for Ack {
 
     fn from_bytes(bytes: Vec<u8>) -> Self {
         let mut start = 0;
-        let src_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let dst_addr = Header::addr_from_bytes(&bytes, &mut start);
-        let seq_num = Header::u32_from_bytes(&bytes, &mut start);
-        let checksum = Header::u32_from_bytes(&bytes, &mut start);
+        let src_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let dst_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let seq_num = Self::u32_from_bytes(&bytes, &mut start);
+        let checksum = Self::u32_from_bytes(&bytes, &mut start);
         Self {
             src_addr,
             dst_addr,
@@ -297,3 +227,69 @@ impl IsHeader for Ack {
         Self::SIZE
     }
 }
+
+/*
+#[derive(Clone)]
+pub enum Header {
+    Send(HeaderSend),
+    Broadcast(HeaderBrd),
+    /// because ACK should be built only from another header
+    Ack(Ack),
+}
+impl Header {
+    
+    pub fn get_dst_addr(&self) -> SocketAddr {
+        match self {
+            Header::Send(header) => header.dst_addr,
+            Header::Broadcast(header) => header.dst_addr,
+            Header::Ack(header) => header.dst_addr,
+        }
+    }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let bytes = match self {
+            Header::Send(header) => header.to_bytes(),
+            Header::Broadcast(header) => header.to_bytes(),
+            Header::Ack(header) => header.to_bytes(),        
+        };
+        bytes
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        match bytes[0] {
+            Header::SD => {
+                let header = HeaderSend::from_bytes(bytes[1..HeaderSend::size()].to_vec());
+                Header::Send(header)
+            },
+            Header::BD => {
+                let header = HeaderBrd::from_bytes(bytes[1..HeaderBrd::size()].to_vec());
+                Header::Broadcast(header)
+            },
+            Header::ACK => {
+                let header = Ack::from_bytes(bytes[1..Ack::size()].to_vec());
+                Header::Ack(header)
+            },
+            _ => panic!("Invalid header type"),            
+        }
+    }
+    pub fn checksum(header: &Header) -> u32 {
+        match header {
+            Header::Send(header) => {
+                HeaderSend::checksum(header)
+            },
+            Header::Broadcast(header) => {
+                HeaderBrd::checksum(header)
+            },
+            Header::Ack(header) => {
+                Ack::checksum(header)
+            },
+        }
+    }
+    pub fn size(&self) -> usize {
+        match self {
+            Header::Send(_) => HeaderSend::size(),
+            Header::Broadcast(_) => HeaderBrd::size(),
+            Header::Ack(_) => Ack::size(),
+        }
+    }
+}
+*/
