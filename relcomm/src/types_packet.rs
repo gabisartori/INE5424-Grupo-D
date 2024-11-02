@@ -1,6 +1,6 @@
 // Importações necessárias
 use std::net::SocketAddr;
-use crate::types_header::{Header, Ack, HeaderBroadcast, HeaderSend, IsHeader};
+use crate::types_header::{Ack, Header, HeaderBrd, HeaderSend};
 
 /// Estrutura básica para pacotes
 #[derive(Clone)]
@@ -8,76 +8,6 @@ pub enum PacketType {
     Send(SendPkt),
     Broadcast(BrdPkt),
     Ack(Ack),
-}
-
-#[derive(Clone)]
-pub struct SendPkt {
-    pub header: HeaderSend,
-    pub data: Vec<u8>,
-}
-#[derive(Clone)]
-pub struct BrdPkt {
-    pub header: HeaderBroadcast,
-    pub data: Vec<u8>,
-}
-
-/// essencial para Distribuição de pacotes
-pub trait Packet {
-    fn checksum(pkt: &Self) -> u32;
-    fn from_bytes(bytes: Vec<u8>) -> Self;
-    fn to_bytes(&self) -> Vec<u8>;
-}
-
-impl Packet for SendPkt {
-    fn checksum(pkt: &Self) -> u32 {
-        let sum: u32 = pkt.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
-        sum.wrapping_add(HeaderSend::checksum(&pkt.header))
-    }
-
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        let data = bytes[HeaderSend::size()..].to_vec();
-        let header = HeaderSend::from_bytes(bytes);
-        SendPkt{header, data}
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = self.header.to_bytes();
-        bytes.extend_from_slice(&self.data);
-        bytes
-    }
-}
-
-impl Packet for BrdPkt {
-    fn checksum(pkt: &Self) -> u32 {
-        let sum: u32 = pkt.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
-        sum.wrapping_add(HeaderBroadcast::checksum(&pkt.header))
-    }
-
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        let data = bytes[HeaderBroadcast::size()..].to_vec();
-        let header = HeaderBroadcast::from_bytes(bytes);
-        BrdPkt{header, data}
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = self.header.to_bytes();
-        bytes.extend_from_slice(&self.data);
-        bytes
-    }
-}
-
-impl Packet for Ack {
-    fn checksum(pkt: &Self) -> u32 {
-        <Ack as IsHeader>::checksum(pkt)
-    }
-
-    fn from_bytes(bytes: Vec<u8>) -> Self {
-        <Ack as IsHeader>::from_bytes(bytes)
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        <Ack as IsHeader>::to_bytes(&self)
-    }
 }
 
 pub trait FromBytes {
@@ -89,14 +19,14 @@ impl FromBytes for PacketType {
         let type_h = bytes[0];
         let bytes = bytes[1..].to_vec();
         match type_h {
-            Header::SD => {
+            Ack::SD => {
                 PacketType::Send(SendPkt::from_bytes(bytes))
             },
-            Header::BD => {
+            Ack::BD => {
                 PacketType::Broadcast(BrdPkt::from_bytes(bytes))
             },
-            Header::ACK => {
-                PacketType::Ack(<Ack as IsHeader>::from_bytes(bytes))
+            Ack::ACK => {
+                PacketType::Ack(<Ack as Header>::from_bytes(bytes))
             },
             _ => panic!("Invalid packet type"),
         }
@@ -104,6 +34,7 @@ impl FromBytes for PacketType {
 
 }
 
+/// getters para os campos essenciais dos pacotes
 pub trait Get: FromBytes {
     const BUFFER_SIZE: usize = 2<<9;
     fn get_checksum(&self) -> u32;
@@ -113,7 +44,6 @@ pub trait Get: FromBytes {
     fn get_seq_num(&self) -> u32;
     fn is_last(&self) -> bool;
 }
-/// getters
 impl Get for PacketType {
     fn get_checksum(&self) -> u32 {
         match self {
@@ -170,23 +100,93 @@ impl PacketType {
         match pkt {
             PacketType::Send(pkt) => SendPkt::checksum(pkt),
             PacketType::Broadcast(pkt) => BrdPkt::checksum(pkt),
-            PacketType::Ack(pkt) => <Ack as IsHeader>::checksum(pkt),
+            PacketType::Ack(pkt) => <Ack as Header>::checksum(pkt),
         }
     }
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PacketType::Send(pkt) => pkt.to_bytes(),
             PacketType::Broadcast(pkt) => pkt.to_bytes(),
-            PacketType::Ack(pkt) => <Ack as IsHeader>::to_bytes(pkt),
+            PacketType::Ack(pkt) => <Ack as Header>::to_bytes(pkt),
         }
     }
 
     pub fn get_data(&self) -> &Vec<u8> {
         match self {
-            PacketType::Send(pkt) => pkt.get_data(),
-            PacketType::Broadcast(pkt) => pkt.get_data(),
+            PacketType::Send(pkt) => &pkt.data,
+            PacketType::Broadcast(pkt) => &pkt.data,
             PacketType::Ack(_) => { panic!("Ack packet must not have data") },
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct SendPkt {
+    pub header: HeaderSend,
+    pub data: Vec<u8>,
+}
+#[derive(Clone)]
+pub struct BrdPkt {
+    pub header: HeaderBrd,
+    pub data: Vec<u8>,
+}
+
+/// essencial para Distribuição de pacotes
+pub trait Packet {
+    fn checksum(pkt: &Self) -> u32;
+    fn from_bytes(bytes: Vec<u8>) -> Self;
+    fn to_bytes(&self) -> Vec<u8>;
+}
+
+impl Packet for SendPkt {
+    fn checksum(pkt: &Self) -> u32 {
+        let sum: u32 = pkt.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
+        sum.wrapping_add(HeaderSend::checksum(&pkt.header))
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let data = bytes[HeaderSend::size()..].to_vec();
+        let header = HeaderSend::from_bytes(bytes);
+        SendPkt{header, data}
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = self.header.to_bytes();
+        bytes.extend_from_slice(&self.data);
+        bytes
+    }
+}
+
+impl Packet for BrdPkt {
+    fn checksum(pkt: &Self) -> u32 {
+        let sum: u32 = pkt.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
+        sum.wrapping_add(HeaderBrd::checksum(&pkt.header))
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let data = bytes[HeaderBrd::size()..].to_vec();
+        let header = HeaderBrd::from_bytes(bytes);
+        BrdPkt{header, data}
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = self.header.to_bytes();
+        bytes.extend_from_slice(&self.data);
+        bytes
+    }
+}
+
+impl Packet for Ack {
+    fn checksum(pkt: &Self) -> u32 {
+        <Ack as Header>::checksum(pkt)
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        <Ack as Header>::from_bytes(bytes)
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        <Ack as Header>::to_bytes(&self)
     }
 }
 
@@ -219,23 +219,17 @@ impl Set for PacketType {
     }
 }
 /// usados pelos pacotes que contêm dados
-pub trait HasData: Sized + Packet {
-    fn new(header: Header, data: Vec<u8>) -> Self;    
-    fn get_data(&self) -> &Vec<u8>;
+pub trait HasData<Header>: Sized + Packet {
+    fn new(header: Header, data: Vec<u8>) -> Self;
     fn get_ack(&self) -> PacketType;
     fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<PacketType>;
 }
 
-impl HasData for SendPkt {
-    fn new(header: Header, data: Vec<u8>) -> Self {
-        let mut pkt = match header {
-            Header::Send(header) => {
-                SendPkt {
-                    header,
-                    data,
-                }
-            },
-            _ => { panic!("Invalid header type") },
+impl HasData<HeaderSend> for SendPkt {
+    fn new(header: HeaderSend, data: Vec<u8>) -> Self {
+        let mut pkt = SendPkt {
+            header,
+            data,
         };
         pkt.set_checksum(SendPkt::checksum(&pkt));
         pkt
@@ -249,34 +243,25 @@ impl HasData for SendPkt {
 
         chunks.iter().enumerate().map(|(i, chunk)| {            
             PacketType::Send(SendPkt::new(
-                Header::Send(HeaderSend {
-                        src_addr: addrs[0],
-                        dst_addr: addrs[1],
-                        seq_num: seq_num + i as u32,
-                        is_last: i == (chunks.len() - 1),
-                        checksum: 0,
-                        }
-                    ),
-                chunk.to_vec(),
+            HeaderSend {
+                    src_addr: addrs[0],
+                    dst_addr: addrs[1],
+                    seq_num: seq_num + i as u32,
+                    is_last: i == (chunks.len() - 1),
+                    checksum: 0,
+                    },
+            chunk.to_vec(),
             ))
         }).collect()
     }
 
-    fn get_data(&self) -> &Vec<u8> {
-        &self.data
-    }
 }
 
-impl HasData for BrdPkt {
-    fn new(header: Header, data: Vec<u8>) -> Self {
-        let mut pkt = match header {
-            Header::Broadcast(header) => {
-                BrdPkt {
-                    header,
-                    data,
-                }
-            },
-            _ => { panic!("Wrong Header type") },
+impl HasData<HeaderBrd> for BrdPkt {
+    fn new(header: HeaderBrd, data: Vec<u8>) -> Self {
+        let mut pkt = BrdPkt {
+            header,
+            data,
         };
         pkt.set_checksum(Packet::checksum(&pkt));
         pkt
@@ -290,24 +275,18 @@ impl HasData for BrdPkt {
         let chunks: Vec<&[u8]> = data.chunks(PacketType::BUFFER_SIZE - HeaderSend::size()).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
-            let header = Header::Broadcast(
-                HeaderBroadcast {
-                        src_addr: addrs[0],
-                        dst_addr: addrs[1],
-                        origin: addrs[2],
-                        seq_num: seq_num + i as u32,
-                        is_last: i == (chunks.len() - 1),
-                        checksum: 0
-                        }
-            );
+            let header = HeaderBrd {
+                src_addr: addrs[0],
+                dst_addr: addrs[1],
+                origin: addrs[2],
+                seq_num: seq_num + i as u32,
+                is_last: i == (chunks.len() - 1),
+                checksum: 0
+            };
             PacketType::Broadcast(BrdPkt::new(
                 header,
                 chunk.to_vec(),
             ))
         }).collect()
-    }
-
-    fn get_data(&self) -> &Vec<u8> {
-        &self.data
     }
 }
