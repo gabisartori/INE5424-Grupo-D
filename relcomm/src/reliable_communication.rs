@@ -6,8 +6,8 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 use crate::channels::Channel;
 // use crate::packet::Packet;
-use crate::types_packet::Packet;
-use crate::types_header::HeaderAck;
+use crate::types_packet::{PacketType, HasData, Get, SendPkt, BrdPkt};
+use crate::types_header::Ack;
 use logger::{debug_println, log::{self, SharedLogger, MessageStatus}};
 
 use std::clone::Clone;
@@ -430,14 +430,76 @@ impl ReliableCommunication {
         }
     }
 
+    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    fn get_pkts(&self, addrs: Vec<SocketAddr>, data: Vec<u8>, brd: bool)
+        -> Vec<PacketType> {
+        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
+        let start_seq = seq_lock.entry(addrs[1]).or_insert(0);
+        let packets = if brd {
+            BrdPkt::pkts_from_msg(addrs, *start_seq, data)
+        } else {
+            SendPkt::pkts_from_msg(addrs, *start_seq, data)
+        };
+        *start_seq += packets.len() as u32;
+        packets
+    }
+
+    /// Handles a request for the sender, returning what messages the request generates
+    /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
+    fn get_messages(&self, request: &SendRequest) -> Vec<Vec<PacketType>>  {
+        let mut messages = Vec::new();
+        match &request.options {
+            SendRequestData::Send { destination_address } => {
+                let packets = self.get_pkts( vec![self.host.addr,*destination_address], request.data.clone(), false);
+                messages.push(packets);
+            }
+            SendRequestData::RequestLeader {} => {
+                let leader = self.get_leader();
+                let packets = self.get_pkts(vec![self.host.addr, leader.addr, self.host.addr], request.data.clone(), true);
+                messages.push(packets);
+            }
+            SendRequestData::StartBroadcast {} => match self.broadcast {
+                Broadcast::BEB => {
+                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                        if node.state == NodeState::ALIVE {
+                            let packets = self.get_pkts(vec![self.host.addr, node.addr, node.addr], request.data.clone(), true);
+                            messages.push(packets);
+                        }
+                    }
+                }
+                Broadcast::URB | Broadcast::AB => {
+                    let friends = self.get_friends();
+                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                            let packets = self.get_pkts(vec![self.host.addr, node.addr, self.host.addr], request.data.clone(), true);
+                            if friends.contains(node) && node.state == NodeState::ALIVE {
+                                messages.push(packets);
+                            }
+                        }
+                    }
+            },
+            SendRequestData::Gossip { origin, seq_num } => {
+                for node in self.get_friends() {
+                    let packets = BrdPkt::pkts_from_msg(
+                        vec![self.host.addr, node.addr, *origin],
+                        *seq_num,
+                        request.data.clone(),
+                    );
+                    if node.state == NodeState::ALIVE {
+                        messages.push(packets);
+                    }
+                }
+            }
+        }  
+        messages
+    }
+
     /// Thread to handle the sending of messages
     fn sender(
         self: Arc<Self>,
-        acks_rx: Receiver<HeaderAck>,
+        acks_rx: Receiver<Ack>,
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
-        // TODO: Upgrade this thread to make it able of sending multiple messages at once
         while let Ok(request) = register_from_user_rx.recv() {
             let messages_to_send = self.get_messages(&request);
             let mut success_count = 0;
@@ -450,31 +512,28 @@ impl ReliableCommunication {
                         continue;
                     }
                 };
-                match register_to_listener_tx.send(
-                    ((first.get_dst_addr(),
-                    first.get_origin_addr()),
-                    first.get_seq_num(),)
+                match register_to_listener_tx.send(((first.get_dst_addr(), first.get_origin_addr()), first.get_seq_num(),)
                 ) {
                     Ok(_) => {
-                        match first {
-                            Packet::Send {header, ..} => {
+                        match &first {
+                            PacketType::Send (pkt) => {
                                 let logger_state = log::LoggerState::Message{
                                     state: MessageStatus::SentBroadcast,
                                     current_agent_id: Some(self.host.agent_number),
-                                    target_agent_id: Some(header.dst_addr.port() as usize % 100),
-                                    message_id: header.seq_num as usize,
+                                    target_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                                    message_id: pkt.header.seq_num as usize,
                                 };
                                 self.logger
                                     .lock()
                                     .expect("Couldn't acquire logger Lock on Sender")
                                     .log(logger_state);
                             } 
-                            Packet::Broadcast { header, .. } => {
+                            PacketType::Broadcast(pkt) => {
                                 let logger_state = log::LoggerState::Message{
                                     state: MessageStatus::Sent,
                                     current_agent_id: Some(self.host.agent_number),
-                                    target_agent_id: Some(header.dst_addr.port() as usize % 100),
-                                    message_id: header.seq_num as usize,
+                                    target_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                                    message_id: pkt.header.seq_num as usize,
                                 };
 
                                 self.logger
@@ -482,7 +541,7 @@ impl ReliableCommunication {
                                     .expect("Couldn't acquire logger Lock on Sender")
                                     .log(logger_state);
                             }
-                            Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Acks não devem ser enviados por Sender"),
+                            PacketType::Ack { .. } => panic!("Erro ao enviar mensagem: Acks não devem ser enviados pela thread Sender"),
                         }
                     }
                     Err(e) => {
@@ -498,7 +557,7 @@ impl ReliableCommunication {
                         continue;
                     }
                 }
-
+                
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
@@ -515,17 +574,12 @@ impl ReliableCommunication {
     }
 
     /// Go-Back-N algorithm to send packets
-    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<HeaderAck>) -> bool {
+    fn go_back_n(&self, packets: &Vec<PacketType>, acks_rx: &Receiver<Ack>) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
         let start_packet = match packets.first() {
-            Some(packet) => {
-                match packet {
-                    Packet::Send {header, ..} => header.seq_num,
-                    Packet::Broadcast {header, ..} => header.seq_num,
-                    Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Pacote de ACK não deve ser enviado por Go-Back-N"),
-                }},
+            Some(packet) => { packet.get_seq_num() as usize },
             None => {
                 debug_println!("Erro ao enviar mensagem: Pacote vazio");
                 return false;
@@ -539,11 +593,11 @@ impl ReliableCommunication {
                 // logger
                 {
                     match &packets[0] {
-                        Packet::Broadcast {header, ..} => {
+                        PacketType::Broadcast(pkt) => {
                             let logger_state = log::LoggerState::Packet{
                                 state: log::PacketStatus::SentBroadcast,
                                 current_agent_id: Some(self.host.addr.port() as usize % 100),
-                                target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                target_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
                                 seq_num: next_seq_num,
                             };
                             self.logger
@@ -552,11 +606,11 @@ impl ReliableCommunication {
                                 .log(logger_state);
 
                         }
-                        Packet::Send {header, .. } => {
+                        PacketType::Send(pkt)  => {
                             let logger_state = log::LoggerState::Packet{
                                 state: log::PacketStatus::Sent,
                                 current_agent_id: Some(self.host.addr.port() as usize % 100),
-                                target_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                target_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
                                 seq_num: next_seq_num,
                             };
                             self.logger
@@ -564,7 +618,7 @@ impl ReliableCommunication {
                                 .expect("Couldn't aquire logger Lock on Go-Back-N")
                                 .log(logger_state);
                         }
-                        Packet::Ack { .. } => panic!("Erro ao enviar mensagem: Pacote de ACK não deve ser enviado por Go-Back-N"),
+                        PacketType::Ack(_) => panic!("Erro ao enviar mensagem: Pacote de ACK não deve ser enviado por Go-Back-N"),
                     }
                 }
                 next_seq_num += 1;
@@ -596,56 +650,6 @@ impl ReliableCommunication {
         true
     }
 
-    /// Handles a request for the sender, returning what messages the request generates
-    /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
-    fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
-        let mut messages = Vec::new();
-        match &request.options {
-            SendRequestData::Send { destination_address } => {
-                let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
-                messages.push(packets);
-            }
-            SendRequestData::StartBroadcast {} => match self.broadcast {
-                Broadcast::BEB => {
-                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                        if node.state == NodeState::ALIVE {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
-                            messages.push(packets);
-                        }
-                    }
-                }
-                Broadcast::URB | Broadcast::AB => {
-                    let friends = self.get_friends();
-                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) && node.state == NodeState::ALIVE {
-                                messages.push(packets);
-                            }
-                        }
-                    }
-            },
-            SendRequestData::RequestLeader {} => {
-                let leader = self.get_leader();
-                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
-                messages.push(packets);
-            }
-            SendRequestData::Gossip { origin, seq_num } => {
-                for node in self.get_friends() {
-                    let packets = Packet::brdcst_pkts_from_message(
-                        self.host.addr,
-                        node.addr,
-                        *origin,
-                        *seq_num,
-                        request.data.clone(),
-                    );
-                    if node.state == NodeState::ALIVE {
-                        messages.push(packets);
-                    }
-                }
-            }
-        }  
-        messages
-    }
 
     /// Returns the nodes that are considered friends of the current node
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
@@ -666,39 +670,15 @@ impl ReliableCommunication {
         friends
     }
 
-    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
-    fn get_pkts(
-        &self,
-        src_addr: &SocketAddr,
-        dst_addr: &SocketAddr,
-        origin: &SocketAddr,
-        data: Vec<u8>,
-        is_brd: bool
-    ) -> Vec<Packet> {
-        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
-        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
-        let packets = if is_brd {
-            Packet::brdcst_pkts_from_message(
-            *src_addr, *dst_addr, *origin, *start_seq, data,
-            )
-        } else {
-            Packet::send_pkts_from_message(
-                *src_addr, *dst_addr, *start_seq, data,
-            )
-        };
-        *start_seq += packets.len() as u32;
-        packets
-    }
-
     /// Thread to handle the reception of messages
     fn listener(
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
-        acks_tx: Sender<HeaderAck>,
+        acks_tx: Sender<Ack>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
-        let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
+        let mut pkts_per_origin: HashMap<SocketAddr, Vec<PacketType>> = HashMap::new();
         let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
         let mut broadcast_waiters: Vec<Option<Sender<Vec<u8>>>> = Vec::new();
         loop {
@@ -710,8 +690,7 @@ impl ReliableCommunication {
                 }
             };
             match &packet {
-                Packet::Ack { header, .. } => {
-
+                PacketType::Ack ( header) => {
                     {
                             let logger_state = log::LoggerState::Packet{
                             state: log::PacketStatus::ReceivedAck,
@@ -738,17 +717,17 @@ impl ReliableCommunication {
                                 Ok(_) => {}
                                 Err(e) => {
                                     debug_println!("Erro ao enviar ACK: {e}");
-                                        {
-                                            let logger_state = log::LoggerState::Packet{
-                                                state: log::PacketStatus::ReceivedAckFailed,
-                                                current_agent_id: Some(header.dst_addr.port() as usize % 100),
-                                                target_agent_id: Some(header.src_addr.port() as usize % 100),
-                                                seq_num: header.seq_num as usize,
-                                            };
-                                            self.logger
-                                            .lock()
-                                            .expect("Couldn't acquire logger Lock on Listener")
-                                            .log(logger_state);
+                                    {
+                                        let logger_state = log::LoggerState::Packet{
+                                            state: log::PacketStatus::ReceivedAckFailed,
+                                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
+                                            target_agent_id: Some(header.src_addr.port() as usize % 100),
+                                            seq_num: header.seq_num as usize,
+                                        };
+                                        self.logger
+                                        .lock()
+                                        .expect("Couldn't acquire logger Lock on Listener")
+                                        .log(logger_state);
                                     }
                                 }
                             }
@@ -769,13 +748,13 @@ impl ReliableCommunication {
                         }
                     }
                 } 
-                Packet::Broadcast { header, .. } => {
+                PacketType::Broadcast(pkt) => {
                     {
                         let logger_state = log::LoggerState::Packet{
                             state: log::PacketStatus::Received,
-                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(header.src_addr.port() as usize % 100),
-                            seq_num: header.seq_num as usize,
+                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
+                            seq_num: pkt.header.seq_num as usize,
 
                         };
 
@@ -784,41 +763,40 @@ impl ReliableCommunication {
 
                     // Handle data
                     let packets = pkts_per_origin
-                        .entry(header.origin)
+                        .entry(pkt.header.origin)
                         .or_insert(Vec::new());
                     let expected = match packets.last() {
                         Some(p) => match p {
-                            Packet::Broadcast { header, .. } => header.seq_num + 1,
+                            PacketType::Broadcast(pp) => pp.header.seq_num + 1,
                             _ => panic!("Erro ao receber mensagem: Último pacote não é um Broadcast"),
                         },
                         None => 0,
                     };
 
                     // Ignore the packet if the sequence number is higher than expected
-                    if header.seq_num > expected {
+                    if pkt.header.seq_num > expected {
                         continue;
                     }
                     // Send ack otherwise
-                    self.channel.send(&packet.get_ack());
+                    self.channel.send(&pkt.get_ack());
                     {
                         let logger_state = log::LoggerState::Packet {
                             state: log::PacketStatus::SentAck,
-                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(header.src_addr.port() as usize % 100),
-                            seq_num: header.seq_num as usize,
+                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
+                            seq_num: pkt.header.seq_num as usize,
                         };
                         self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
                     }
 
-                    if header.seq_num < expected { continue; }
+                    if pkt.header.seq_num < expected { continue; }
                     
-                    if header.is_last {
+                    if pkt.header.is_last {
                         let (message, origin, sequence_number) =
                             ReliableCommunication::receive_last_packet(&self, packets, &packet);
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {
-                                debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
                                 messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
                             }
                             // URB: All broadcasts must be gossiped and delivered
@@ -856,13 +834,13 @@ impl ReliableCommunication {
                     }
                     packets.push(packet);
                 }
-                Packet::Send { header, .. } => {
+                PacketType::Send(pkt) => {
                     {
                         let logger_state = log::LoggerState::Packet{
                             state: log::PacketStatus::Received,
-                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(header.src_addr.port() as usize % 100),
-                            seq_num: header.seq_num as usize,
+                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
+                            seq_num: pkt.header.seq_num as usize,
 
                         };
 
@@ -871,35 +849,35 @@ impl ReliableCommunication {
 
                     // Handle data
                     let packets = pkts_per_origin
-                        .entry(header.src_addr)
+                        .entry(pkt.header.src_addr)
                         .or_insert(Vec::new());
                     let expected = match packets.last() {
                         Some(p) => match p {
-                            Packet::Send { header, .. } => header.seq_num + 1,
+                            PacketType::Send(pkt) => pkt.header.seq_num + 1,
                             _ => panic!("Erro ao receber mensagem: Último pacote não é um Send"),
                         },
                         None => 0,
                     };
 
                     // Ignore the packet if the sequence number is higher than expected
-                    if header.seq_num > expected {
+                    if pkt.header.seq_num > expected {
                         continue;
                     }
                     // Send ack otherwise
-                    self.channel.send(&packet.get_ack());
+                    self.channel.send(&pkt.get_ack());
                     {
                         let logger_state = log::LoggerState::Packet {
                             state: log::PacketStatus::SentAck,
-                            current_agent_id: Some(header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(header.src_addr.port() as usize % 100),
-                            seq_num: header.seq_num as usize,
+                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
+                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
+                            seq_num: pkt.header.seq_num as usize,
                         };
                         self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
                     }
 
-                    if header.seq_num < expected { continue; }
+                    if pkt.header.seq_num < expected { continue; }
                     
-                    if header.is_last {
+                    if pkt.header.is_last {
                         let (message, _, _) =
                             ReliableCommunication::receive_last_packet(&self, packets, &packet);
                         messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
@@ -935,8 +913,8 @@ impl ReliableCommunication {
     /// When a packet marked as last is received, the packets are merged and the message is returned
     fn receive_last_packet(
         &self,
-        packets: &mut Vec<Packet>,
-        packet: &Packet
+        packets: &mut Vec<PacketType>,
+        packet: &PacketType
     ) -> (Vec<u8>, SocketAddr, u32) {
         let mut message = Vec::new();
         // Ignore the first packet if its the remnant of a previous message
@@ -948,9 +926,9 @@ impl ReliableCommunication {
          }
 
         for packet in packets.iter() {            
-            message.extend(&packet.get_data());
+            message.extend(packet.get_data());
         }
-        message.extend(&packet.get_data());
+        message.extend(packet.get_data());
 
         let sequence_number: u32;
         {
