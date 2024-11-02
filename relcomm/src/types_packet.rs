@@ -1,119 +1,211 @@
-#![allow(dead_code)]
 // Importações necessárias
 use std::net::SocketAddr;
-use std::array::TryFromSliceError;
-use crate::types_header::{HeaderSendData, HeaderBroadcastData, HeaderAck, Header};
-pub const BUFFER_SIZE: usize = 2<<9;
-struct SendData {
-    data: Vec<u8>,
+use crate::types_header::{Header, HeaderAck, HeaderBroadcast, HeaderSend};
+
+#[derive(Clone)]
+pub enum Packet {
+    Send{
+        header: HeaderSend,
+        data: Vec<u8>,
+    },
+    Broadcast{
+        header: HeaderBroadcast,
+        data: Vec<u8>,
+    },
+    Ack{
+        header: HeaderAck,
+    },
 }
 
-struct BroadcastData {
-    data: Vec<u8>,
-}
-
-struct Ack {}
-
-trait IsPacket: Sized {
-    // TODO: research how inheritance actually works in Rust
-    fn checksum(&self) -> u32;
-    fn size() -> usize;
-    fn from_bytes(bytes: Vec<u8>, data_size: usize) -> Vec<u8>;
-    fn to_bytes(&self) -> Vec<u8>;
-}
-impl IsPacket for SendData {
-    fn checksum(&self) -> u32 {
-        self.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32))
-    }
-    fn size() -> usize {
-        HeaderSendData::size()
-    }
-    fn from_bytes(bytes: Vec<u8>, data_size: usize) -> Vec<u8> {
-        bytes[HeaderSendData::size()..data_size].to_vec()
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        self.data.clone()
-    }
-}
-impl IsPacket for BroadcastData {
-    fn checksum(&self) -> u32 {
-        self.data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32))
-    }
-    fn size() -> usize {
-        HeaderBroadcastData::size()
-    }
-    fn from_bytes(bytes: Vec<u8>, data_size: usize) -> Vec<u8> {
-        bytes[HeaderBroadcastData::size()..data_size].to_vec()
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        self.data.clone()
-    }
-}
-impl IsPacket for Ack {
-    fn checksum(&self) -> u32 {
-        0
-    }
-    fn size() -> usize {
-        HeaderAck::size()
-    }
-    fn from_bytes(_: Vec<u8>, _data_size: usize) -> Vec<u8> {
-        Vec::new()
-    }
-    fn to_bytes(&self) -> Vec<u8> {
-        Vec::new()
-    }
-}
-
-trait HasData {}
-impl HasData for SendData {}
-impl HasData for BroadcastData {}
-
-struct Packet<IsPacket> {
-    pkt: IsPacket,
-    header: Header,
-}
-
-impl<Pkt> Packet<Pkt> where Pkt: IsPacket {
+impl Packet {
     pub const BUFFER_SIZE: usize = 2<<9;
-    pub fn checksum(&self) -> u32 {
-        self.pkt.checksum() + Header::checksum(&self.header)
+    fn new(header: Header, data: Vec<u8>) -> Self {
+        let mut pkt = match header {
+            Header::Send(header) => {
+                Packet::Send {header, data}
+            },
+            Header::Broadcast(header) => {
+                Packet::Broadcast {header, data}
+            },
+            Header::Ack(_) => { panic!("Ack packet must not have data") },
+        };
+        pkt.set_checksum(Packet::checksum(&pkt));
+        pkt
+    }
+    pub fn checksum(pkt: &Packet) -> u32 {
+        match pkt {
+            Packet::Send{header, data} => {
+                let sum: u32 = data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
+                sum.wrapping_add(HeaderSend::checksum(header))
+            },
+            Packet::Broadcast{header, data} => {
+                let sum: u32 = data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte as u32));
+                sum.wrapping_add(HeaderBroadcast::checksum(header))
+            },
+            Packet::Ack {header} => {
+                HeaderAck::checksum(header)
+            }
+        }
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        let type_h = bytes[0];
+        let bytes = bytes[1..].to_vec();
+        match type_h {
+            Header::SD => {
+                let data = bytes[HeaderSend::size()..].to_vec();
+                let header = HeaderSend::from_bytes(bytes);
+                Packet::Send {header, data}
+            },
+            Header::BD => {
+                let data = bytes[HeaderBroadcast::size()..].to_vec();
+                let header = HeaderBroadcast::from_bytes(bytes);
+                Packet::Broadcast {header, data}
+            },
+            Header::ACK => {
+                let header = HeaderAck::from_bytes(bytes);
+                Packet::Ack {header}
+            },
+            _ => panic!("Invalid packet type"),
+        }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = self.header.to_bytes();
-        bytes.extend_from_slice(&self.pkt.to_bytes());
-        bytes
+        match self {
+            Packet::Send {header, data} => {
+                let mut bytes = header.to_bytes();
+                bytes.extend_from_slice(&data);
+                bytes
+            },
+            Packet::Broadcast {header, data} => {
+                let mut bytes = header.to_bytes();
+                bytes.extend_from_slice(&data);
+                bytes
+            },
+            Packet::Ack {header} => {
+                header.to_bytes()
+            }
+        }
     }
 }
 
-impl<T> Packet<T> where T: HasData, T: IsPacket {}
+impl Packet {
+    pub fn get_checksum(&self) -> u32 {
+        match self {
+            Packet::Send {header, ..} => header.checksum,
+            Packet::Broadcast {header, ..} => header.checksum,
+            Packet::Ack {header, ..} => header.checksum,
+        }
+    }
+    pub fn set_checksum(&mut self, value: u32) {
+        match self {
+            Packet::Send {header, ..} => header.checksum += value,
+            Packet::Broadcast {header, ..} => header.checksum += value,
+            Packet::Ack {header, ..} => header.checksum += value,
+        }
+    }
 
-impl Packet<SendData> {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
-            seq_num: u32, is_last: bool, data: Vec<u8>) -> Self {
-        let mut header = HeaderSendData {
+    pub fn get_dst_addr(&self) -> SocketAddr {
+        match &self {
+            Packet::Send {header, ..} => header.dst_addr,
+            Packet::Broadcast {header, ..} => header.dst_addr,
+            Packet::Ack {header, ..} => header.dst_addr,
+        }
+    }
+
+    pub fn get_src_addr(&self) -> SocketAddr {
+        match &self {
+            Packet::Send {header, ..} => header.src_addr,
+            Packet::Broadcast {header, ..} => header.src_addr,
+            Packet::Ack {header, ..} => header.src_addr,
+        }
+    }
+
+    pub fn get_origin_addr(&self) -> SocketAddr {
+        match &self {
+            Packet::Broadcast {header, ..} => header.origin,
+            Packet::Send {header, ..} => header.src_addr,
+            Packet::Ack {..} => { panic!("Ack packet must not have origin") },
+        }
+    }
+
+    pub fn get_seq_num(&self) -> u32 {
+        match &self {
+            Packet::Send {header, ..} => header.seq_num,
+            Packet::Broadcast {header, ..} => header.seq_num,
+            Packet::Ack {header, ..} => header.seq_num,
+        }
+    }
+
+    pub fn is_last(&self) -> bool {
+        match self {
+            Packet::Send {header, ..} => header.is_last,
+            Packet::Broadcast {header, ..} => header.is_last,
+            Packet::Ack {..} => { panic!("Ack packet must not have is_last") },
+        }
+    }
+
+    pub fn get_data(&self) -> Vec<u8> {
+        match self {
+            Packet::Send {data, ..} => data.clone(),
+            Packet::Broadcast {data, ..} => data.clone(),
+            Packet::Ack {..} => { panic!("Ack packet must not have data") },
+        }
+    }
+}
+
+
+
+impl Packet {
+    fn new_send(src_addr: SocketAddr, dst_addr: SocketAddr,
+        seq_num: u32, is_last: bool, data: Vec<u8>) -> Self {
+        let header = HeaderSend {
             src_addr,
             dst_addr,
             seq_num,
             is_last,
             checksum: 0,
         };
-        header.checksum = HeaderSendData::checksum(&header);
-        let header = Header::SendData(header);
-        let pkt = SendData { data };
-        Self { pkt, header }
+        Packet::new(Header::Send(header), data)
     }
 
-    fn packets_from_message(
+    fn new_brdcst(src_addr: SocketAddr, dst_addr: SocketAddr,
+        origin: SocketAddr, seq_num: u32, is_last: bool,
+        data: Vec<u8>) -> Self {
+        let header = HeaderBroadcast {
+            src_addr,
+            dst_addr,
+            origin,
+            seq_num,
+            is_last,
+            checksum: 0,
+        };
+        Packet::new(Header::Broadcast(header), data)
+    }
+
+    pub fn get_ack(&self) -> Self {
+        let header = match self {
+            Packet::Send {header, ..} => {
+                header.get_ack()
+            },
+            Packet::Broadcast {header, ..} => {
+                header.get_ack()
+            },
+            Packet::Ack {..} => { panic!("Ack packet must not have ack") },
+        };
+        Packet::Ack { header }
+    }
+
+    pub fn send_pkts_from_message(
         src_addr: SocketAddr,
         dst_addr: SocketAddr,
         seq_num: u32,
         data: Vec<u8>,
     ) -> Vec<Self> {
-        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - HeaderBroadcastData::size()).collect();
+        let chunks: Vec<&[u8]> = data.chunks(Packet::BUFFER_SIZE - HeaderBroadcast::size()).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
-            Packet::<SendData>::new(
+            Packet::new_send(
                 src_addr,
                 dst_addr,
                 seq_num + i as u32,
@@ -123,43 +215,17 @@ impl Packet<SendData> {
         }).collect()
     }
 
-    pub fn from_bytes(bytes: Vec<u8>, data_size: usize) -> Result<Self, TryFromSliceError> {
-        let header = Header::from_bytes(bytes[..HeaderSendData::size()].try_into()?);
-        let data = SendData::from_bytes(bytes, data_size);
-        let pkt = SendData { data };
-        Ok(Self { pkt, header })
-    }
-}
-
-impl Packet<BroadcastData> {
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
-            origin: SocketAddr, seq_num: u32, is_last: bool,
-            data: Vec<u8>) -> Self {
-        let mut header = HeaderBroadcastData {
-            src_addr,
-            dst_addr,
-            origin,
-            seq_num,
-            is_last,
-            checksum: 0,
-        };
-        header.checksum = HeaderBroadcastData::checksum(&header);
-        let header = Header::BroadcastData(header);
-        let pkt = BroadcastData { data };
-        Self { pkt, header }
-    }
-
-    fn packets_from_message(
+    pub fn brdcst_pkts_from_message(
         src_addr: SocketAddr,
         dst_addr: SocketAddr,
         origin: SocketAddr,
         seq_num: u32,
         data: Vec<u8>,
     ) -> Vec<Self> {
-        let chunks: Vec<&[u8]> = data.chunks(BUFFER_SIZE - HeaderBroadcastData::size()).collect();
+        let chunks: Vec<&[u8]> = data.chunks(Packet::BUFFER_SIZE - HeaderBroadcast::size()).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
-            Packet::<BroadcastData>::new(
+            Packet::new_brdcst(
                 src_addr,
                 dst_addr,
                 origin,
@@ -168,34 +234,5 @@ impl Packet<BroadcastData> {
                 chunk.to_vec(),
             )
         }).collect()
-    }
-
-    pub fn from_bytes(bytes: Vec<u8>, data_size: usize) -> Result<Self, TryFromSliceError> {
-        let header = Header::from_bytes(bytes.clone());
-        let data = BroadcastData::from_bytes(bytes, data_size);
-        let pkt = BroadcastData { data };
-        Ok(Self { pkt, header })
-    }
-}
-
-impl Packet<Ack> {
-    pub fn new(src_addr: SocketAddr,
-            dst_addr: SocketAddr,
-            seq_num: u32) -> Self {
-        let mut header = HeaderAck {
-            src_addr,
-            dst_addr,
-            seq_num,
-            checksum: 0,
-        };
-        header.checksum = HeaderAck::checksum(&header);
-        let header = Header::Ack(header);
-        let pkt = Ack {};
-        Self { pkt, header }
-    }
-
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, TryFromSliceError> {
-        let header = Header::from_bytes(bytes[..HeaderAck::size()].try_into()?);
-        Ok(Self { pkt: Ack {}, header })
     }
 }
