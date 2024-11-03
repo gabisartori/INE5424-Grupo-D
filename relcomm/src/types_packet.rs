@@ -2,6 +2,19 @@
 use std::net::SocketAddr;
 use crate::types_header::{Ack, Header, HeaderBrd, HeaderSend};
 
+/// Estrutura básica para pacotes de envio
+#[derive(Clone)]
+pub struct SendPkt {
+    pub header: HeaderSend,
+    pub data: Vec<u8>,
+}
+
+/// Estrutura básica para pacotes de broadcast
+#[derive(Clone)]
+pub struct BrdPkt {
+    pub header: HeaderBrd,
+    pub data: Vec<u8>,
+}
 /// Estrutura básica para pacotes
 #[derive(Clone)]
 pub enum PacketType {
@@ -35,7 +48,7 @@ impl FromBytes for PacketType {
 }
 
 /// getters para os campos essenciais dos pacotes
-pub trait Get: FromBytes {
+pub trait Get {
     const BUFFER_SIZE: usize = 2<<9;
     fn get_checksum(&self) -> u32;
     fn get_dst_addr(&self) -> SocketAddr;
@@ -43,7 +56,9 @@ pub trait Get: FromBytes {
     fn get_origin_addr(&self) -> SocketAddr;
     fn get_seq_num(&self) -> u32;
     fn is_last(&self) -> bool;
+    fn type_h(&self) -> &str;
 }
+
 impl Get for PacketType {
     fn get_checksum(&self) -> u32 {
         match self {
@@ -92,6 +107,104 @@ impl Get for PacketType {
             PacketType::Ack {..} => { panic!("Ack packet must not have is_last") },
         }
     }
+
+    fn type_h(&self) -> &str {
+        match self {
+            PacketType::Send(pkt) => pkt.type_h(),
+            PacketType::Broadcast(pkt) => pkt.type_h(),
+            PacketType::Ack(pkt) => pkt.type_h(),
+        }
+    }
+}
+
+impl Get for SendPkt {
+    fn get_checksum(&self) -> u32 {
+        self.header.checksum
+    }
+
+    fn get_dst_addr(&self) -> SocketAddr {
+        self.header.dst_addr
+    }
+
+    fn get_src_addr(&self) -> SocketAddr {
+        self.header.src_addr
+    }
+
+    fn get_origin_addr(&self) -> SocketAddr {
+        self.header.src_addr
+    }
+
+    fn get_seq_num(&self) -> u32 {
+        self.header.seq_num
+    }
+
+    fn is_last(&self) -> bool {
+        self.header.is_last
+    }
+
+    fn type_h(&self) -> &str {
+        "Send"
+    }
+}
+
+impl Get for BrdPkt {
+    fn get_checksum(&self) -> u32 {
+        self.header.checksum
+    }
+
+    fn get_dst_addr(&self) -> SocketAddr {
+        self.header.dst_addr
+    }
+
+    fn get_src_addr(&self) -> SocketAddr {
+        self.header.src_addr
+    }
+
+    fn get_origin_addr(&self) -> SocketAddr {
+        self.header.origin
+    }
+
+    fn get_seq_num(&self) -> u32 {
+        self.header.seq_num
+    }
+
+    fn is_last(&self) -> bool {
+        self.header.is_last
+    }
+
+    fn type_h(&self) -> &str {
+        "Broadcast"
+    }    
+}
+
+impl Get for Ack {
+    fn get_checksum(&self) -> u32 {
+        self.checksum
+    }
+
+    fn get_dst_addr(&self) -> SocketAddr {
+        self.dst_addr
+    }
+
+    fn get_src_addr(&self) -> SocketAddr {
+        self.src_addr
+    }
+
+    fn get_origin_addr(&self) -> SocketAddr {
+        self.src_addr
+    }
+
+    fn get_seq_num(&self) -> u32 {
+        self.seq_num
+    }
+
+    fn is_last(&self) -> bool {
+        false
+    }
+
+    fn type_h(&self) -> &str {
+        "Ack"
+    }    
 }
 
 /// checksum and to_bytes interface, and get_data
@@ -103,13 +216,6 @@ impl PacketType {
             PacketType::Ack(pkt) => <Ack as Header>::checksum(pkt),
         }
     }
-    pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            PacketType::Send(pkt) => pkt.to_bytes(),
-            PacketType::Broadcast(pkt) => pkt.to_bytes(),
-            PacketType::Ack(pkt) => <Ack as Header>::to_bytes(pkt),
-        }
-    }
 
     pub fn get_data(&self) -> &Vec<u8> {
         match self {
@@ -118,17 +224,6 @@ impl PacketType {
             PacketType::Ack(_) => { panic!("Ack packet must not have data") },
         }
     }
-}
-
-#[derive(Clone)]
-pub struct SendPkt {
-    pub header: HeaderSend,
-    pub data: Vec<u8>,
-}
-#[derive(Clone)]
-pub struct BrdPkt {
-    pub header: HeaderBrd,
-    pub data: Vec<u8>,
 }
 
 /// essencial para Distribuição de pacotes
@@ -221,8 +316,8 @@ impl Set for PacketType {
 /// usados pelos pacotes que contêm dados
 pub trait HasData<Header>: Sized + Packet {
     fn new(header: Header, data: Vec<u8>) -> Self;
-    fn get_ack(&self) -> PacketType;
-    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<PacketType>;
+    fn get_ack(&self) -> Ack;
+    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<Self>;
 }
 
 impl HasData<HeaderSend> for SendPkt {
@@ -234,15 +329,15 @@ impl HasData<HeaderSend> for SendPkt {
         pkt.set_checksum(SendPkt::checksum(&pkt));
         pkt
     }
-    fn get_ack(&self) -> PacketType {
-        PacketType::Ack(self.header.get_ack())
+    fn get_ack(&self) -> Ack {
+        self.header.get_ack()
     }
 
-    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<PacketType> {
+    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<Self> {
         let chunks: Vec<&[u8]> = data.chunks(PacketType::BUFFER_SIZE - HeaderSend::size()).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {            
-            PacketType::Send(SendPkt::new(
+            SendPkt::new(
             HeaderSend {
                     src_addr: addrs[0],
                     dst_addr: addrs[1],
@@ -251,7 +346,7 @@ impl HasData<HeaderSend> for SendPkt {
                     checksum: 0,
                     },
             chunk.to_vec(),
-            ))
+            )
         }).collect()
     }
 
@@ -267,11 +362,11 @@ impl HasData<HeaderBrd> for BrdPkt {
         pkt
     }
 
-    fn get_ack(&self) -> PacketType {
-        PacketType::Ack(self.header.get_ack())
+    fn get_ack(&self) -> Ack {
+        self.header.get_ack()
     }
 
-    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<PacketType> {
+    fn pkts_from_msg(addrs: Vec<SocketAddr>, seq_num: u32, data: Vec<u8>) -> Vec<Self> {
         let chunks: Vec<&[u8]> = data.chunks(PacketType::BUFFER_SIZE - HeaderSend::size()).collect();
 
         chunks.iter().enumerate().map(|(i, chunk)| {
@@ -282,11 +377,20 @@ impl HasData<HeaderBrd> for BrdPkt {
                 seq_num: seq_num + i as u32,
                 is_last: i == (chunks.len() - 1),
                 checksum: 0
-            };
-            PacketType::Broadcast(BrdPkt::new(
+            };BrdPkt::new(
                 header,
                 chunk.to_vec(),
-            ))
+            )
         }).collect()
     }
 }
+
+/*
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            PacketType::Send(pkt) => pkt.to_bytes(),
+            PacketType::Broadcast(pkt) => pkt.to_bytes(),
+            PacketType::Ack(pkt) => <Ack as Header>::to_bytes(pkt),
+        }
+    }
+*/
