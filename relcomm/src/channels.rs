@@ -7,7 +7,7 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use std::io::Error;
 // use crate::packet::Packet;
-use crate::types_packet::{PacketType, Get, FromBytes, Set};
+use crate::types_packet::{PacketType, Packet, Get, FromBytes, Set};
 
 /// reads the loss_rate and corruption_rate from the command line arguments
 /// they should be the last two arguments exept for the agent and test id
@@ -68,7 +68,8 @@ impl Channel {
     }
 
     /// Wrapper for UdpSocket::send_to, with some print statements
-    pub fn send(&self, packet: &PacketType) -> bool {
+    pub fn send<P>(&self, packet: &P) -> bool
+        where P: Get + Packet {
         match self.socket.send_to(&packet.to_bytes(), packet.get_dst_addr()) {
             Ok(_) => true,
             Err(_) => false
