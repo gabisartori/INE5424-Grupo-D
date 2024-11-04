@@ -68,8 +68,7 @@ impl Channel {
     }
 
     /// Wrapper for UdpSocket::send_to, with some print statements
-    pub fn send<P>(&self, packet: &P) -> bool
-        where P: Get + Packet {
+    pub fn send(&self, packet: &(impl Packet + Get)) -> bool {
         match self.socket.send_to(&packet.to_bytes(), packet.get_dst_addr()) {
             Ok(_) => true,
             Err(_) => false
