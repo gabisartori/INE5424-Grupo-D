@@ -1,6 +1,6 @@
 // Importações necessárias
 use std::net::SocketAddr;
-use crate::types_header::{Ack, HeaderBrd, HeaderSend, HeaderLReq, Header, DataHeader};
+use crate::types_header::{Ack, HBrd, HSnd, HLRq, Header, DataHeader};
 /// Estrutura básica para pacotes com uma mensagem
 #[derive(Clone)]
 pub struct DataPkt<H: DataHeader> {
@@ -11,9 +11,9 @@ pub struct DataPkt<H: DataHeader> {
 /// Estrutura básica para pacotes
 #[derive(Clone)]
 pub enum PacketType {
-    Send(DataPkt<HeaderSend>),
-    Broadcast(DataPkt<HeaderBrd>),
-    LeaderRequest(DataPkt<HeaderLReq>),
+    Send(DataPkt<HSnd>),
+    Broadcast(DataPkt<HBrd>),
+    LeaderRequest(DataPkt<HLRq>),
     Ack(Ack),
 }
 
@@ -94,7 +94,7 @@ impl Get for PacketType {
     }
 }
 
-impl Get for DataPkt<HeaderSend> {
+impl Get for DataPkt<HSnd> {
     fn get_checksum(&self) -> u32 {
         self.header.checksum
     }
@@ -124,7 +124,7 @@ impl Get for DataPkt<HeaderSend> {
     }
 }
 
-impl Get for DataPkt<HeaderBrd> {
+impl Get for DataPkt<HBrd> {
     fn get_checksum(&self) -> u32 {
         self.header.checksum
     }
@@ -154,7 +154,7 @@ impl Get for DataPkt<HeaderBrd> {
     }    
 }
 
-impl Get for DataPkt<HeaderLReq> {
+impl Get for DataPkt<HLRq> {
     fn get_checksum(&self) -> u32 {
         self.header.checksum
     }
@@ -246,9 +246,9 @@ impl FromBytes for PacketType {
 impl PacketType {
     pub fn checksum(pkt: &Self) -> u32 {
         match pkt {
-            PacketType::Send(pkt) => DataPkt::<HeaderSend>::checksum(pkt),
-            PacketType::Broadcast(pkt) => DataPkt::<HeaderBrd>::checksum(pkt),
-            PacketType::LeaderRequest(pkt) => DataPkt::<HeaderLReq>::checksum(pkt),
+            PacketType::Send(pkt) => DataPkt::<HSnd>::checksum(pkt),
+            PacketType::Broadcast(pkt) => DataPkt::<HBrd>::checksum(pkt),
+            PacketType::LeaderRequest(pkt) => DataPkt::<HLRq>::checksum(pkt),
             PacketType::Ack(pkt) => <Ack as Header>::checksum(pkt),
         }
     }
@@ -307,17 +307,17 @@ impl Packet for Ack {
 pub trait Set {
     fn set_checksum(&mut self, value: u32);
 }
-impl Set for DataPkt<HeaderSend> {
+impl Set for DataPkt<HSnd> {
     fn set_checksum(&mut self, value: u32) {
         self.header.checksum += value;
     }
 }
-impl Set for DataPkt<HeaderBrd> {
+impl Set for DataPkt<HBrd> {
     fn set_checksum(&mut self, value: u32) {
         self.header.checksum += value;
     }
 }
-impl Set for DataPkt<HeaderLReq> {
+impl Set for DataPkt<HLRq> {
     fn set_checksum(&mut self, value: u32) {
         self.header.checksum += value;
     }

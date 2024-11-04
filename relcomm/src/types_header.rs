@@ -38,6 +38,7 @@ pub trait Header {
         bytes.extend_from_slice(&addr.port().to_be_bytes());
         bytes
     }
+    
     fn checksum(header: &Self) -> u32;
     fn to_bytes(&self) -> Vec<u8>;
     fn from_bytes(bytes: Vec<u8>) -> Self;
@@ -45,7 +46,7 @@ pub trait Header {
 }
 
 #[derive(Clone)]
-pub struct HeaderSend {
+pub struct HSnd {
     pub src_addr: SocketAddr,   // 06 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
     pub seq_num: u32,           // 16 bytes
@@ -53,12 +54,12 @@ pub struct HeaderSend {
     pub checksum: u32,          // 21 bytes
 }
 
-impl HeaderSend {
+impl HSnd {
     const SIZE: usize = 21;
 }
 
-impl Header for HeaderSend {
-    fn checksum(header: &HeaderSend) -> u32 {
+impl Header for HSnd {
+    fn checksum(header: &HSnd) -> u32 {
         let mut sum: u32 = 0;
         sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
         sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
@@ -102,7 +103,7 @@ impl Header for HeaderSend {
 }
 
 #[derive(Clone)]
-pub struct HeaderBrd {
+pub struct HBrd {
     pub src_addr: SocketAddr,   // 06 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
     pub origin: SocketAddr,     // 18 bytes
@@ -111,12 +112,12 @@ pub struct HeaderBrd {
     pub checksum: u32,          // 27 bytes
 }
 
-impl HeaderBrd {
+impl HBrd {
     pub const SIZE: usize = 27;
 }
 
-impl Header for HeaderBrd {
-    fn checksum(header: &HeaderBrd) -> u32 {
+impl Header for HBrd {
+    fn checksum(header: &HBrd) -> u32 {
         let mut sum: u32 = 0;
         sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
         sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
@@ -211,7 +212,7 @@ impl Header for Ack {
 }
 
 #[derive(Clone)]
-pub struct HeaderLReq {
+pub struct HLRq {
     pub src_addr: SocketAddr,   // 06 bytes
     pub dst_addr: SocketAddr,   // 12 bytes
     pub seq_num: u32,           // 16 bytes
@@ -219,12 +220,12 @@ pub struct HeaderLReq {
     pub checksum: u32,          // 21 bytes
 }
 
-impl HeaderLReq {
+impl HLRq {
     const SIZE: usize = 21;
 }
 
-impl Header for HeaderLReq {
-    fn checksum(header: &HeaderLReq) -> u32 {
+impl Header for HLRq {
+    fn checksum(header: &HLRq) -> u32 {
         let mut sum: u32 = 0;
         sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
         sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
@@ -271,7 +272,7 @@ pub trait DataHeader: Header {
     fn get_ack(&self) -> Ack;
 }
 
-impl DataHeader for HeaderSend {
+impl DataHeader for HSnd {
     fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
         Self {
             src_addr: addr[0],
@@ -293,7 +294,7 @@ impl DataHeader for HeaderSend {
     }
 }
 
-impl DataHeader for HeaderBrd {
+impl DataHeader for HBrd {
     fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
         Self {
             src_addr: addr[0],
@@ -316,7 +317,7 @@ impl DataHeader for HeaderBrd {
     }
 }
 
-impl DataHeader for HeaderLReq {
+impl DataHeader for HLRq {
     fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
         Self {
             src_addr: addr[0],
@@ -341,8 +342,8 @@ impl DataHeader for HeaderLReq {
 /*
 #[derive(Clone)]
 pub enum Header {
-    Send(HeaderSend),
-    Broadcast(HeaderBrd),
+    Send(HSnd),
+    Broadcast(HBrd),
     /// because ACK should be built only from another header
     Ack(Ack),
 }
@@ -367,11 +368,11 @@ impl Header {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         match bytes[0] {
             Header::SD => {
-                let header = HeaderSend::from_bytes(bytes[1..HeaderSend::size()].to_vec());
+                let header = HSnd::from_bytes(bytes[1..HSnd::size()].to_vec());
                 Header::Send(header)
             },
             Header::BD => {
-                let header = HeaderBrd::from_bytes(bytes[1..HeaderBrd::size()].to_vec());
+                let header = HBrd::from_bytes(bytes[1..HBrd::size()].to_vec());
                 Header::Broadcast(header)
             },
             Header::ACK => {
@@ -384,10 +385,10 @@ impl Header {
     pub fn checksum(header: &Header) -> u32 {
         match header {
             Header::Send(header) => {
-                HeaderSend::checksum(header)
+                HSnd::checksum(header)
             },
             Header::Broadcast(header) => {
-                HeaderBrd::checksum(header)
+                HBrd::checksum(header)
             },
             Header::Ack(header) => {
                 Ack::checksum(header)
@@ -396,8 +397,8 @@ impl Header {
     }
     pub fn size(&self) -> usize {
         match self {
-            Header::Send(_) => HeaderSend::size(),
-            Header::Broadcast(_) => HeaderBrd::size(),
+            Header::Send(_) => HSnd::size(),
+            Header::Broadcast(_) => HBrd::size(),
             Header::Ack(_) => Ack::size(),
         }
     }
