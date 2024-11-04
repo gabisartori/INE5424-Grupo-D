@@ -5,9 +5,10 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 use crate::channels::Channel;
-use crate::packet::Packet;
+use crate::types_packet::{Packet, PacketType, HasData, DataPkt, FromBytes, Set, Get};
+use crate::types_header::{Header, DataHeader, Ack, HBrd, HLRq, HSnd};
 
-use logger::{debug_println, log::{self, SharedLogger, MessageStatus}};
+use logger::{log::{Logger, LoggerState, MessageStatus, PacketStatus, SharedLogger}, debug_println};
 
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -85,32 +86,32 @@ impl SendRequest {
 /// Reads the arguments from the command line, parses them and returns them as a tuple
 fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
     let args: Vec<String> = std::env::args().collect();
-    let broadcast: Broadcast = match args[3].as_str() {
+    let broadcast: Broadcast = match args[1].as_str() {
         "BEB" => Broadcast::BEB,
         "URB" => Broadcast::URB,
         "AB" => Broadcast::AB,
         _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3]),
     };
-    let timeout: u64 = args[4]
+    let timeout: u64 = args[2]
         .parse()
         .expect("Falha ao converter timeout para u64");
-    let timeout_limit: u32 = args[5]
+    let timeout_limit: u32 = args[3]
         .parse()
         .expect("Falha ao converter timeout_limit para u32");
-    let message_timeout: u64 = args[6]
+    let message_timeout: u64 = args[4]
         .parse()
         .expect("Falha ao converter message_timeout para u64");
-    let broadcast_timeout: u64 = args[7]
+    let broadcast_timeout: u64 = args[5]
         .parse()
         .expect("Falha ao converter broadcast_timeout para u64");
-    let gossip_rate: usize = args[10]
+    let gossip_rate: usize = args[6]
         .parse()
         .expect("Falha ao converter gossip_rate para usize");
-    let w_size: usize = args[11]
+    let w_size: usize = args[7]
         .parse()
         .expect("Falha ao converter w_size para usize");
 
-    let timeout = Duration::from_millis(timeout);
+    let timeout = Duration::from_micros(timeout);
     let message_timeout = Duration::from_millis(message_timeout);
     let broadcast_timeout = Duration::from_millis(broadcast_timeout);
     (
@@ -374,39 +375,6 @@ impl ReliableCommunication {
         }
     }
 
-    /// Marks a node as dead
-    fn mark_as_dead(&self, addr: &SocketAddr) {
-        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
-        for node in group.iter_mut() {
-            if node.addr == *addr {
-                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
-                node.state = NodeState::DEAD;
-            }
-        }
-    }
-
-    /// Returns the node with the highest priority (currently the first one alive in the group vector)
-    fn get_leader(&self) -> Node {
-        for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state == NodeState::ALIVE {
-                debug_println!("Agente {} escolheu {} como líder", self.host.agent_number, node.agent_number);
-                return node.clone();
-            }
-        }
-        return self.host.clone();
-    }
-
-    /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
-    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
-        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
-        for (i, n) in group.iter().enumerate() {
-            if n.addr == *node_address {
-                return group.len()-i;
-            }
-        }
-        0
-    }
-
     /// Picks the node "friends" and retransmits the message to them
     /// This retransmission preserves the original message information about the origin and sequence number
     /// The friends are any group of N nodes in the group, where N is the gossip rate. Currently it's the next N nodes in the group vector
@@ -432,7 +400,7 @@ impl ReliableCommunication {
     /// Thread to handle the sending of messages
     fn sender(
         self: Arc<Self>,
-        acks_rx: Receiver<Packet>,
+        acks_rx: Receiver<Ack>,
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
@@ -455,30 +423,12 @@ impl ReliableCommunication {
                     message_header.seq_num,
                 )) {
                     Ok(_) => {
-                        if message_header.must_gossip() {
-                            let logger_state = log::LoggerState::Message{
-                                state: MessageStatus::SentBroadcast,
-                                current_agent_id: Some(self.host.agent_number),
-                                target_agent_id: Some(message_header.dst_addr.port() as usize % 100),
-                                message_id: message_header.seq_num as usize,
-                            };
-                            self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Sender")
-                                .log(logger_state);
-                        } else {
-                            let logger_state = log::LoggerState::Message{
-                                state: MessageStatus::Sent,
-                                current_agent_id: Some(self.host.agent_number),
-                                target_agent_id: Some(message_header.dst_addr.port() as usize % 100),
-                                message_id: message_header.seq_num as usize,
-                            };
-
-                            self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Sender")
-                                .log(logger_state);
-                        }
+                        let status = match packets[0].type_h() {
+                            "Send" => PacketStatus::Sent,
+                            "Broadcast" => PacketStatus::SentBroadcast,
+                            _ => panic!("Erro ao enviar mensagem: Tipo de pacote desconhecido"),
+                        };
+                        Self::log_pkt::<P>(&self.logger, &packets[0], status);                        
                     }
                     Err(e) => {
                         self.logger
@@ -510,7 +460,7 @@ impl ReliableCommunication {
     }
 
     /// Go-Back-N algorithm to send packets
-    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
+    fn go_back_n<H: DataHeader>(&self, packets: &Vec<DataPkt<H>>, acks_rx: &Receiver<Ack>) -> bool {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
@@ -525,31 +475,13 @@ impl ReliableCommunication {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
+                let status = match packets[0].type_h() {
+                    "Send" => PacketStatus::Sent,
+                    "Broadcast" => PacketStatus::SentBroadcast,
+                    _ => panic!("Erro ao enviar mensagem: Tipo de pacote desconhecido"),
+                };
+                Self::log_pkt::<P>(&self.logger, &packets[next_seq_num], status);
 
-                if packets[0].header.must_gossip() == true {
-                    let logger_state = log::LoggerState::Packet{
-                        state: log::PacketStatus::SentBroadcast,
-                        current_agent_id: Some(packets[0].header.src_addr.port() as usize % 100),
-                        target_agent_id: Some(packets[0].header.dst_addr.port() as usize % 100),
-                        seq_num: next_seq_num,
-                    };
-                    self.logger
-                        .lock()
-                        .expect("Couldn't aquire logger Lock on Go-Back-N")
-                        .log(logger_state);
-
-                } else {
-                    let logger_state = log::LoggerState::Packet{
-                        state: log::PacketStatus::Sent,
-                        current_agent_id: Some(packets[0].header.src_addr.port() as usize % 100),
-                        target_agent_id: Some(packets[0].header.dst_addr.port() as usize % 100),
-                        seq_num: next_seq_num,
-                    };
-                    self.logger
-                        .lock()
-                        .expect("Couldn't aquire logger Lock on Go-Back-N")
-                        .log(logger_state);
-                }
                 next_seq_num += 1;
             }
 
@@ -581,7 +513,7 @@ impl ReliableCommunication {
 
     /// Handles a request for the sender, returning what messages the request generates
     /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
-    fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
+    fn get_messages<H: DataHeader>(&self, request: &SendRequest) -> Vec<Vec<DataPkt<H>>> {
         let mut messages = Vec::new();
         match &request.options {
             SendRequestData::Send { destination_address } => {
@@ -631,34 +563,15 @@ impl ReliableCommunication {
         messages
     }
 
-    /// Returns the nodes that are considered friends of the current node
-    /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
-    fn get_friends(&self) -> Vec<Node> {
-        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-
-        let start = (self.host.agent_number + 1) % group.len();
-        let end = (start + self.gossip_rate) % group.len();
-        let mut friends = Vec::new();
-
-        if start < end {
-            friends.extend_from_slice(&group[start..end]);
-        } else {
-            friends.extend_from_slice(&group[start..]);
-            friends.extend_from_slice(&group[..end]);
-        }
-
-        friends
-    }
-
     /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
-    fn get_pkts(
+    fn get_pkts<H: DataHeader>(
         &self,
         src_addr: &SocketAddr,
         dst_addr: &SocketAddr,
         origin: &SocketAddr,
         data: Vec<u8>,
         is_gossip: bool
-    ) -> Vec<Packet> {
+    ) -> Vec<DataPkt<H>> {
         let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
         let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
         let packets = Packet::packets_from_message(
@@ -672,7 +585,7 @@ impl ReliableCommunication {
     fn listener(
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
-        acks_tx: Sender<Packet>,
+        acks_tx: Sender<Ack>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
@@ -688,19 +601,7 @@ impl ReliableCommunication {
                 }
             };
             if packet.header.is_ack() {
-                let pkt = packet.clone();
-
-                let logger_state = log::LoggerState::Packet{
-                    state: log::PacketStatus::ReceivedAck,
-                    current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                    seq_num: pkt.header.seq_num as usize,
-                };
-
-                self.logger
-                    .lock()
-                    .expect("Couldn't acquire logger Lock on Listener")
-                    .log(logger_state);
+                Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAck);
 
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
@@ -714,43 +615,17 @@ impl ReliableCommunication {
                             Ok(_) => {}
                             Err(e) => {
                                 debug_println!("Erro ao enviar ACK: {e}");
-                                let logger_state = log::LoggerState::Packet{
-                                    state: log::PacketStatus::ReceivedAckFailed,
-                                    current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                                    target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                                    seq_num: pkt.header.seq_num as usize,
-                                };
-                                self.logger
-                                .lock()
-                                .expect("Couldn't acquire logger Lock on Listener")
-                                .log(logger_state);                            }
+                                Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+                            }
                         }
                     }
                     None => {
                         debug_println!("ACK recebido sem destinatário esperando");
-                        let logger_state = log::LoggerState::Packet{
-                            state: log::PacketStatus::ReceivedAckFailed,
-                            current_agent_id: Some(pkt.header.dst_addr.port() as usize % 100),
-                            target_agent_id: Some(pkt.header.src_addr.port() as usize % 100),
-                            seq_num: pkt.header.seq_num as usize,
-                        };
-
-                        self.logger
-                        .lock()
-                        .expect("Couldn't acquire logger Lock on Listener")
-                        .log(logger_state);    
+                        Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
                     }
                 }
             } else {
-                let logger_state = log::LoggerState::Packet{
-                    state: log::PacketStatus::Received,
-                    current_agent_id: Some(packet.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(packet.header.src_addr.port() as usize % 100),
-                    seq_num: packet.header.seq_num as usize,
-
-                };
-
-                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::Received);
 
                 // Handle data
                 let packets = pkts_per_origin
@@ -764,20 +639,14 @@ impl ReliableCommunication {
                 }
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
-                let logger_state = log::LoggerState::Packet {
-                    state: log::PacketStatus::SentAck,
-                    current_agent_id: Some(packet.header.dst_addr.port() as usize % 100),
-                    target_agent_id: Some(packet.header.src_addr.port() as usize % 100),
-                    seq_num: packet.header.seq_num as usize,
-                };
 
-                self.logger.lock().expect("Couldn't acquire logger Lock on Listener").log(logger_state);
+                Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
 
                 if packet.header.seq_num < expected { continue; }
                 
                 if packet.header.is_last() {
                     let (message, origin, sequence_number) =
-                        ReliableCommunication::receive_last_packet(&self, packets, &packet);
+                        Self::receive_last_packet(&self, packets, &packet);
                     // Handling broadcasts
                     if packet.header.must_gossip() {
                         match self.broadcast {
@@ -850,11 +719,11 @@ impl ReliableCommunication {
     }
 
     /// When a packet marked as last is received, the packets are merged and the message is returned
-    fn receive_last_packet(
+    fn receive_last_packet<H>(
         &self,
-        packets: &mut Vec<Packet>,
-        packet: &Packet
-    ) -> (Vec<u8>, SocketAddr, u32) {
+        packets: &mut Vec<DataPkt<H>>,
+        packet: &DataPkt<H>
+    ) -> (Vec<u8>, SocketAddr, u32) where H: DataHeader + Get {
         let mut message = Vec::new();
         // Ignore the first packet if its the remnant of a previous message
         match packets.first() { 
@@ -872,34 +741,97 @@ impl ReliableCommunication {
         let sequence_number: u32;
         let curr_agent_id: usize;
         let t_agent_id: usize;
-        match packets.first() {
-            Some(p) => {
-                sequence_number = p.header.seq_num;
-                curr_agent_id = p.header.src_addr.port() as usize % 100;
-                t_agent_id = p.header.dst_addr.port() as usize % 100;
-        }
-            None => {
-                sequence_number = packet.header.seq_num;
-                curr_agent_id = packet.header.src_addr.port() as usize % 100;
-                t_agent_id = packet.header.dst_addr.port() as usize % 100;
-            }
-        }
-
-        let logger_state = log::LoggerState::Packet {
-            state: log::PacketStatus::ReceivedLastPacket,
-            current_agent_id: Some(curr_agent_id),
-            target_agent_id: Some(t_agent_id),
-            seq_num: sequence_number as usize,
+        let p = match packets.first() {
+            Some(p) => { p }
+            None => { packet }
         };
 
-        self.logger
-            .lock()
-            .expect("Couldn't acquire logger Lock on Sender")
-            .log(logger_state);
+        Self::log_pkt::<P>(&self.logger, &p, PacketStatus::ReceivedLastPacket);
 
         packets.clear();
 
 
         (message, packet.header.origin, sequence_number)
+    }
+
+    /// Marks a node as dead
+    fn mark_as_dead(&self, addr: &SocketAddr) {
+        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
+        for node in group.iter_mut() {
+            if node.addr == *addr {
+                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
+                node.state = NodeState::DEAD;
+            }
+        }
+    }
+
+    /// Returns the nodes that are considered friends of the current node
+    /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
+    fn get_friends(&self) -> Vec<Node> {
+        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+
+        let start = (self.host.agent_number + 1) % group.len();
+        let end = (start + self.gossip_rate) % group.len();
+        let mut friends = Vec::new();
+
+        if start < end {
+            friends.extend_from_slice(&group[start..end]);
+        } else {
+            friends.extend_from_slice(&group[start..]);
+            friends.extend_from_slice(&group[..end]);
+        }
+
+        friends
+    }
+
+    /// Returns the node with the highest priority (currently the first one alive in the group vector)
+    fn get_leader(&self) -> Node {
+        for node in self.group.lock().expect("Falha ao ler do grupo").iter() {
+            if node.state == NodeState::ALIVE {
+                debug_println!("Agente {} escolheu {} como líder", self.host.agent_number, node.agent_number);
+                return node.clone();
+            }
+        }
+        return self.host.clone();
+    }
+
+    /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
+    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
+        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
+        for (i, n) in group.iter().enumerate() {
+            if n.addr == *node_address {
+                return group.len()-i;
+            }
+        }
+        0
+    }
+
+    fn log_pkt<P>(logger: &Arc<Mutex<Logger>>, pkt: &P, state: PacketStatus)
+        where P: Get {
+        let logger_state = LoggerState::Packet {
+            state,
+            current_agent_id: Some(pkt.get_src_addr().port() as usize % 100),
+            target_agent_id: Some(pkt.get_dst_addr().port() as usize % 100),
+            seq_num: pkt.get_seq_num() as usize,
+        };
+
+        logger
+            .lock()
+            .expect("Couldn't acquire logger Lock on Sender")
+            .log(logger_state);
+    }
+
+    fn log_msg<P>(logger: &Arc<Mutex<Logger>>, pkt: &P, state: MessageStatus)
+        where P: Get {
+        let logger_state = LoggerState::Message {
+            state,
+            current_agent_id: Some(pkt.get_src_addr().port() as usize % 100),
+            target_agent_id: Some(pkt.get_dst_addr().port() as usize % 100),
+            message_id: pkt.get_seq_num() as usize,
+        };
+        logger
+            .lock()
+            .expect("Couldn't acquire logger Lock on Sender")
+            .log(logger_state);
     }
 }
