@@ -9,14 +9,12 @@ LOSS_RATE = 0.01
 CORRUPTION_RATE = 0.01
 
 all:
-	@cargo build --release
-	@clear
+	@cargo build -q --release
 	@target/release/INE5424 $(BROADCAST) $(TIMEOUT) $(TIMEOUT_LIMIT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(GOSSIP_RATE) $(W_SIZE) $(LOSS_RATE) $(CORRUPTION_RATE)
 	@cat tests/Resultado.txt
 
 debug:
-	@cargo build
-	@clear
+	@cargo build -q
 	@target/debug/INE5424 $(BROADCAST) $(TIMEOUT) $(TIMEOUT_LIMIT) $(MESSAGE_TIMEOUT) $(BROADCAST_TIMEOUT) $(GOSSIP_RATE) $(W_SIZE) $(LOSS_RATE) $(CORRUPTION_RATE)
 	@cat tests/Resultado.txt
 
