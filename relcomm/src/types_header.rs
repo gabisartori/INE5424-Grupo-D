@@ -1,10 +1,12 @@
 // Importações necessárias
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+/// Funções auxiliares e as obrigatoriamente implementadas
 pub trait Header {
     const SD: u8 = 0;
     const BD: u8 = 1;
     const ACK: u8 = 2;
+    const LREQ: u8 = 3;
     fn sum_addr(addr: SocketAddr) -> u32 {
         let value = match addr.ip() {
             IpAddr::V4(ipv4) => u32::from_be_bytes(ipv4.octets()),
@@ -53,16 +55,6 @@ pub struct HeaderSend {
 
 impl HeaderSend {
     const SIZE: usize = 21;
-    pub fn get_ack(&self) -> Ack {
-        let mut ack = Ack {
-            src_addr: self.dst_addr,
-            dst_addr: self.src_addr,
-            seq_num: self.seq_num,
-            checksum: 0,
-        };
-        ack.checksum = Ack::checksum(&ack);
-        ack
-    }
 }
 
 impl Header for HeaderSend {
@@ -121,16 +113,6 @@ pub struct HeaderBrd {
 
 impl HeaderBrd {
     pub const SIZE: usize = 27;
-    pub fn get_ack(&self) -> Ack {
-        let mut ack = Ack {
-            src_addr: self.dst_addr,
-            dst_addr: self.src_addr,
-            seq_num: self.seq_num,
-            checksum: 0,
-        };
-        ack.checksum = Ack::checksum(&ack);
-        ack
-    }
 }
 
 impl Header for HeaderBrd {
@@ -225,6 +207,134 @@ impl Header for Ack {
     fn size() -> usize {
         // calculates the size of the struct header in bytes
         Self::SIZE
+    }
+}
+
+#[derive(Clone)]
+pub struct HeaderLReq {
+    pub src_addr: SocketAddr,   // 06 bytes
+    pub dst_addr: SocketAddr,   // 12 bytes
+    pub seq_num: u32,           // 16 bytes
+    pub is_last: bool,          // 17 bytes
+    pub checksum: u32,          // 21 bytes
+}
+
+impl HeaderLReq {
+    const SIZE: usize = 21;
+}
+
+impl Header for HeaderLReq {
+    fn checksum(header: &HeaderLReq) -> u32 {
+        let mut sum: u32 = 0;
+        sum = sum.wrapping_add(Self::sum_addr(header.src_addr));
+        sum = sum.wrapping_add(Self::sum_addr(header.dst_addr));
+        sum = sum.wrapping_add(header.seq_num as u32);
+        sum = sum.wrapping_add(header.is_last as u32);
+        sum
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.push(Self::LREQ);
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.src_addr));
+        bytes.extend_from_slice(&Self::addr_to_bytes(self.dst_addr));
+        bytes.extend_from_slice(&self.seq_num.to_be_bytes());
+        bytes.push(self.is_last as u8);
+        bytes.extend_from_slice(&self.checksum.to_be_bytes());
+        bytes
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        let mut start = 0;
+        let src_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let dst_addr = Self::addr_from_bytes(&bytes, &mut start);
+        let seq_num = Self::u32_from_bytes(&bytes, &mut start);
+        let is_last = bytes[start] != 0;
+        start += 1;
+        let checksum = Self::u32_from_bytes(&bytes, &mut start);
+        Self {
+            src_addr,
+            dst_addr,
+            seq_num,
+            is_last,
+            checksum,
+        }
+    }
+    fn size() -> usize {
+        // calculates the size of the struct header in bytes
+        Self::SIZE
+    }
+}
+
+pub trait DataHeader: Header {
+    fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self;
+    fn get_ack(&self) -> Ack;
+}
+
+impl DataHeader for HeaderSend {
+    fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
+        Self {
+            src_addr: addr[0],
+            dst_addr: addr[1],
+            seq_num,
+            is_last,
+            checksum: 0,
+        }
+    }
+    fn get_ack(&self) -> Ack {
+        let mut ack = Ack {
+            src_addr: self.dst_addr,
+            dst_addr: self.src_addr,
+            seq_num: self.seq_num,
+            checksum: 0,
+        };
+        ack.checksum = Ack::checksum(&ack);
+        ack
+    }
+}
+
+impl DataHeader for HeaderBrd {
+    fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
+        Self {
+            src_addr: addr[0],
+            dst_addr: addr[1],
+            origin: addr[2],
+            seq_num,
+            is_last,
+            checksum: 0,
+        }
+    }
+    fn get_ack(&self) -> Ack {
+        let mut ack = Ack {
+            src_addr: self.dst_addr,
+            dst_addr: self.src_addr,
+            seq_num: self.seq_num,
+            checksum: 0,
+        };
+        ack.checksum = Ack::checksum(&ack);
+        ack
+    }
+}
+
+impl DataHeader for HeaderLReq {
+    fn new(addr: &Vec<SocketAddr>, seq_num: u32, is_last: bool) -> Self {
+        Self {
+            src_addr: addr[0],
+            dst_addr: addr[1],
+            seq_num,
+            is_last,
+            checksum: 0,
+        }
+    }
+    fn get_ack(&self) -> Ack {
+        let mut ack = Ack {
+            src_addr: self.dst_addr,
+            dst_addr: self.src_addr,
+            seq_num: self.seq_num,
+            checksum: 0,
+        };
+        ack.checksum = Ack::checksum(&ack);
+        ack
     }
 }
 
