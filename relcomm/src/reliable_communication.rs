@@ -20,7 +20,6 @@ use crate::rec_aux::{SendRequest, SendRequestData, Broadcast, RecAux};
 use crate::rec_listener::RecListener;
 use crate::rec_sender::RecSender;
 
-/// TODO: better comments
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Arc<Mutex<Vec<Node>>>,

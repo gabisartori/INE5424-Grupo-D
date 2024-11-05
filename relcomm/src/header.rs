@@ -1,7 +1,7 @@
 // Importações necessárias
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use crate::flags::Flags;
-// Ignore unused functions while handshake isn't implemented
+
 #[derive(Clone)]
 pub struct Header {
     pub src_addr: SocketAddr,   // 6 bytes
@@ -12,7 +12,6 @@ pub struct Header {
     pub checksum: u32,          // 27 bytes
 }
 
-#[allow(dead_code)]
 // Implementação para que o cabeçalho seja conversível em bytes e vice-versa
 impl Header {
     // Sempre deve-se alterar o tamanho do cabeçalho ao alterar o Header
@@ -69,16 +68,8 @@ impl Header {
         self.flags.is_set(Flags::ACK)
     }
 
-    pub fn must_gossip(&self) -> bool {
-        self.flags.is_set(Flags::GSP)
-    }
-
-    pub fn is_syn(&self) -> bool {
-        self.flags.is_set(Flags::SYN)
-    }
-
-    pub fn is_fin(&self) -> bool {
-        self.flags.is_set(Flags::FIN)
+    pub fn is_brd(&self) -> bool {
+        self.flags.is_set(Flags::BRD)
     }
 
     fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {

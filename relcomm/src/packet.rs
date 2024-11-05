@@ -1,6 +1,3 @@
-// Ignore unused functions while handshake isn't implemented
-#![allow(dead_code)]
-
 // Importações necessárias
 use std::net::SocketAddr;
 
@@ -19,9 +16,20 @@ impl Packet {
     pub const BUFFER_SIZE: usize = 2<<9;
     pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
             origin: SocketAddr, seq_num: u32, is_last: bool,
-            is_ack: bool, gossip: bool, is_syn: bool, is_fin: bool, data: Vec<u8>) -> Self {
+            is_ack: bool, is_brd: bool, data: Vec<u8>) -> Self {
         
-        let flags = is_last & Flags::LST | is_ack & Flags::ACK | gossip & Flags::GSP | is_syn & Flags::SYN | is_fin & Flags::FIN;
+        let mut flags:Flags = {
+            Flags::EMP
+        };
+        if is_last {
+            flags = flags | Flags::LST;
+        }
+        if is_ack {
+            flags = flags | Flags::ACK
+        }
+        if is_brd  {
+            flags = flags | Flags::BRD
+        };
 
         let mut header = Header::new(src_addr, dst_addr, origin, seq_num, flags, 0);
         let checksum = Self::checksum(&header, &data);
@@ -32,25 +40,6 @@ impl Packet {
     pub fn get_ack(&self) -> Self {
         let ack_header = self.header.get_ack();
         Self {header: ack_header, data: Vec::new()}
-    }
-
-    pub fn get_syn(
-        src_addr: SocketAddr,
-        dst_addr: SocketAddr,
-        seq_num: u32,
-    ) -> Self {
-        Self::new(
-            src_addr,
-            dst_addr,
-            src_addr,
-            seq_num,
-            false,
-            false,
-            false,
-            true,
-            false,
-            Vec::new(),
-        ) 
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -79,7 +68,7 @@ impl Packet {
         origin: SocketAddr,
         data: Vec<u8>,
         seq_num: u32,
-        is_gossip: bool,
+        is_brd: bool,
     ) -> Vec<Self> {
         let chunks: Vec<&[u8]> = data.chunks(Packet::BUFFER_SIZE - Header::HEADER_SIZE).collect();
 
@@ -91,9 +80,7 @@ impl Packet {
                 seq_num + i as u32,
                 i == (chunks.len() - 1),
                 false,
-                is_gossip,
-                false,
-                false,
+                is_brd,
                 chunk.to_vec(),
             )
         }).collect()
