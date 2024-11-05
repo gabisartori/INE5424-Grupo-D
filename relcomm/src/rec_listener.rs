@@ -3,10 +3,10 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
 
-use crate::node::{Node, Broadcast};
+use crate::node::Node;
 use crate::channels::Channel;
 use crate::packet::Packet;
-use crate::rec_aux::{SendRequest, RecAux};
+use crate::rec_aux::{SendRequest, Broadcast, RecAux};
 use logger::debug_println;
 use logger::log::{PacketStatus, SharedLogger};
 

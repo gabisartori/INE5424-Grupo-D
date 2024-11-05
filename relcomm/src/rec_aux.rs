@@ -42,6 +42,13 @@ impl SendRequest {
     }
 }
 
+
+#[derive(PartialEq, Clone)]
+pub enum Broadcast {
+    BEB,
+    URB,
+    AB,
+}
 /// This struct contains helper functions that are used by the main, listener and sender thread
 pub trait RecAux {
     /// Returns the node with the highest priority (currently the first one alive in the group vector)

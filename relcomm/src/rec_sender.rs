@@ -6,8 +6,8 @@ use std::sync::mpsc::{Receiver, Sender, RecvTimeoutError};
 
 use crate::channels::Channel;
 use crate::packet::Packet;
-use crate::node::{Node, NodeState, Broadcast};
-use crate::rec_aux::{SendRequest, SendRequestData, RecAux};
+use crate::node::{Node, NodeState};
+use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
 use logger::debug_println;
 use logger::log::{MessageStatus, PacketStatus, SharedLogger};
 
