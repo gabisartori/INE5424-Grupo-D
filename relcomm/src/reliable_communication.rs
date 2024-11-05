@@ -6,13 +6,15 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 
 use crate::channels::Channel;
 use crate::packet::Packet;
-use logger::{debug_println, log::{SharedLogger, MessageStatus, PacketStatus, LoggerState, Logger}};
+use crate::config::{BROADCAST, TIMEOUT, TIMEOUT_LIMIT, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT, GOSSIP_RATE, W_SIZE};
+use logger::debug_println;
+use logger::log::{SharedLogger, MessageStatus, PacketStatus, LoggerState, Logger};
 
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -81,48 +83,6 @@ impl SendRequest {
     }
 }
 
-/// Reads the arguments from the command line, parses them and returns them as a tuple
-fn get_args() -> (Broadcast, Duration, u32, Duration, Duration, usize, usize) {
-    let args: Vec<String> = std::env::args().collect();
-    let broadcast: Broadcast = match args[1].as_str() {
-        "BEB" => Broadcast::BEB,
-        "URB" => Broadcast::URB,
-        "AB" => Broadcast::AB,
-        _ => panic!("Falha ao converter broadcast {} para Broadcast", args[3]),
-    };
-    let timeout: u64 = args[2]
-        .parse()
-        .expect("Falha ao converter timeout para u64");
-    let timeout_limit: u32 = args[3]
-        .parse()
-        .expect("Falha ao converter timeout_limit para u32");
-    let message_timeout: u64 = args[4]
-        .parse()
-        .expect("Falha ao converter message_timeout para u64");
-    let broadcast_timeout: u64 = args[5]
-        .parse()
-        .expect("Falha ao converter broadcast_timeout para u64");
-    let gossip_rate: usize = args[6]
-        .parse()
-        .expect("Falha ao converter gossip_rate para usize");
-    let w_size: usize = args[7]
-        .parse()
-        .expect("Falha ao converter w_size para usize");
-
-    let timeout = Duration::from_micros(timeout);
-    let message_timeout = Duration::from_millis(message_timeout);
-    let broadcast_timeout = Duration::from_millis(broadcast_timeout);
-    (
-        broadcast,
-        timeout,
-        timeout_limit,
-        message_timeout,
-        broadcast_timeout,
-        gossip_rate,
-        w_size,
-    )
-}
-
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Mutex<Vec<Node>>,
@@ -150,7 +110,19 @@ impl ReliableCommunication {
         logger: SharedLogger,
     ) -> Result<Arc<Self>, std::io::Error> {
         let channel = Channel::new(host.addr)?;
-        let (broadcast, timeout, timeout_limit, message_timeout, broadcast_timeout, gossip_rate, w_size) = get_args();
+        let broadcast: Broadcast = match BROADCAST {
+            "BEB" => Broadcast::BEB,
+            "URB" => Broadcast::URB,
+            "AB" => Broadcast::AB,
+            _ => panic!("Falha ao converter broadcast {BROADCAST} para Broadcast"),
+        };
+        let timeout_limit: u32 = TIMEOUT_LIMIT;
+        let gossip_rate: usize = GOSSIP_RATE;
+        let w_size: usize = W_SIZE;
+
+        let timeout = Duration::from_micros(TIMEOUT);
+        let message_timeout = Duration::from_millis(MESSAGE_TIMEOUT);
+        let broadcast_timeout = Duration::from_millis(BROADCAST_TIMEOUT);
         let group = Mutex::new(group);
 
         let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();

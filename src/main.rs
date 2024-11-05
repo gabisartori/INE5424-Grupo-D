@@ -180,7 +180,7 @@ impl Agent {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let main_len = 10;
+    let main_len = 1;
     // Processo principal inicializando os agentes
     if args.len() == main_len {
         let tests = tests::all_tests();
@@ -191,7 +191,6 @@ fn main() {
             let agent_num = test.len();
             for i in 0..agent_num {
                 let c = std::process::Command::new(std::env::current_exe().unwrap())
-                    .args(args[1..].as_ref()) // Passando o número de agentes
                     .arg(test_id.to_string()) // Passando o ID do teste
                     .arg(i.to_string()) // Passando o ID do agente
                     .spawn()
@@ -232,7 +231,7 @@ fn main() {
         let msg = format!("AGENTE {agent_id} -> ENVIOS: {s_acertos} - RECEBIDOS: {r_acertos}\n");
         debug_file!(file_path, &msg.as_bytes());
     } else {
-        println!("uso: cargo run <broadcast> <timeout> <timeout_limit> <message_timeout> <broadcast_timeout> <gossip_rate> <w_size> <loss_rate> <corruption_rate>");
+        println!("uso: cargo run");
         println!("enviado {:?}", args);
         panic!("Número de argumentos {} inválido", args.len());
     }
