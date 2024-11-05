@@ -11,13 +11,12 @@ use crate::rec_aux::{SendRequest, SendRequestData, RecAux};
 use logger::debug_println;
 use logger::log::{MessageStatus, PacketStatus, SharedLogger};
 
-// TODO: reduce the need for self parameters by separating elements that don't need to be shared 
 /// Sender thread that handles the sending of messages
 pub struct RecSender {
     host: Node,
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
     channel: Arc<Channel>,
-    // TODO: Make save the sequence number counter in the group
+    // TODO: Make the sequence number counter be saved in the group
     group: Arc<Mutex<Vec<Node>>>,
     broadcast: Broadcast,
     logger: SharedLogger,
@@ -26,6 +25,8 @@ pub struct RecSender {
     w_size: usize,
     gossip_rate: usize,
 }
+
+impl RecAux for RecSender {}
 
 impl RecSender {
     /// Constructor
@@ -61,7 +62,6 @@ impl RecSender {
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
-        // TODO: Upgrade this thread to make it able of sending multiple messages at once
         while let Ok(request) = register_from_user_rx.recv() {
             let messages_to_send = self.get_messages(&request);
             let mut success_count = 0;
@@ -84,7 +84,7 @@ impl RecSender {
                         } else {
                             MessageStatus::Sent
                         };
-                        RecAux::log_msg(&self.logger, &self.host, &first, state);
+                        Self::log_msg(&self.logger, &self.host, &first, state);
                     }
                     Err(e) => {
                         self.logger
@@ -115,16 +115,6 @@ impl RecSender {
         }
     }
 
-    /// Marks a node as dead
-    fn mark_as_dead(&self, addr: &SocketAddr) {
-        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
-        for node in group.iter_mut() {
-            if node.addr == *addr {
-                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
-                node.state = NodeState::DEAD;
-            }
-        }
-    }
     /// Go-Back-N algorithm to send packets
     fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
         let mut base = 0;
@@ -147,7 +137,7 @@ impl RecSender {
                 } else {
                     PacketStatus::Sent
                 };
-                RecAux::log_pkt(&self.logger, &self.host, &packets[next_seq_num], state);
+                Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num], state);
 
                 next_seq_num += 1;
             }
@@ -178,24 +168,7 @@ impl RecSender {
         true
     }
 
-    /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
-    fn get_friends(&self) -> Vec<Node> {
-        let mut old_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let group = old_group.iter_mut().filter(|n| n.state == NodeState::ALIVE).map(|n| n.clone()).collect::<Vec<Node>>();
-
-        let start = (self.host.agent_number + 1) % group.len();
-        let end = (start + self.gossip_rate) % group.len();
-        let mut friends = Vec::new();
-
-        if start < end {
-            friends.extend_from_slice(&group[start..end]);
-        } else {
-            friends.extend_from_slice(&group[start..]);
-            friends.extend_from_slice(&group[..end]);
-        }
-
-        friends
-    }/// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
     fn get_pkts(
         &self,
         src_addr: &SocketAddr,
@@ -242,7 +215,7 @@ impl RecSender {
                     }
             },
             SendRequestData::RequestLeader {} => {
-                let leader = RecAux::get_leader(&self.group, &self.host);
+                let leader = Self::get_leader(&self.group, &self.host);
                 let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
                 messages.push(packets);
             }
@@ -263,4 +236,33 @@ impl RecSender {
         messages
     }
 
+    /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
+    fn get_friends(&self) -> Vec<Node> {
+        let mut old_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let group = old_group.iter_mut().filter(|n| n.state == NodeState::ALIVE).map(|n| n.clone()).collect::<Vec<Node>>();
+
+        let start = (self.host.agent_number + 1) % group.len();
+        let end = (start + self.gossip_rate) % group.len();
+        let mut friends = Vec::new();
+
+        if start < end {
+            friends.extend_from_slice(&group[start..end]);
+        } else {
+            friends.extend_from_slice(&group[start..]);
+            friends.extend_from_slice(&group[..end]);
+        }
+
+        friends
+    }
+    
+    /// Marks a node as dead
+    fn mark_as_dead(&self, addr: &SocketAddr) {
+        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
+        for node in group.iter_mut() {
+            if node.addr == *addr {
+                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
+                node.state = NodeState::DEAD;
+            }
+        }
+    }
 }

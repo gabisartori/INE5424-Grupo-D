@@ -55,10 +55,8 @@ macro_rules! debug_file {
 #[macro_export]
 macro_rules! debug_println {
     ($($arg:tt)*) => {
-        use std::{fs::{File, OpenOptions}, io::Write};
-use std::env;
         let path = format!("tests/debug.txt");
-        let mut file: File = match OpenOptions::new()
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
                                             .append(true)
                                             .open(path) {
@@ -66,7 +64,7 @@ use std::env;
             Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
         };
         let msf = format!("----------\n{}\n----------\n", format!($($arg)*));
-        Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
+        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
     };
 }
 
