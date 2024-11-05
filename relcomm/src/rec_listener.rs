@@ -10,13 +10,16 @@ use crate::rec_aux::{SendRequest, RecAux};
 use logger::debug_println;
 use logger::log::{PacketStatus, SharedLogger};
 
+// TODO: reduce the need for self parameters by separating elements that don't need to be shared 
+/// Listener thread that handles the reception of messages
 pub struct RecListener {
-    pub host: Node,
-    pub group: Arc<Mutex<Vec<Node>>>,
-    pub channel: Arc<Channel>,
-    pub broadcast: Broadcast,
-    pub logger: SharedLogger,
-    pub register_to_sender_tx: Sender<SendRequest>,
+    host: Node,
+    // TODO: Make a global broadcast counter
+    group: Arc<Mutex<Vec<Node>>>,
+    channel: Arc<Channel>,
+    broadcast: Broadcast,
+    logger: SharedLogger,
+    register_to_sender_tx: Sender<SendRequest>,
 }
 
 impl RecListener {

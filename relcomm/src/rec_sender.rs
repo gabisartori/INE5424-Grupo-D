@@ -11,17 +11,20 @@ use crate::rec_aux::{SendRequest, SendRequestData, RecAux};
 use logger::debug_println;
 use logger::log::{MessageStatus, PacketStatus, SharedLogger};
 
+// TODO: reduce the need for self parameters by separating elements that don't need to be shared 
+/// Sender thread that handles the sending of messages
 pub struct RecSender {
-    pub host: Node,
-    pub dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
-    pub channel: Arc<Channel>,
-    pub group: Arc<Mutex<Vec<Node>>>,
-    pub broadcast: Broadcast,
-    pub logger: SharedLogger,
-    pub timeout: Duration,
-    pub timeout_limit: u32,
-    pub w_size: usize,
-    pub gossip_rate: usize,
+    host: Node,
+    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
+    channel: Arc<Channel>,
+    // TODO: Make save the sequence number counter in the group
+    group: Arc<Mutex<Vec<Node>>>,
+    broadcast: Broadcast,
+    logger: SharedLogger,
+    timeout: Duration,
+    timeout_limit: u32,
+    w_size: usize,
+    gossip_rate: usize,
 }
 
 impl RecSender {

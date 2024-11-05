@@ -42,8 +42,8 @@ impl SendRequest {
     }
 }
 
+/// This struct contains helper functions that are used by the main, listener and sender thread
 pub struct RecAux {}
-
 impl RecAux {
     /// Returns the node with the highest priority (currently the first one alive in the group vector)
     pub fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
