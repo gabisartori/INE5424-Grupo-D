@@ -9,9 +9,7 @@ impl Flags {
     pub const EMP: Flags = Flags { value: 0 };
     pub const ACK: Flags = Flags { value: 1 };
     pub const LST: Flags = Flags { value: 2 };
-    pub const GSP: Flags = Flags { value: 4 };
-    pub const SYN: Flags = Flags { value: 8 };
-    pub const FIN: Flags = Flags { value: 16 };
+    pub const BRD: Flags = Flags { value: 4 };
 
     pub fn is_set(&self, flag: Flags) -> bool {
         self.value & flag.value != 0
@@ -25,14 +23,8 @@ impl Flags {
         if self.is_set(Flags::LST) {
             result.push_str("LST ");
         }
-        if self.is_set(Flags::GSP) {
-            result.push_str("GSP ");
-        }
-        if self.is_set(Flags::SYN) {
-            result.push_str("SYN ");
-        }
-        if self.is_set(Flags::FIN) {
-            result.push_str("FIN ");
+        if self.is_set(Flags::BRD) {
+            result.push_str("BRD ");
         }
         result
     }
@@ -43,6 +35,14 @@ impl std::ops::BitOr for Flags {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         Flags { value: self.value | rhs.value }
+    }
+}
+
+impl std::ops::BitOr<u8> for Flags {
+    type Output = Flags;
+
+    fn bitor(self, rhs: u8) -> Self::Output {
+        Flags { value: self.value | rhs }
     }
 }
 

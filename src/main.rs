@@ -77,7 +77,7 @@ impl Agent {
         // If both threads end without sending anything, the agent should wait for them to finish
         match death_rx.recv() {
             Ok((t, n)) => {
-                // TODO: Descobirir o outro valor
+                // TODO: Descobrir o outro valor
                 match t {
                     "C" => {
                         s_acertos = n;

@@ -10,7 +10,6 @@ use crate::rec_aux::{SendRequest, Broadcast, RecAux};
 use logger::debug_println;
 use logger::log::{PacketStatus, SharedLogger};
 
-// TODO: reduce the need for self parameters by separating elements that don't need to be shared 
 /// Listener thread that handles the reception of messages
 pub struct RecListener {
     host: Node,
@@ -114,7 +113,7 @@ impl RecListener {
                     let (message, origin, sequence_number) =
                         Self::receive_last_packet(&self, packets, &packet);
                     // Handling broadcasts
-                    let dlv: bool = if packet.header.must_gossip() {
+                    let dlv: bool = if packet.header.is_brd() {
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {
@@ -132,7 +131,7 @@ impl RecListener {
                             // who must not deliver the request to broadcast to the group,
                             // instead, it must broadcast the message and only deliver when it gets gossiped back to it
                             Broadcast::AB => {
-                                self.warn_brd_waiters(&mut broadcast_waiters, &register_broadcast_waiters_rx, message.clone());
+                                self.warn_brd_waiters(&mut broadcast_waiters, &register_broadcast_waiters_rx, &message);
                                 
                                 self.atm_gossip(message.clone(), &origin, sequence_number)
                             }
@@ -152,34 +151,6 @@ impl RecListener {
                 packets.push(packet);
             }
         }
-    }
-
-    /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
-    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
-        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
-        for (i, n) in group.iter().enumerate() {
-            if n.addr == *node_address {
-                return group.len()-i;
-            }
-        }
-        0
-    }
-
-    /// Resends the message for anyone who is waiting for a broadcast
-    fn warn_brd_waiters(&self, broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: Vec<u8>) {
-        while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
-            broadcast_waiters.push(Some(broadcast_waiter));
-        }
-        for waiter in broadcast_waiters.iter_mut() {
-            let w = waiter.as_ref().unwrap();
-            match (*w).send(message.clone()) {
-                Ok(_) => {} 
-                Err(_) => {
-                    *waiter = None;
-                }
-            }
-        }
-        broadcast_waiters.retain(|w| w.is_some());
     }
     
     /// Decides what to do with a broadcast message in the AB algorithm
@@ -236,5 +207,33 @@ impl RecListener {
         packets.clear();
 
         (message, packet.header.origin, seq_num)
+    }
+
+    /// Resends the message for anyone who is waiting for a broadcast
+    fn warn_brd_waiters(&self, broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: &Vec<u8>) {
+        while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
+            broadcast_waiters.push(Some(broadcast_waiter));
+        }
+        for waiter in broadcast_waiters.iter_mut() {
+            let w = waiter.as_ref().unwrap();
+            match (*w).send(message.clone()) {
+                Ok(_) => {} 
+                Err(_) => {
+                    *waiter = None;
+                }
+            }
+        }
+        broadcast_waiters.retain(|w| w.is_some());
+    }
+
+    /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
+    fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
+        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
+        for (i, n) in group.iter().enumerate() {
+            if n.addr == *node_address {
+                return group.len()-i;
+            }
+        }
+        0
     }
 }

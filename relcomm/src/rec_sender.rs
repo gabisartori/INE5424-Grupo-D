@@ -31,28 +31,17 @@ impl RecAux for RecSender {}
 impl RecSender {
     /// Constructor
     pub fn new(
-        host: Node,
-        dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
-        channel: Arc<Channel>,
-        group: Arc<Mutex<Vec<Node>>>,
-        broadcast: Broadcast,
-        logger: SharedLogger,
-        timeout: Duration,
-        timeout_limit: u32,
-        w_size: usize,
-        gossip_rate: usize,
+        host: Node, dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
+        channel: Arc<Channel>, group: Arc<Mutex<Vec<Node>>>,
+        broadcast: Broadcast, logger: SharedLogger,
+        timeout: Duration, timeout_limit: u32,
+        w_size: usize, gossip_rate: usize,
     ) -> Self {
         Self {
-            host,
-            dst_seq_num_cnt,
-            channel,
-            group,
-            broadcast,
-            logger,
-            timeout,
-            timeout_limit,
-            w_size,
-            gossip_rate,
+            host, dst_seq_num_cnt,
+            channel, group, broadcast,
+            logger, timeout, timeout_limit,
+            w_size, gossip_rate,
         }
     }
 
@@ -79,7 +68,7 @@ impl RecSender {
                     first.header.seq_num,
                 )) {
                     Ok(_) => {
-                        let state = if first.header.must_gossip() {
+                        let state = if first.header.is_brd() {
                             MessageStatus::SentBroadcast
                         } else {
                             MessageStatus::Sent
@@ -115,77 +104,6 @@ impl RecSender {
         }
     }
 
-    /// Go-Back-N algorithm to send packets
-    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
-        let mut base = 0;
-        let mut next_seq_num = 0;
-        let mut timeout_count = 0;
-        let start_packet = match packets.first() {
-            Some(packet) => packet.header.seq_num,
-            None => {
-                debug_println!("Erro ao enviar mensagem: Pacote vazio");
-                return false;
-            }
-        };
-        while base < packets.len() {
-            // Send window
-            while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
-                self.channel.send(&packets[next_seq_num]);
-                // logger
-                let state = if packets[next_seq_num].header.must_gossip() {
-                    PacketStatus::SentBroadcast
-                } else {
-                    PacketStatus::Sent
-                };
-                Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num], state);
-
-                next_seq_num += 1;
-            }
-
-
-            // Wait for an ACK
-            // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
-            match acks_rx.recv_timeout(self.timeout) {
-                Ok(packet) => {
-                    // Assume that the listener is sending the number of the highest packet it received
-                    // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    next_seq_num = base;
-                    timeout_count += 1;
-                    if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
-                        return false;
-                    }
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    debug_println!("Erro ao receber ACKS, thread Listener desconectada");
-                    return false;
-                },
-            }
-        }
-        true
-    }
-
-    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
-    fn get_pkts(
-        &self,
-        src_addr: &SocketAddr,
-        dst_addr: &SocketAddr,
-        origin: &SocketAddr,
-        data: Vec<u8>,
-        is_gossip: bool
-    ) -> Vec<Packet> {
-        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
-        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
-        let packets = Packet::packets_from_message(
-            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
-        );
-        *start_seq += packets.len() as u32;
-        packets
-    }
-
     /// Handles a request for the sender, returning what messages the request generates
     /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
     fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
@@ -199,7 +117,7 @@ impl RecSender {
                 Broadcast::BEB => {
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                         if node.state == NodeState::ALIVE {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
+                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
                             messages.push(packets);
                         }
                     }
@@ -234,6 +152,77 @@ impl RecSender {
             }
         }  
         messages
+    }
+
+    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    fn get_pkts(
+        &self,
+        src_addr: &SocketAddr,
+        dst_addr: &SocketAddr,
+        origin: &SocketAddr,
+        data: Vec<u8>,
+        is_brd: bool
+    ) -> Vec<Packet> {
+        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
+        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
+        let packets = Packet::packets_from_message(
+            *src_addr, *dst_addr, *origin, data, *start_seq, is_brd,
+        );
+        *start_seq += packets.len() as u32;
+        packets
+    }
+
+    /// Go-Back-N algorithm to send packets
+    fn go_back_n(&self, packets: &Vec<Packet>, acks_rx: &Receiver<Packet>) -> bool {
+        let mut base = 0;
+        let mut next_seq_num = 0;
+        let mut timeout_count = 0;
+        let start_packet = match packets.first() {
+            Some(packet) => packet.header.seq_num,
+            None => {
+                debug_println!("Erro ao enviar mensagem: Pacote vazio");
+                return false;
+            }
+        };
+        while base < packets.len() {
+            // Send window
+            while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
+                self.channel.send(&packets[next_seq_num]);
+                // logger
+                let state = if packets[next_seq_num].header.is_brd() {
+                    PacketStatus::SentBroadcast
+                } else {
+                    PacketStatus::Sent
+                };
+                Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num], state);
+
+                next_seq_num += 1;
+            }
+
+
+            // Wait for an ACK
+            // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
+            match acks_rx.recv_timeout(self.timeout) {
+                Ok(packet) => {
+                    // Assume that the listener is sending the number of the highest packet it received
+                    // The listener also guarantees that the packet is >= base
+                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    next_seq_num = base;
+                    timeout_count += 1;
+                    if timeout_count == self.timeout_limit {
+                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
+                        return false;
+                    }
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    debug_println!("Erro ao receber ACKS, thread Listener desconectada");
+                    return false;
+                },
+            }
+        }
+        true
     }
 
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
