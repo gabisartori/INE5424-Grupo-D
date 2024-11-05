@@ -5,8 +5,8 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 use crate::channels::Channel;
-use crate::types_packet::{Packet, PacketType, HasData, DataPkt, FromBytes, Set, Get};
-use crate::types_header::{Header, DataHeader, Ack, HBrd, HLRq, HSnd};
+use crate::types_packet::{PacketType, DataPkt, HasData, Get};
+use crate::types_header::{DataHeader, Ack, AckBrd, HBrd, HLRq, HSnd, IsAck};
 
 use logger::{log::{Logger, LoggerState, MessageStatus, PacketStatus, SharedLogger}, debug_println};
 
@@ -182,19 +182,22 @@ impl ReliableCommunication {
 
         let sender_clone = Arc::clone(&instance);
         let receiver_clone = Arc::clone(&instance);
-        let (acks_tx, acks_rx) = mpsc::channel();
+        let (acks_snd_tx, acks_snd_rx) = mpsc::channel();
+        let (acks_brd_tx, acks_brd_rx) = mpsc::channel();
+        
 
         // Spawn all threads
         std::thread::spawn(move || {
-            sender_clone.sender(acks_rx, register_to_sender_rx, register_to_listener_tx);
-        });
-        std::thread::spawn(move || {
             receiver_clone.listener(
                 receive_tx,
-                acks_tx,
+                acks_snd_tx,
+                acks_brd_tx,
                 register_to_listener_rx,
                 broadcast_waiters_rx,
             );
+        });
+        std::thread::spawn(move || {
+            sender_clone.sender(acks_snd_rx, acks_brd_rx, register_to_sender_rx, register_to_listener_tx);
         });
 
         Ok(instance)
@@ -400,72 +403,156 @@ impl ReliableCommunication {
     /// Thread to handle the sending of messages
     fn sender(
         self: Arc<Self>,
-        acks_rx: Receiver<Ack>,
+        acks_snd_rx: Receiver<Ack>,
+        acks_brd_rx: Receiver<AckBrd>,
         register_from_user_rx: Receiver<SendRequest>,
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
         
         // TODO: Upgrade this thread to make it able of sending multiple messages at once
         while let Ok(request) = register_from_user_rx.recv() {
-            let messages_to_send = self.get_messages(&request);
-            let mut success_count = 0;
-            for packets in messages_to_send {
-                // Register the destination address and the sequence to the listener thread
-                let message_header = match packets.first() {
-                    Some(packet) => packet.header.clone(),
-                    None => {
-                        debug_println!("Erro ao enviar mensagem: Pacote vazio");
-                        continue;
-                    }
-                };
-                match register_to_listener_tx.send((
-                    (message_header.dst_addr, message_header.origin),
-                    message_header.seq_num,
-                )) {
-                    Ok(_) => {
-                        let status = match packets[0].type_h() {
-                            "Send" => PacketStatus::Sent,
-                            "Broadcast" => PacketStatus::SentBroadcast,
-                            _ => panic!("Erro ao enviar mensagem: Tipo de pacote desconhecido"),
-                        };
-                        Self::log_pkt::<P>(&self.logger, &packets[0], status);                        
-                    }
-                    Err(e) => {
-                        self.logger
-                            .lock()
-                            .expect("Couldn't aquire logger Lock on Sender")
-                            .fail(
-                                format!("Erro ao enviar pedido de ACK para a Listener: {e}")
-                                    .to_owned(),
-                                Some(packets[0].header.src_addr.port() as usize % 100),
-                            );
-                        debug_println!("Erro ao enviar pedido de ACK para a Listener: {e}");
-                        continue;
-                    }
-                }
-
-                // Go back-N algorithm to send packets
-                if self.go_back_n(&packets, &acks_rx) {
-                    success_count += 1;
-                } else {
-                    // If the message wasn't sent, mark the destination as dead
-                    self.mark_as_dead(&message_header.dst_addr);
-                }
-            }
-
-            // Notify the caller that the request was completed
-            // The caller may have chosen to not wait for the result, so we ignore if the channel was disconnected
-            let _ = request.result_tx.send(success_count);
+            self.handle_request(&request, &acks_snd_rx, &acks_brd_rx, &register_to_listener_tx);
         }
     }
 
+    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    fn get_pkts<H>(&self, addrs: Vec<&SocketAddr>, data: Vec<u8>) -> Vec<DataPkt<H>>
+    where H: DataHeader, DataPkt<H>: HasData<H> {
+        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
+        let seq_num = seq_lock.entry(*addrs[1]).or_insert(0);
+        let packets = DataPkt::<H>::pkts_from_msg(
+            addrs, *seq_num, data,
+        );
+        *seq_num += packets.len() as u32;
+        packets
+    }
+
+    /// Handles a request for the sender, preparing what messages the request generates
+    /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
+    fn handle_request(&self, request: &SendRequest,
+        acks_snd_rx: &Receiver<Ack>,
+        acks_brd_rx: &Receiver<AckBrd>,
+        register_to_listener_tx: &Sender<((SocketAddr, SocketAddr), u32)>) {
+        let success_count;
+        match &request.options {
+            SendRequestData::Send { destination_address } => {
+                let mut messages = Vec::new();
+                let packets = self.get_pkts::<HSnd>( vec![&self.host.addr,destination_address, &self.host.addr], request.data.clone());
+                messages.push(packets);
+                success_count = self.handle_msgs(messages, &acks_snd_rx, &register_to_listener_tx); 
+            }
+            SendRequestData::RequestLeader {} => {
+                let mut messages = Vec::new();
+                let leader = self.get_leader();
+                let packets = self.get_pkts::<HLRq>(vec![&self.host.addr, &leader.addr, &self.host.addr], request.data.clone());
+                messages.push(packets);
+                success_count = self.handle_msgs(messages, &acks_snd_rx, &register_to_listener_tx);
+            }
+            SendRequestData::Gossip { origin, seq_num } => {
+                let mut messages = Vec::new();
+                for node in self.get_friends() {
+                    let packets = DataPkt::<HBrd>::pkts_from_msg(
+                        vec![&self.host.addr, &node.addr, origin],
+                        *seq_num,
+                        request.data.clone(),
+                    );
+                    if node.state == NodeState::ALIVE {
+                        messages.push(packets);
+                    }
+                }
+                success_count = self.handle_msgs(messages, &acks_brd_rx, &register_to_listener_tx);
+            }
+            SendRequestData::StartBroadcast {} => {
+                let mut messages = Vec::new();
+                match self.broadcast {
+                    Broadcast::BEB => {
+                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                            if node.state == NodeState::ALIVE {
+                                let packets = self.get_pkts::<HBrd>(vec![&self.host.addr, &node.addr, &self.host.addr], request.data.clone());
+                                messages.push(packets);
+                            }
+                        }
+                    }
+                    Broadcast::URB | Broadcast::AB => {
+                        let friends = self.get_friends();
+                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                            let packets = self.get_pkts(vec![&self.host.addr, &node.addr, &self.host.addr], request.data.clone());
+                            if friends.contains(node) && node.state == NodeState::ALIVE {
+                                messages.push(packets);
+                            }
+                        }                    
+                    }
+                }
+                success_count = self.handle_msgs(messages, &acks_brd_rx, &register_to_listener_tx);  
+            }
+        }
+
+        // Notify the caller that the request was completed
+        // The caller may have chosen to not wait for the result, so we ignore if the channel was disconnected
+        let _ = request.result_tx.send(success_count);
+    }
+
+    /// handle requests for each packet type
+    fn handle_msgs<H>(&self, messages_to_send: Vec<Vec<DataPkt<H>>>,
+        acks_rx: &Receiver<H::AckType>,
+        register_to_listener_tx: &Sender<((SocketAddr, SocketAddr), u32)>) -> u32
+        where H: DataHeader, DataPkt<H>: Get + HasData<H>, H::AckType: Get {
+        let mut success_count = 0;
+        for packets in messages_to_send {
+            // Register the destination address and the sequence to the listener thread
+            let first = match packets.first() {
+                Some(packet) => packet,
+                None => {
+                    debug_println!("Erro ao enviar mensagem: Pacote vazio");
+                    continue;
+                }
+            };
+            match register_to_listener_tx.send((
+                (first.get_dst_addr(), first.get_origin_addr()),
+                first.get_seq_num(),
+            )) {
+                Ok(_) => {
+                    let status = match packets[0].type_h() {
+                        "Send" => MessageStatus::Sent,
+                        "Broadcast" => MessageStatus::SentBroadcast,
+                        "LeaderRequest" => MessageStatus::SentBroadcast,
+                        e => panic!("Erro ao enviar mensagem: Tipo de pacote desconhecido {}", e),
+                    };
+                    Self::log_msg::<DataPkt<H>>(&self.logger, &packets[0], status);                      
+                }
+                Err(e) => {
+                    self.logger
+                        .lock()
+                        .expect("Couldn't aquire logger Lock on Sender")
+                        .fail(
+                            format!("Erro ao enviar pedido de ACK para a Listener: {e}")
+                                .to_owned(),
+                            Some(self.host.agent_number),
+                        );
+                    debug_println!("Erro ao enviar pedido de ACK para a Listener: {e}");
+                    continue;
+                }
+            }
+
+            // Go back-N algorithm to send packets
+            if self.go_back_n(&packets, &acks_rx) {
+                success_count += 1;
+            } else {
+                // If the message wasn't sent, mark the destination as dead
+                self.mark_as_dead(&first.get_dst_addr());
+            }
+        }
+        success_count
+    }
+
     /// Go-Back-N algorithm to send packets
-    fn go_back_n<H: DataHeader>(&self, packets: &Vec<DataPkt<H>>, acks_rx: &Receiver<Ack>) -> bool {
+    fn go_back_n<H>(&self, packets: &Vec<DataPkt<H>>, acks_rx: &Receiver<H::AckType>) -> bool
+    where H: DataHeader, DataPkt<H>: Get, H::AckType: Get {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
         let start_packet = match packets.first() {
-            Some(packet) => packet.header.seq_num,
+            Some(packet) => packet.get_seq_num(),
             None => {
                 debug_println!("Erro ao enviar mensagem: Pacote vazio");
                 return false;
@@ -475,12 +562,13 @@ impl ReliableCommunication {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
-                let status = match packets[0].type_h() {
+                {let status = match packets[0].type_h() {
                     "Send" => PacketStatus::Sent,
                     "Broadcast" => PacketStatus::SentBroadcast,
+                    "LeaderRequest" => PacketStatus::SentBroadcast,
                     _ => panic!("Erro ao enviar mensagem: Tipo de pacote desconhecido"),
                 };
-                Self::log_pkt::<P>(&self.logger, &packets[next_seq_num], status);
+                Self::log_pkt::<DataPkt<H>>(&self.logger, &packets[next_seq_num], status);}
 
                 next_seq_num += 1;
             }
@@ -489,16 +577,16 @@ impl ReliableCommunication {
             // Wait for an ACK
             // TODO: Somewhere around here: add logic to check if destination is still alive, if not, break the loop, reset the sequence number and return false
             match acks_rx.recv_timeout(self.timeout) {
-                Ok(packet) => {
+                Ok(ack) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
+                    base = (ack.get_seq_num() - start_packet as u32 + 1) as usize;                    
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
+                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").get_dst_addr().port()%100);
                         return false;
                     }
                 },
@@ -511,85 +599,134 @@ impl ReliableCommunication {
         true
     }
 
-    /// Handles a request for the sender, returning what messages the request generates
-    /// For example: A simple send request will generate one message, while a broadcast request will generate N messages
-    fn get_messages<H: DataHeader>(&self, request: &SendRequest) -> Vec<Vec<DataPkt<H>>> {
-        let mut messages = Vec::new();
-        match &request.options {
-            SendRequestData::Send { destination_address } => {
-                let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
-                messages.push(packets);
-            }
-            SendRequestData::StartBroadcast {} => match self.broadcast {
-                Broadcast::BEB => {
-                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                        if node.state == NodeState::ALIVE {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), false);
-                            messages.push(packets);
-                        }
+    
+    fn handle_ack<A: IsAck + Get>(&self, packet: A, acks_tx: &Sender<A>,
+        expected_acks: &mut HashMap<(SocketAddr, SocketAddr), u32>,
+        register_from_sender_rx: &Receiver<((SocketAddr, SocketAddr), u32)>)
+    {
+        Self::log_pkt::<A>(&self.logger, &packet, PacketStatus::ReceivedAck);
+
+        // Handle ack
+        while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
+            expected_acks.insert(key, start_seq);
+        }
+        match expected_acks.get_mut(&(packet.get_src_addr(), packet.get_origin_addr())) {
+            Some(seq_num) => {
+                if packet.get_seq_num() < *seq_num { return; }
+                *seq_num = packet.get_seq_num() + 1;
+                match acks_tx.send(packet.clone()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug_println!("Erro ao enviar ACK: {e}");
+                        Self::log_pkt::<A>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
                     }
                 }
-                Broadcast::URB | Broadcast::AB => {
-                    let friends = self.get_friends();
-                    for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) && node.state == NodeState::ALIVE {
-                                messages.push(packets);
+            }
+            None => {
+                debug_println!("ACK recebido sem destinatário esperando");
+                Self::log_pkt::<A>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+            }
+        }
+        
+    }
+    
+    fn handle_data_pkt<H: DataHeader>(&self,
+        packet: DataPkt<H>,
+        messages_tx: &Sender<Vec<u8>>,
+        broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>,
+        pkts_per_origin: &mut HashMap<SocketAddr, Vec<DataPkt<H>>>,
+        register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>)
+        where H: DataHeader, DataPkt<H>: Get + HasData<H>
+    {
+        Self::log_pkt::<DataPkt<H>>(&self.logger, &packet, PacketStatus::Received);
+
+        // Handle data
+        let packets = pkts_per_origin
+            .entry(packet.get_origin_addr())
+            .or_insert(Vec::new());
+        let expected = packets.last().map_or(0, |p| p.get_seq_num() + 1);
+
+        // Ignore the packet if the sequence number is higher than expected
+        if packet.get_seq_num() > expected {
+            return;
+        }
+        // Send ack otherwise
+        self.channel.send(&packet.get_ack());
+
+        Self::log_pkt::<DataPkt<H>>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+
+        if packet.get_seq_num() < expected { return; }
+        
+        if packet.header.is_last() {
+            let (message, origin, sequence_number) =
+                Self::receive_last_packet(&self, packets, &packet);
+            // Handling broadcasts
+            match packet.type_h() {
+                "Send" => {
+                    messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                }
+                "LeaderRequest" => {
+                    messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                }
+                "Broadcast" => {
+                    match self.broadcast {
+                        // BEB: All broadcasts must be delivered
+                        Broadcast::BEB => {
+                            messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                        }
+                        // URB: All broadcasts must be gossiped and delivered
+                        Broadcast::URB => {
+                            self.gossip(message.clone(), origin, sequence_number);
+                            messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                        }
+                        // AB: Must check if I'm the leader and should broadcast it or just gossip
+                        // In AB, broadcast messages can only be delivered if they were sent by the leader
+                        // However, since the leader is the only one that can broadcast,
+                        // this is only useful for the leader,
+                        // who must not deliver the request to broadcast to the group,
+                        // instead, it must broadcast the message and only deliver when it gets gossiped back to it
+                        Broadcast::AB => {
+                            // Check for anyone waiting for a broadcast
+                            while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
+                                broadcast_waiters.push(Some(broadcast_waiter));
+                            }
+                            for waiter in broadcast_waiters.iter_mut() {
+                                let w = waiter.as_ref().unwrap();
+                                match (*w).send(message.clone()) {
+                                    Ok(_) => {} 
+                                    Err(_) => {
+                                        *waiter = None;
+                                    }
+                                }
+                            }
+                            broadcast_waiters.retain(|w| w.is_some());
+                            
+                            if self.atm_gossip(message.clone(), &origin, sequence_number) {
+                                messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
                             }
                         }
                     }
-            },
-            SendRequestData::RequestLeader {} => {
-                let leader = self.get_leader();
-                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
-                messages.push(packets);
-            }
-            SendRequestData::Gossip { origin, seq_num } => {
-                for node in self.get_friends() {
-                    let packets = Packet::packets_from_message(
-                        self.host.addr,
-                        node.addr,
-                        *origin,
-                        request.data.clone(),
-                        *seq_num,
-                        true,
-                    );
-                    if node.state == NodeState::ALIVE {
-                        messages.push(packets);
-                    }
+                }
+                _ => {
+                    panic!("Erro ao receber pacote de dados: Tipo de pacote desconhecido");
                 }
             }
-        }  
-        messages
+        }
+        packets.push(packet);
     }
-
-    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
-    fn get_pkts<H: DataHeader>(
-        &self,
-        src_addr: &SocketAddr,
-        dst_addr: &SocketAddr,
-        origin: &SocketAddr,
-        data: Vec<u8>,
-        is_gossip: bool
-    ) -> Vec<DataPkt<H>> {
-        let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
-        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
-        let packets = Packet::packets_from_message(
-            *src_addr, *dst_addr, *origin, data, *start_seq, is_gossip,
-        );
-        *start_seq += packets.len() as u32;
-        packets
-    }
-
+    
     /// Thread to handle the reception of messages
     fn listener(
         self: Arc<Self>,
         messages_tx: Sender<Vec<u8>>,
-        acks_tx: Sender<Ack>,
+        acks_snd_tx: Sender<Ack>,
+        acks_brd_tx: Sender<AckBrd>,
         register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
-        let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
+        let mut lrqs_per_origin: HashMap<SocketAddr, Vec<DataPkt<HLRq>>> = HashMap::new();
+        let mut snds_per_origin: HashMap<SocketAddr, Vec<DataPkt<HSnd>>> = HashMap::new();
+        let mut brds_per_origin: HashMap<SocketAddr, Vec<DataPkt<HBrd>>> = HashMap::new();
         let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
         let mut broadcast_waiters: Vec<Option<Sender<Vec<u8>>>> = Vec::new();
         loop {
@@ -600,100 +737,148 @@ impl ReliableCommunication {
                     continue;
                 }
             };
-            if packet.header.is_ack() {
-                Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAck);
-
-                // Handle ack
-                while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
-                    expected_acks.insert(key, start_seq);
+            match packet {
+                PacketType::Ack(packet) => {
+                    self.handle_ack(packet, &acks_snd_tx, &mut expected_acks, &register_from_sender_rx);
                 }
-                match expected_acks.get_mut(&(packet.header.src_addr, packet.header.origin)) {
-                    Some(seq_num) => {
-                        if packet.header.seq_num < *seq_num { continue; }
-                        *seq_num = packet.header.seq_num + 1;
-                        match acks_tx.send(packet) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                debug_println!("Erro ao enviar ACK: {e}");
-                                Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
-                            }
-                        }
-                    }
-                    None => {
-                        debug_println!("ACK recebido sem destinatário esperando");
-                        Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
-                    }
+                PacketType::AckBrd(packet) => {
+                    self.handle_ack(packet, &acks_brd_tx, &mut expected_acks, &register_from_sender_rx);
                 }
-            } else {
-                Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::Received);
-
-                // Handle data
-                let packets = pkts_per_origin
-                    .entry(packet.header.origin)
-                    .or_insert(Vec::new());
-                let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
-
-                // Ignore the packet if the sequence number is higher than expected
-                if packet.header.seq_num > expected {
-                    continue;
+                PacketType::Send(packet) => {
+                    self.handle_data_pkt::<HSnd>(packet, &messages_tx, &mut broadcast_waiters, &mut snds_per_origin, &register_broadcast_waiters_rx);
                 }
-                // Send ack otherwise
-                self.channel.send(&packet.get_ack());
-
-                Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
-
-                if packet.header.seq_num < expected { continue; }
-                
-                if packet.header.is_last() {
-                    let (message, origin, sequence_number) =
-                        Self::receive_last_packet(&self, packets, &packet);
-                    // Handling broadcasts
-                    if packet.header.must_gossip() {
-                        match self.broadcast {
-                            // BEB: All broadcasts must be delivered
-                            Broadcast::BEB => {
-                                debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
-                                messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
-                            }
-                            // URB: All broadcasts must be gossiped and delivered
-                            Broadcast::URB => {
-                                self.gossip(message.clone(), origin, sequence_number);
-                                messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
-                            }
-                            // AB: Must check if I'm the leader and should broadcast it or just gossip
-                            // In AB, broadcast messages can only be delivered if they were sent by the leader
-                            // However, since the leader is the only one that can broadcast,
-                            // this is only useful for the leader,
-                            // who must not deliver the request to broadcast to the group,
-                            // instead, it must broadcast the message and only deliver when it gets gossiped back to it
-                            Broadcast::AB => {
-                                // Check for anyone waiting for a broadcast
-                                while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
-                                    broadcast_waiters.push(Some(broadcast_waiter));
-                                }
-                                for waiter in broadcast_waiters.iter_mut() {
-                                    let w = waiter.as_ref().unwrap();
-                                    match (*w).send(message.clone()) {
-                                        Ok(_) => {} 
-                                        Err(_) => {
-                                            *waiter = None;
-                                        }
-                                    }
-                                }
-                                broadcast_waiters.retain(|w| w.is_some());
-                                
-                                if self.atm_gossip(message.clone(), &origin, sequence_number) {
-                                    messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
-                                }
-                            }
-                        }
-                    } else {
-                        messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
-                    }
+                PacketType::LeaderRequest(packet) => {
+                    self.handle_data_pkt::<HLRq>(packet, &messages_tx, &mut broadcast_waiters, &mut lrqs_per_origin, &register_broadcast_waiters_rx);
                 }
-                packets.push(packet);
+                PacketType::Broadcast(packet) => {
+                    self.handle_data_pkt::<HBrd>(packet, &messages_tx, &mut broadcast_waiters, &mut brds_per_origin, &register_broadcast_waiters_rx);
+                }
             }
+            // if packet.header.is_ack() {
+            //     Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAck);
+
+            //     // Handle ack
+            //     while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
+            //         expected_acks.insert(key, start_seq);
+            //     }
+            //     match expected_acks.get_mut(&(packet.header.src_addr, packet.header.origin)) {
+            //         Some(seq_num) => {
+            //             if packet.header.seq_num < *seq_num { continue; }
+            //             *seq_num = packet.header.seq_num + 1;
+            //             match acks_tx.send(packet) {
+            //                 Ok(_) => {}
+            //                 Err(e) => {
+            //                     debug_println!("Erro ao enviar ACK: {e}");
+            //                     Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+            //                 }
+            //             }
+            //         }
+            //         None => {
+            //             debug_println!("ACK recebido sem destinatário esperando");
+            //             Self::log_pkt::<Ack>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+            //         }
+            //     }
+            // } else {
+            //     Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::Received);
+
+            //     // Handle data
+            //     let packets = pkts_per_origin
+            //         .entry(packet.header.origin)
+            //         .or_insert(Vec::new());
+            //     let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
+
+            //     // Ignore the packet if the sequence number is higher than expected
+            //     if packet.header.seq_num > expected {
+            //         continue;
+            //     }
+            //     // Send ack otherwise
+            //     self.channel.send(&packet.get_ack());
+
+            //     Self::log_pkt::<P>(&self.logger, &packet, PacketStatus::ReceivedAckFailed);
+
+            //     if packet.header.seq_num < expected { continue; }
+                
+            //     if packet.header.is_last() {
+            //         let (message, origin, sequence_number) =
+            //             Self::receive_last_packet(&self, packets, &packet);
+            //         // Handling broadcasts
+            //         if packet.header.must_gossip() {
+            //             match self.broadcast {
+            //                 // BEB: All broadcasts must be delivered
+            //                 Broadcast::BEB => {
+            //                     debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
+            //                     messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+            //                 }
+            //                 // URB: All broadcasts must be gossiped and delivered
+            //                 Broadcast::URB => {
+            //                     self.gossip(message.clone(), origin, sequence_number);
+            //                     messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+            //                 }
+            //                 // AB: Must check if I'm the leader and should broadcast it or just gossip
+            //                 // In AB, broadcast messages can only be delivered if they were sent by the leader
+            //                 // However, since the leader is the only one that can broadcast,
+            //                 // this is only useful for the leader,
+            //                 // who must not deliver the request to broadcast to the group,
+            //                 // instead, it must broadcast the message and only deliver when it gets gossiped back to it
+            //                 Broadcast::AB => {
+            //                     // Check for anyone waiting for a broadcast
+            //                     while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
+            //                         broadcast_waiters.push(Some(broadcast_waiter));
+            //                     }
+            //                     for waiter in broadcast_waiters.iter_mut() {
+            //                         let w = waiter.as_ref().unwrap();
+            //                         match (*w).send(message.clone()) {
+            //                             Ok(_) => {} 
+            //                             Err(_) => {
+            //                                 *waiter = None;
+            //                             }
+            //                         }
+            //                     }
+            //                     broadcast_waiters.retain(|w| w.is_some());
+                                
+            //                     if self.atm_gossip(message.clone(), &origin, sequence_number) {
+            //                         messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+            //                     }
+            //                 }
+            //             }
+            //         } else {
+            //             messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+            //         }
+            //     }
+            //     packets.push(packet);
+            // }
+        
         }
+    }
+
+    /// When a packet marked as last is received, the packets are merged and the message is returned
+    fn receive_last_packet<H>(&self, packets: &mut Vec<DataPkt<H>>, packet: &DataPkt<H>
+    ) -> (Vec<u8>, SocketAddr, u32) where H: DataHeader, DataPkt<H>: Get {
+        let mut message = Vec::new();
+        // Ignore the first packet if its the remnant of a previous message
+        match packets.first() { 
+            Some(p) => {
+                if p.header.is_last() { packets.remove(0); }
+            }
+            None => {}
+         }
+
+        for packet in packets.iter() {
+            message.extend(&packet.data);
+        }
+        message.extend(&packet.data);
+
+        let seq_num = match packets.first() {
+            Some(p) => p.get_seq_num(),
+            None => packet.get_seq_num(),
+        };
+
+        Self::log_pkt::<DataPkt<H>>(&self.logger, &packet, PacketStatus::ReceivedLastPacket);
+
+        packets.clear();
+
+
+        (message, packet.get_origin_addr(), seq_num)
     }
 
     /// Decides what to do with a broadcast message in the AB algorithm
@@ -716,42 +901,6 @@ impl ReliableCommunication {
             self.gossip(message.clone(), *origin, sequence_number);
             true
         }
-    }
-
-    /// When a packet marked as last is received, the packets are merged and the message is returned
-    fn receive_last_packet<H>(
-        &self,
-        packets: &mut Vec<DataPkt<H>>,
-        packet: &DataPkt<H>
-    ) -> (Vec<u8>, SocketAddr, u32) where H: DataHeader + Get {
-        let mut message = Vec::new();
-        // Ignore the first packet if its the remnant of a previous message
-        match packets.first() { 
-            Some(p) => {
-                if p.header.is_last() { packets.remove(0); }
-            }
-            None => {}
-         }
-
-        for packet in packets.iter() {
-            message.extend(&packet.data);
-        }
-        message.extend(&packet.data);
-
-        let sequence_number: u32;
-        let curr_agent_id: usize;
-        let t_agent_id: usize;
-        let p = match packets.first() {
-            Some(p) => { p }
-            None => { packet }
-        };
-
-        Self::log_pkt::<P>(&self.logger, &p, PacketStatus::ReceivedLastPacket);
-
-        packets.clear();
-
-
-        (message, packet.header.origin, sequence_number)
     }
 
     /// Marks a node as dead
