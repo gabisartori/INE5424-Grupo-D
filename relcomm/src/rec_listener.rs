@@ -22,6 +22,8 @@ pub struct RecListener {
     register_to_sender_tx: Sender<SendRequest>,
 }
 
+impl RecAux for RecListener {}
+
 impl RecListener {
     /// Constructor
     pub fn new(
@@ -62,7 +64,7 @@ impl RecListener {
             };
             if packet.header.is_ack() {
                 // logger
-                RecAux::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAck);
+                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAck);
 
                 // Handle ack
                 while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
@@ -77,19 +79,19 @@ impl RecListener {
                             Err(e) => {
                                 debug_println!("Erro ao enviar ACK: {e}");
                                 // logger
-                                RecAux::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
+                                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                             }
                         }
                     }
                     None => {
                         debug_println!("ACK recebido sem destinatário esperando");
                         // logger
-                        RecAux::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
+                        Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                     }
                 }
             } else {
                 // logger
-                RecAux::log_pkt(&self.logger, &self.host, &packet, PacketStatus::Received);
+                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::Received);
 
                 // Handle data
                 let packets = pkts_per_origin
@@ -104,7 +106,7 @@ impl RecListener {
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
                 // logger
-                RecAux::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
+                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
 
                 if packet.header.seq_num < expected { continue; }
                 
@@ -112,17 +114,16 @@ impl RecListener {
                     let (message, origin, sequence_number) =
                         Self::receive_last_packet(&self, packets, &packet);
                     // Handling broadcasts
-                    if packet.header.must_gossip() {
+                    let dlv: bool = if packet.header.must_gossip() {
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {
-                                debug_println!("Erro: Pedido de fofoca em um sistema sem fofoca");
-                                messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                                true
                             }
-                            // URB: All broadcasts must be gossiped and delivered
+                            // URB: All broadcasts must be gossiped and then delivered
                             Broadcast::URB => {
-                                RecAux::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
-                                messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                                Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
+                                true
                             }
                             // AB: Must check if I'm the leader and should broadcast it or just gossip
                             // In AB, broadcast messages can only be delivered if they were sent by the leader
@@ -131,28 +132,21 @@ impl RecListener {
                             // who must not deliver the request to broadcast to the group,
                             // instead, it must broadcast the message and only deliver when it gets gossiped back to it
                             Broadcast::AB => {
-                                // Check for anyone waiting for a broadcast
-                                while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
-                                    broadcast_waiters.push(Some(broadcast_waiter));
-                                }
-                                for waiter in broadcast_waiters.iter_mut() {
-                                    let w = waiter.as_ref().unwrap();
-                                    match (*w).send(message.clone()) {
-                                        Ok(_) => {} 
-                                        Err(_) => {
-                                            *waiter = None;
-                                        }
-                                    }
-                                }
-                                broadcast_waiters.retain(|w| w.is_some());
+                                self.warn_brd_waiters(&mut broadcast_waiters, &register_broadcast_waiters_rx, message.clone());
                                 
-                                if self.atm_gossip(message.clone(), &origin, sequence_number) {
-                                    messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
-                                }
+                                self.atm_gossip(message.clone(), &origin, sequence_number)
                             }
                         }
                     } else {
-                        messages_tx.send(message).expect("Erro ao enviar mensagem para a aplicação");
+                        true
+                    };
+                    if dlv {
+                        match messages_tx.send(message) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                debug_println!("Erro ao enviar mensagem: {e}");
+                            }
+                        }
                     }
                 }
                 packets.push(packet);
@@ -171,6 +165,23 @@ impl RecListener {
         0
     }
 
+    /// Resends the message for anyone who is waiting for a broadcast
+    fn warn_brd_waiters(&self, broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: Vec<u8>) {
+        while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
+            broadcast_waiters.push(Some(broadcast_waiter));
+        }
+        for waiter in broadcast_waiters.iter_mut() {
+            let w = waiter.as_ref().unwrap();
+            match (*w).send(message.clone()) {
+                Ok(_) => {} 
+                Err(_) => {
+                    *waiter = None;
+                }
+            }
+        }
+        broadcast_waiters.retain(|w| w.is_some());
+    }
+    
     /// Decides what to do with a broadcast message in the AB algorithm
     /// Based on your priority and the priority of the origin of the message
     /// The return boolean is used to tell the listener thread whether the message should be delivered or not (in case it's a broadcast request for the leader)
@@ -184,11 +195,11 @@ impl RecListener {
         let own_priority = self.get_leader_priority(&self.host.addr);
         if origin_priority < own_priority {
             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-            RecAux::brd_req(&self.register_to_sender_tx, message);
+            Self::brd_req(&self.register_to_sender_tx, message);
             false
         } else {
             // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
-            RecAux::gossip(&self.register_to_sender_tx, message.clone(), *origin, sequence_number);
+            Self::gossip(&self.register_to_sender_tx, message, *origin, sequence_number);
             true
         }
     }
@@ -206,7 +217,7 @@ impl RecListener {
                 if p.header.is_last() { packets.remove(0); }
             }
             None => {}
-         }
+        }
 
         for packet in packets.iter() {
             message.extend(&packet.data);
@@ -219,11 +230,10 @@ impl RecListener {
             None => { &packet}
         };
         // logger
-        RecAux::log_pkt(&self.logger, &self.host, &p, PacketStatus::ReceivedLastPacket);
+        Self::log_pkt(&self.logger, &self.host, &p, PacketStatus::ReceivedLastPacket);
 
         let seq_num: u32 = p.header.seq_num;
         packets.clear();
-
 
         (message, packet.header.origin, seq_num)
     }

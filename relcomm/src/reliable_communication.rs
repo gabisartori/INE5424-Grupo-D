@@ -24,14 +24,16 @@ use crate::rec_sender::RecSender;
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Arc<Mutex<Vec<Node>>>,
+    pub logger: SharedLogger,
     broadcast: Broadcast,
     message_timeout: Duration,
     broadcast_timeout: Duration,
     broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
-    pub logger: SharedLogger,
     register_to_sender_tx: Sender<SendRequest>,
 }
+
+impl RecAux for ReliableCommunication {}
 
 impl ReliableCommunication {
     /// Starts a new thread to listen for any incoming messages
@@ -85,12 +87,12 @@ impl ReliableCommunication {
         Ok(Self {
             host,
             group,
+            logger,
             broadcast,
             message_timeout,
             broadcast_timeout,
             broadcast_waiters_tx,
             receive_rx,
-            logger,
             register_to_sender_tx,
         })
     }
@@ -166,7 +168,7 @@ impl ReliableCommunication {
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
-        let result_rx = RecAux::brd_req(&self.register_to_sender_tx, message);
+        let result_rx = Self::brd_req(&self.register_to_sender_tx, message);
 
         match result_rx.recv() {
             Ok(result) => result,
@@ -180,7 +182,7 @@ impl ReliableCommunication {
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        RecAux::brd_req(&self.register_to_sender_tx, message);
+        Self::brd_req(&self.register_to_sender_tx, message);
         // TODO: Make it so that URB waits for at least one node to receive the message
         self.group.lock()
         .expect("Falha ao fazer o URB, Não obteve lock de Grupo").len() as u32
@@ -199,10 +201,10 @@ impl ReliableCommunication {
         
         // Constantly try to get a leader and ask it to broadcast
         loop {
-            let leader = RecAux::get_leader(&self.group, &self.host);
+            let leader = Self::get_leader(&self.group, &self.host);
             if leader == self.host {
                 // Start the broadcast
-                RecAux::brd_req(&self.register_to_sender_tx, message.clone());
+                Self::brd_req(&self.register_to_sender_tx, message.clone());
                 return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
             }
             // Ask the leader to broadcast and wait for confirmation

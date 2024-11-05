@@ -43,10 +43,9 @@ impl SendRequest {
 }
 
 /// This struct contains helper functions that are used by the main, listener and sender thread
-pub struct RecAux {}
-impl RecAux {
+pub trait RecAux {
     /// Returns the node with the highest priority (currently the first one alive in the group vector)
-    pub fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
+    fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
             if node.state == NodeState::ALIVE {
                 debug_println!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
@@ -56,7 +55,7 @@ impl RecAux {
         return host.clone();
     }
 
-    pub fn brd_req(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>) -> Receiver<u32>{
+    fn brd_req(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>) -> Receiver<u32>{
         let (request, request_rx) = SendRequest::new(
             data,
             SendRequestData::StartBroadcast {},
@@ -76,7 +75,7 @@ impl RecAux {
     /// 
     /// Since gossip algorithms are meant to ensure that the message will be successfully difused even if there are failing nodes
     /// This function doesn't need to wait for the result of the gossip. (It's also important to not block the listener thread when it needs to gossip a message)
-    pub fn gossip(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
+    fn gossip(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
         let (request, _) = SendRequest::new(
             data,
             SendRequestData::Gossip {
@@ -92,7 +91,7 @@ impl RecAux {
         }
     }
 
-    pub fn log_msg(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: MessageStatus) {
+    fn log_msg(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100
         } else {
@@ -110,7 +109,7 @@ impl RecAux {
             .log(logger_state);
     }
 
-    pub fn log_pkt(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: PacketStatus) {
+    fn log_pkt(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: PacketStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100
         } else {
