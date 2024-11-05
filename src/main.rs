@@ -6,7 +6,8 @@ use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 use logger::log::SharedLogger;
 use logger::log::Logger;
 use logger::{debug_file, debug_println, initializate_folders};
-use relcomm::reliable_communication::{Node, ReliableCommunication};
+use relcomm::reliable_communication::ReliableCommunication;
+use relcomm::node::Node;
 use tests::{Action, ReceiveAction, SendAction};
 
 // Importa as configurações de endereços dos processos
@@ -14,7 +15,7 @@ mod tests;
 
 struct Agent {
     id: usize,
-    communication: Arc<ReliableCommunication>,
+    communication: ReliableCommunication,
 }
 
 impl Agent {
