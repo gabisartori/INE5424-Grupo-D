@@ -23,10 +23,3 @@ pub enum NodeState {
     DEAD,
     // SUSPECT,
 }
-
-#[derive(PartialEq, Clone)]
-pub enum Broadcast {
-    BEB,
-    URB,
-    AB,
-}

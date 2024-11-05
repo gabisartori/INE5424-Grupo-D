@@ -13,10 +13,10 @@ use std::time::Duration;
 
 use crate::channels::Channel;
 use crate::config::{BROADCAST, TIMEOUT, TIMEOUT_LIMIT, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT, GOSSIP_RATE, W_SIZE};
-use crate::node::{Node, Broadcast};
+use crate::node::Node;
 use logger::debug_println;
 use logger::log::SharedLogger;
-use crate::rec_aux::{SendRequest, SendRequestData, RecAux};
+use crate::rec_aux::{SendRequest, SendRequestData, Broadcast, RecAux};
 use crate::rec_listener::RecListener;
 use crate::rec_sender::RecSender;
 

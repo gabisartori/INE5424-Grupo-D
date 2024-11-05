@@ -1,5 +1,3 @@
-
-
 all:
 	@cargo run -q --release
 	@cat tests/Resultado.txt

@@ -50,12 +50,17 @@ macro_rules! debug_file {
     };
 }
 
-// TODO: Fazer com que cada teste tenha um debug próprio
 /// writes a message in tests/debug.txt
 #[macro_export]
 macro_rules! debug_println {
     ($($arg:tt)*) => {
-        let path = format!("tests/debug.txt");
+        let args = std::env::args().collect::<Vec<String>>();
+        let path = if args.len() > 1{
+            let t_id = args[1].parse::<usize>().unwrap();
+            format!("tests/test_{}/debug.txt", t_id)
+        } else {
+            format!("tests/debug.txt")
+        };
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
                                             .append(true)
