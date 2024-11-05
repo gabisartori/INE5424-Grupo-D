@@ -4,13 +4,21 @@ macro_rules! initializate_folders {
     ($tests_num:expr) => {
         use std::fs::{self, File};
         // deletes the needed folder if they exists
-        fs::remove_dir_all("tests").expect("Erro ao deletar a pasta 'tests'");
-        fs::remove_dir_all("src/log").expect("Erro ao deletar a pasta 'src/log'");
-        fs::remove_dir_all("relcomm/log").expect("Erro ao deletar a pasta 'relcomm/log'");
-        // creates the needed folder
-        fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
-        fs::create_dir_all("src/log").expect("Erro ao criar a pasta 'src/log'");
-        fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
+        if (fs::metadata("tests").is_ok()) {
+            fs::remove_dir_all("tests").expect("Erro ao deletar a pasta 'tests'");
+            fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
+        };
+
+        if (fs::metadata("src/log").is_ok()) {
+            fs::remove_dir_all("src/log").expect("Erro ao deletar a pasta 'src/log'");
+            fs::create_dir_all("src/log").expect("Erro ao criar a pasta 'src/log'");
+        };
+
+        if (fs::metadata("relcomm/log").is_ok()) {
+            fs::remove_dir_all("relcomm/log").expect("Erro ao deletar a pasta 'relcomm/log'");
+            fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
+        };
+       
         // creates a folder for each test
         for i in 0..$tests_num {
             let path = format!("tests/test_{}", i);
@@ -21,7 +29,6 @@ macro_rules! initializate_folders {
             // File::create(path).expect("Erro ao criar o arquivo de resultado");
         }
         // File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
-        
     };
 }
 
@@ -43,7 +50,6 @@ macro_rules! debug_file {
     };
 }
 
-
 // TODO: Fazer com que cada teste tenha um debug próprio
 /// writes a message in tests/debug.txt
 #[macro_export]
@@ -64,7 +70,6 @@ use std::env;
     };
 }
 
-
 #[allow(unused_imports)]
 #[allow(unused_variables)]
 #[allow(unused_mut)]
@@ -74,20 +79,20 @@ use std::{
 };
 
 // // Define states for the agents
-// #[derive(Debug, Clone, Copy)]
-// pub enum AgentStatus {
-//     Initializing,
-//     InitFailed,
-//     WaitingForPacket,
-//     Fragmenting,
-//     Sending,
-//     Receiving,
-//     Completed,
-//     FailedToReceive,
-//     FailedToSend,
-//     Down,
-//     Unknown,
-// }
+#[derive(Debug, Clone, Copy)]
+pub enum AgentStatus {
+    Initializing,
+    InitFailed,
+    WaitingForPacket,
+    Fragmenting,
+    Sending,
+    Receiving,
+    Completed,
+    FailedToReceive,
+    FailedToSend,
+    Down,
+    Unknown,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum PacketStatus {
@@ -143,6 +148,11 @@ pub enum LoggerState {
         message_id: usize,
         // action: MessageAction,
         // algorithm: MessageAlgorithm,
+    },
+
+    Agent {
+        state: AgentStatus,
+        agent_id: Option<usize>,
     },
 
     LogInfo {
@@ -244,10 +254,7 @@ impl DebugLog {
                     )
                 }
                 MessageStatus::Unknown => {
-                    format!(
-                        "(State: {:?}) unknown state",
-                        state,
-                    )
+                    format!("(State: {:?}) unknown state", state,)
                 }
                 MessageStatus::Fragmenting => {
                     format!(
@@ -377,12 +384,13 @@ impl DebugLog {
                     )
                 }
                 PacketStatus::Unknown => {
-                    format!(
-                        "(State: {:?}) unknown state",
-                        state,
-                    )
+                    format!("(State: {:?}) unknown state", state,)
                 }
             },
+            LoggerState::Agent { state, agent_id } => {
+                format!("(Agent {:?}) state: {:?}", state, agent_id.unwrap())
+            }
+
             LoggerState::LogInfo {
                 current_agent_id,
                 description,
@@ -411,19 +419,26 @@ pub type SharedLogger = Arc<Mutex<Logger>>;
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub struct Logger {
-    debug_level: u8,
+    show_agent_logs: bool,
+    show_packet_logs: bool,
+    show_message_logs: bool,
     n_agents: usize,
 }
 
 #[allow(unused_mut)]
 impl Logger {
-    pub fn new(debug_level: u8, n_agents: usize) -> Self {
-        let mut logger = Self {
-            debug_level,
+    pub fn new(
+        show_agent_logs: bool,
+        show_packet_logs: bool,
+        show_message_logs: bool,
+        n_agents: usize,
+    ) -> Self { 
+        Self {
+            show_agent_logs,
+            show_packet_logs,
+            show_message_logs,
             n_agents,
-        };
-
-        logger
+        }
     }
 
     pub fn fail(&mut self, msg: String, agent_num: Option<usize>) {
@@ -455,36 +470,47 @@ impl Logger {
         let log = DebugLog::new().get_log(logger_state.clone());
         let msg_buffer = format!("{}\n", log);
 
-        if self.debug_level > 0 {
-            // write to the log file
-            let agent_id = match logger_state.clone() {
-                LoggerState::Message {
-                    current_agent_id, ..
-                } => current_agent_id.unwrap_or(usize::MAX),
-                LoggerState::Packet {
-                    current_agent_id, ..
-                } => current_agent_id.unwrap_or(usize::MAX),
-                LoggerState::LogFail {
-                    current_agent_id, ..
-                } => current_agent_id.unwrap_or(usize::MAX),
-                LoggerState::LogInfo {
-                    current_agent_id, ..
-                } => current_agent_id.unwrap_or(usize::MAX),
-                LoggerState::LogWarning {
-                    current_agent_id, ..
-                } => current_agent_id.unwrap_or(usize::MAX),
-            };
+        // write to the log file
+        let agent_id = match logger_state.clone() {
+            LoggerState::Message {
+                current_agent_id, ..
+            } => current_agent_id.unwrap_or(usize::MAX),
+            LoggerState::Packet {
+                current_agent_id, ..
+            } => current_agent_id.unwrap_or(usize::MAX),
+            LoggerState::Agent { agent_id, .. } => agent_id.unwrap_or(usize::MAX),
+            LoggerState::LogFail {
+                current_agent_id, ..
+            } => current_agent_id.unwrap_or(usize::MAX),
+            LoggerState::LogInfo {
+                current_agent_id, ..
+            } => current_agent_id.unwrap_or(usize::MAX),
+            LoggerState::LogWarning {
+                current_agent_id, ..
+            } => current_agent_id.unwrap_or(usize::MAX),
+        };
 
-            // if logger isnt message or packet and agent_id is MAX, write to log_msgs.txt
-            if agent_id != usize::MAX {
+        // if logger isnt message or packet and agent_id is MAX, write to log_msgs.txt
+        if agent_id != usize::MAX {
+            if self.show_agent_logs && matches!(logger_state, LoggerState::Agent { .. }) {
                 // write to the agent log file
                 let path = format!("src/log/agent_{}.txt", agent_id);
                 debug_file!(path, msg_buffer.as_bytes());
-            } else {
-                // couldnt identify the agent, so write to the general log file
-                let path = format!("src/log/log_msgs.txt");
+            }
+            if self.show_packet_logs && matches!(logger_state, LoggerState::Packet { .. }) {
+                // write to the packet log file
+                let path = format!("src/log/agent_{}.txt", agent_id);
                 debug_file!(path, msg_buffer.as_bytes());
             }
+            if self.show_message_logs && matches!(logger_state, LoggerState::Message { .. }) {
+                // write to the message log file
+                let path = format!("src/log/agent_{}.txt", agent_id);
+                debug_file!(path, msg_buffer.as_bytes());
+            }
+        } else {
+            // couldnt identify the agent, so write to the general log file
+            let path = format!("src/log/log_msgs.txt");
+            debug_file!(path, msg_buffer.as_bytes());
         }
     }
 }
