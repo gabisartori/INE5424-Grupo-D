@@ -564,7 +564,7 @@ impl ReliableCommunication {
                     let friends = self.get_friends();
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) && node.state == NodeState::ALIVE {
+                            if friends.contains(node) {
                                 messages.push(packets);
                             }
                         }
@@ -585,9 +585,7 @@ impl ReliableCommunication {
                         *seq_num,
                         true,
                     );
-                    if node.state == NodeState::ALIVE {
-                        messages.push(packets);
-                    }
+                    messages.push(packets);
                 }
             }
         }  
@@ -597,7 +595,8 @@ impl ReliableCommunication {
     /// Returns the nodes that are considered friends of the current node
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
     fn get_friends(&self) -> Vec<Node> {
-        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let mut old_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let group = old_group.iter_mut().filter(|n| n.state == NodeState::ALIVE).map(|n| n.clone()).collect::<Vec<Node>>();
 
         let start = (self.host.agent_number + 1) % group.len();
         let end = (start + self.gossip_rate) % group.len();
