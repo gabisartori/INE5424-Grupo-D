@@ -4,26 +4,10 @@ e implementa sockets para comunicação entre os processos participantes.
 */
 use std::net::UdpSocket;
 use std::sync::Arc;
-use lazy_static::lazy_static;
 
 use crate::packet::Packet;
+use crate::config::{LOSS_RATE, CORRUPTION_RATE};
 use logger::debug_println;
-
-/// reads the loss_rate and corruption_rate from the command line arguments
-/// they should be the last two arguments exept for the agent and test id
-fn get_args() -> (f32, f32) {
-    let args: Vec<String> = std::env::args().collect();
-    let size = args.len() - 3;
-    let loss_rate = args[size].parse::<f32>().unwrap();
-    let corruption_rate = args[size - 1].parse::<f32>().unwrap();
-    (loss_rate, corruption_rate)
-}
-
-// global variables to read the loss_rate and corruption_rate
-lazy_static! {
-    static ref LOSS_RATE: f32 = get_args().0;
-    static ref CORRUPTION_RATE: f32 = get_args().1;
-}
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
@@ -63,10 +47,10 @@ impl Channel {
                 }
             };
             // Simula perda de pacotes, usand as referências staticas LOSS_RATE e CORRUPTION_RATE
-            if rand::random::<f32>() < *LOSS_RATE {
+            if rand::random::<f32>() < LOSS_RATE {
                 continue;
             }
-            if rand::random::<f32>() < *CORRUPTION_RATE {
+            if rand::random::<f32>() < CORRUPTION_RATE {
                 packet.header.checksum += 1;
             }
             // Verifica se o pacote foi corrompido
