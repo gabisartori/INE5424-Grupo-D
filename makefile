@@ -1,9 +1,9 @@
 all:
-	@cargo run -q --release
+	@RUST_BACKTRACE=1 cargo run -q --release
 	@cat tests/Resultado.txt
 
 debug:
-	@cargo run -q
+	@RUST_BACKTRACE=1 cargo run -q
 	@cat tests/Resultado.txt
 
 clean:
