@@ -344,6 +344,7 @@ pub trait DataHeader: Header {
     fn new(addr: &Vec<&SocketAddr>, seq_num: u32, is_last: bool) -> Self;
     fn get_ack(&self) -> Self::AckType;
     fn is_last(&self) -> bool;
+    fn set_checksum(&mut self, checksum: u32);
 }
 
 impl DataHeader for HSnd {
@@ -369,6 +370,10 @@ impl DataHeader for HSnd {
     }
     fn is_last(&self) -> bool {
         self.is_last
+    }
+
+    fn set_checksum(&mut self, checksum: u32) {
+        self.checksum = checksum;
     }
 }
 
@@ -400,6 +405,10 @@ impl DataHeader for HBrd {
     fn is_last(&self) -> bool {
         self.is_last
     }
+
+    fn set_checksum(&mut self, checksum: u32) {
+        self.checksum = checksum;
+    }
 }
 
 impl DataHeader for HLRq {
@@ -427,5 +436,9 @@ impl DataHeader for HLRq {
 
     fn is_last(&self) -> bool {
         self.is_last
+    }
+    
+    fn set_checksum(&mut self, checksum: u32) {
+        self.checksum = checksum;
     }
 }
