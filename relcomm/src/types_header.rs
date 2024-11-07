@@ -1,4 +1,3 @@
-// Importações necessárias
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[derive(Clone)]
@@ -339,12 +338,37 @@ pub trait IsAck: Clone + Header {}
 impl IsAck for Ack {}
 impl IsAck for AckBrd {}
 
-pub trait DataHeader: Header {
+pub trait IsLast {
+    fn is_last(&self) -> bool;
+}
+pub trait SetCheck {
+    fn set_checksum(&mut self, checksum: u32);
+}
+
+/// Implementação de IsLast e SetCheck para DataHeaders
+macro_rules! impl_subdh {
+    ($t:ty) => {
+        impl IsLast for $t {
+            fn is_last(&self) -> bool {
+                self.is_last
+            }
+        }
+        impl SetCheck for $t {
+            fn set_checksum(&mut self, checksum: u32) {
+                self.checksum = checksum;
+            }
+        }
+    };
+}
+
+impl_subdh!(HSnd);
+impl_subdh!(HBrd);
+impl_subdh!(HLRq);
+
+pub trait DataHeader: Header + IsLast + SetCheck {
     type AckType: IsAck;
     fn new(addr: &Vec<&SocketAddr>, seq_num: u32, is_last: bool) -> Self;
     fn get_ack(&self) -> Self::AckType;
-    fn is_last(&self) -> bool;
-    fn set_checksum(&mut self, checksum: u32);
 }
 
 impl DataHeader for HSnd {
@@ -367,13 +391,6 @@ impl DataHeader for HSnd {
         };
         ack.checksum = Ack::checksum(&ack);
         ack
-    }
-    fn is_last(&self) -> bool {
-        self.is_last
-    }
-
-    fn set_checksum(&mut self, checksum: u32) {
-        self.checksum = checksum;
     }
 }
 
@@ -401,14 +418,6 @@ impl DataHeader for HBrd {
         ack.checksum = AckBrd::checksum(&ack);
         ack
     }
-
-    fn is_last(&self) -> bool {
-        self.is_last
-    }
-
-    fn set_checksum(&mut self, checksum: u32) {
-        self.checksum = checksum;
-    }
 }
 
 impl DataHeader for HLRq {
@@ -432,13 +441,5 @@ impl DataHeader for HLRq {
         };
         ack.checksum = Ack::checksum(&ack);
         ack
-    }
-
-    fn is_last(&self) -> bool {
-        self.is_last
-    }
-    
-    fn set_checksum(&mut self, checksum: u32) {
-        self.checksum = checksum;
     }
 }

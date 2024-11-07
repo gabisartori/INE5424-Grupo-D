@@ -34,13 +34,16 @@ impl Channel {
                 continue;
             }
             // Verifica se o pacote foi corrompido
-            if !packet.validate_message() { continue; }
+            if !packet.validate_pkt() { continue; }
             return Ok(packet);
         }
     }
 
     /// Wrapper for UdpSocket::send_to, but with packets
     pub fn send(&self, packet: &(impl Packet + Get)) -> bool {
+        if rand::random::<f32>() < LOSS_RATE {
+            return false;
+        }
         match self.socket.send_to(&packet.to_bytes(), packet.get_dst_addr()) {
             Ok(_) => true,
             Err(_) => false
