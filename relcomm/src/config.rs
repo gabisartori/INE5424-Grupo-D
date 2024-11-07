@@ -6,4 +6,3 @@ pub const BROADCAST_TIMEOUT: u64 = 100;
 pub const GOSSIP_RATE: usize = 3;
 pub const W_SIZE: usize = 5;
 pub const LOSS_RATE: f32= 0.01;
-pub const CORRUPTION_RATE: f32 = 0.01;

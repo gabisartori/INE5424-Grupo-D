@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 #[derive(PartialEq, Clone)]
 pub enum SendAction {
@@ -387,15 +387,15 @@ pub fn broadcast_test_6() -> Test {
 // a vec of function pointers to the tests
 pub fn all_tests() -> Vec<(&'static str, Test)> {
     vec![
-        ("send_1", send_test_1()),
-        ("send_2", send_test_2()),
-        ("send_3", send_test_3()),
-        ("send_4", send_test_4()),
-        ("broadcast_1", broadcast_test_1()),
-        ("broadcast_2", broadcast_test_2()),
-        ("broadcast_3", broadcast_test_3()),
-        ("broadcast_4", broadcast_test_4()),
-        ("broadcast_5", broadcast_test_5()),
-        ("broadcast_6", broadcast_test_6())
+        ("send 1", send_test_1()),
+        ("send 2", send_test_2()),
+        ("send 3", send_test_3()),
+        ("send 4", send_test_4()),
+        ("broadcast 1", broadcast_test_1()),
+        ("broadcast 2", broadcast_test_2()),
+        ("broadcast 3", broadcast_test_3()),
+        ("broadcast 4", broadcast_test_4()),
+        ("broadcast 5", broadcast_test_5()),
+        ("broadcast 6", broadcast_test_6())
     ]
 }

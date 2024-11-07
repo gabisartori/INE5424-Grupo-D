@@ -5,8 +5,8 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 use crate::channels::Channel;
-use crate::types_packet::{PacketType, DataPkt, HasData, Get};
-use crate::types_header::{DataHeader, Ack, AckBrd, HBrd, HLRq, HSnd, IsAck};
+use crate::types_packet::{PacketType, DataPkt, HasData, Get, Origin};
+use crate::types_header::{Ack, AckBrd, HBrd, HLRq, HSnd, DataHeader, IsAck};
 
 use logger::{log::{Logger, LoggerState, MessageStatus, PacketStatus, SharedLogger}, debug_println};
 
@@ -409,7 +409,6 @@ impl ReliableCommunication {
         register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
         
-        // TODO: Upgrade this thread to make it able of sending multiple messages at once
         while let Ok(request) = register_from_user_rx.recv() {
             self.handle_request(&request, &acks_snd_rx, &acks_brd_rx, &register_to_listener_tx);
         }
@@ -496,7 +495,7 @@ impl ReliableCommunication {
     fn handle_msgs<H>(&self, messages_to_send: Vec<Vec<DataPkt<H>>>,
         acks_rx: &Receiver<H::AckType>,
         register_to_listener_tx: &Sender<((SocketAddr, SocketAddr), u32)>) -> u32
-        where H: DataHeader, DataPkt<H>: Get + HasData<H>, H::AckType: Get {
+        where H: DataHeader, DataPkt<H>: Get + HasData<H> + Origin, H::AckType: Get {
         let mut success_count = 0;
         for packets in messages_to_send {
             // Register the destination address and the sequence to the listener thread
@@ -600,7 +599,7 @@ impl ReliableCommunication {
     }
 
     
-    fn handle_ack<A: IsAck + Get>(&self, packet: A, acks_tx: &Sender<A>,
+    fn handle_ack<A: IsAck + Get + Origin>(&self, packet: A, acks_tx: &Sender<A>,
         expected_acks: &mut HashMap<(SocketAddr, SocketAddr), u32>,
         register_from_sender_rx: &Receiver<((SocketAddr, SocketAddr), u32)>)
     {
@@ -636,7 +635,7 @@ impl ReliableCommunication {
         broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>,
         pkts_per_origin: &mut HashMap<SocketAddr, Vec<DataPkt<H>>>,
         register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>)
-        where H: DataHeader, DataPkt<H>: Get + HasData<H>
+        where H: DataHeader, DataPkt<H>: Get + HasData<H> + Origin
     {
         Self::log_pkt::<DataPkt<H>>(&self.logger, &packet, PacketStatus::Received);
 
@@ -853,7 +852,7 @@ impl ReliableCommunication {
 
     /// When a packet marked as last is received, the packets are merged and the message is returned
     fn receive_last_packet<H>(&self, packets: &mut Vec<DataPkt<H>>, packet: &DataPkt<H>
-    ) -> (Vec<u8>, SocketAddr, u32) where H: DataHeader, DataPkt<H>: Get {
+    ) -> (Vec<u8>, SocketAddr, u32) where H: DataHeader, DataPkt<H>: Get + Origin {
         let mut message = Vec::new();
         // Ignore the first packet if its the remnant of a previous message
         match packets.first() { 
