@@ -2,10 +2,9 @@ use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-use crate::packet::Packet;
+use logger::{debug, log::{Logger, LoggerState, MessageStatus, PacketStatus}};
 use crate::node::{Node, NodeState};
-use logger::debug;
-use logger::log::{Logger, LoggerState, MessageStatus, PacketStatus};
+use crate::packet::Packet;
 
 pub enum SendRequestData {
     // Creates one message to be sent to a specific destination
@@ -51,17 +50,7 @@ pub enum Broadcast {
 }
 /// This struct contains helper functions that are used by the main, listener and sender thread
 pub trait RecAux {
-    /// Returns the node with the highest priority (currently the first one alive in the group vector)
-    fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
-        for node in group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state == NodeState::ALIVE {
-                // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
-                return node.clone();
-            }
-        }
-        return host.clone();
-    }
-
+    /// Creates a broadcast request and sends it to the sender thread
     fn brd_req(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>) -> Receiver<u32>{
         let (request, request_rx) = SendRequest::new(
             data,
@@ -78,10 +67,11 @@ pub trait RecAux {
 
     /// Picks the node "friends" and retransmits the message to them
     /// This retransmission preserves the original message information about the origin and sequence number
-    /// The friends are any group of N nodes in the group, where N is the gossip rate. Currently it's the next N nodes in the group vector
-    /// 
-    /// Since gossip algorithms are meant to ensure that the message will be successfully difused even if there are failing nodes
-    /// This function doesn't need to wait for the result of the gossip. (It's also important to not block the listener thread when it needs to gossip a message)
+    /// The friends are any group of N nodes in the group, where N is the gossip rate.
+    /// Currently it's the next N nodes in the group vector
+    /// Since gossip algorithms are meant to ensure that the message will be successfully difused,
+    /// even if there are failing nodes, this function doesn't need to wait for the result of the gossip.
+    /// (It's also important to not block the listener thread when it needs to gossip a message)
     fn gossip(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
         let (request, _) = SendRequest::new(
             data,
@@ -96,6 +86,17 @@ pub trait RecAux {
                 debug!("Erro ao fazer fofoca: {e}");
             }
         }
+    }
+
+    /// Returns the node with the highest priority (currently the first one alive in the group vector)
+    fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
+        for node in group.lock().expect("Falha ao ler do grupo").iter() {
+            if node.state == NodeState::ALIVE {
+                // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
+                return node.clone();
+            }
+        }
+        return host.clone();
     }
 
     fn log_msg(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: MessageStatus) {

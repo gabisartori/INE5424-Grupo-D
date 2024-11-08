@@ -9,11 +9,10 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use crate::channels::Channel;
+use logger::{log::SharedLogger, debug};
 use crate::config::{BROADCAST, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT};
+use crate::channels::Channel;
 use crate::node::Node;
-use logger::debug;
-use logger::log::SharedLogger;
 use crate::rec_aux::{SendRequest, SendRequestData, Broadcast, RecAux};
 use crate::rec_listener::RecListener;
 use crate::rec_sender::RecSender;
@@ -47,8 +46,6 @@ impl ReliableCommunication {
             "AB" => Broadcast::AB,
             _ => panic!("Falha ao converter broadcast {BROADCAST} para Broadcast"),
         };
-        let message_timeout = Duration::from_millis(MESSAGE_TIMEOUT);
-        let broadcast_timeout = Duration::from_millis(BROADCAST_TIMEOUT);
         let group = Arc::new(Mutex::new(group));
 
         let (register_to_sender_tx, reg_to_send_rx) = mpsc::channel();
@@ -60,24 +57,31 @@ impl ReliableCommunication {
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
 
 
-        let sender = RecSender::new(host.clone(), channel.clone(), Arc::clone(&group), broadcast.clone(), logger.clone());
-        let listener = RecListener::new(host.clone(), Arc::clone(&group), channel, broadcast.clone(), logger.clone(), register_to_sender_tx.clone());
-
-        // Spawn all threads
+        let sender = RecSender::new(host.clone(), group.clone(), 
+            channel.clone(), broadcast.clone(), logger.clone());
+        
+        // Spawn sender thread
         std::thread::spawn(move || {
-            sender.run(snd_acks_rx, brd_acks_rx, reg_to_send_rx, reg_snd_to_listener_tx, reg_brd_to_listener_tx);
-        });
-        std::thread::spawn(move || {
-            listener.run(
-                messages_tx,
-                snd_acks_tx,
-                brd_acks_tx,
-                reg_snd_rx, 
-                reg_brd_rx,
-                brd_waiters_rx,
+            sender.run(
+                snd_acks_rx, brd_acks_rx, reg_to_send_rx,
+                reg_snd_to_listener_tx, reg_brd_to_listener_tx
             );
         });
 
+        let listener = RecListener::new(host.clone(), 
+            group.clone(), channel, broadcast.clone(), logger.clone(),
+            register_to_sender_tx.clone());
+
+        // Spawn listener thread
+        std::thread::spawn(move || {
+            listener.run(
+                messages_tx, snd_acks_tx, brd_acks_tx,
+                reg_snd_rx, reg_brd_rx, brd_waiters_rx,
+            );
+        });
+
+        let message_timeout = Duration::from_millis(MESSAGE_TIMEOUT);
+        let broadcast_timeout = Duration::from_millis(BROADCAST_TIMEOUT);
         let receive_rx = Mutex::new(receive_rx);
 
         Ok(Arc::new(Self {
