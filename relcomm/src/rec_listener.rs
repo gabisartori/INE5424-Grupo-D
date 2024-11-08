@@ -1,14 +1,13 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, Sender};
 
-use crate::node::Node;
+use logger::{log::{PacketStatus, SharedLogger}, debug};
+use crate::rec_aux::{SendRequest, Broadcast, RecAux};
 use crate::channels::Channel;
 use crate::packet::Packet;
-use crate::rec_aux::{SendRequest, Broadcast, RecAux};
-use logger::debug;
-use logger::log::{PacketStatus, SharedLogger};
+use crate::node::Node;
 
 /// Listener thread that handles the reception of messages
 pub struct RecListener {
@@ -107,9 +106,7 @@ impl RecListener {
                 let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
 
                 // Ignore the packet if the sequence number is higher than expected
-                if packet.header.seq_num > expected {
-                    continue;
-                }
+                if packet.header.seq_num > expected {continue;}
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
                 // logger
@@ -122,7 +119,6 @@ impl RecListener {
                         Self::receive_last_packet(&self, packets, &packet);
                     // Handling broadcasts
                     let dlv: bool = if packet.header.is_brd() {
-                        debug!("Recebeu um broadcast do Agente {}", origin.port() % 100);
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {}
@@ -149,7 +145,7 @@ impl RecListener {
                         let own_priority = self.get_leader_priority(&self.host.addr);
                         if origin_priority < own_priority {
                             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-                            debug!("É Líder e recebeu um pedido de {}", origin.port() % 100);
+                            debug!("Recebeu um Leader Request de {}", origin.port() % 100);
                             Self::brd_req(&self.register_to_sender_tx, message.clone());
                             false
                         } else {true}
@@ -169,12 +165,8 @@ impl RecListener {
     }
 
     /// When a packet marked as last is received, the packets are merged and the message is returned
-    fn receive_last_packet(
-        &self,
-        packets: &mut Vec<Packet>,
-        packet: &Packet
-    ) -> (Vec<u8>, SocketAddr, u32) {
-        let mut message = Vec::new();
+    fn receive_last_packet(&self,packets: &mut Vec<Packet>,
+        packet: &Packet) -> (Vec<u8>, SocketAddr, u32) {
         // Ignore the first packet if its the remnant of a previous message
         match packets.first() { 
             Some(p) => {
@@ -183,15 +175,15 @@ impl RecListener {
             None => {}
         }
 
+        let mut message = Vec::new();
         for packet in packets.iter() {
             message.extend(&packet.data);
         }
         message.extend(&packet.data);
 
         let p = match packets.first() {
-            Some(p) => { p
-        }
-            None => { &packet}
+            Some(p) => { p }
+            None => { &packet }
         };
         // logger
         Self::log_pkt(&self.logger, &self.host, &p, PacketStatus::ReceivedLastPacket);
@@ -203,11 +195,12 @@ impl RecListener {
     }
 
     /// Resends the message for anyone who is waiting for a broadcast
-    fn warn_brd_waiters(broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, brd_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: &Vec<u8>) {
-        while let Ok(broadcast_waiter) = brd_waiters_rx.try_recv() {
-            broadcast_waiters.push(Some(broadcast_waiter));
+    fn warn_brd_waiters(brd_waiters: &mut Vec<Option<Sender<Vec<u8>>>>,
+        brd_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: &Vec<u8>) {
+        while let Ok(brd_waiter) = brd_waiters_rx.try_recv() {
+            brd_waiters.push(Some(brd_waiter));
         }
-        for waiter in broadcast_waiters.iter_mut() {
+        for waiter in brd_waiters.iter_mut() {
             let w = waiter.as_ref().unwrap();
             match (*w).send(message.clone()) {
                 Ok(_) => {} 
@@ -216,12 +209,14 @@ impl RecListener {
                 }
             }
         }
-        broadcast_waiters.retain(|w| w.is_some());
+        brd_waiters.retain(|w| w.is_some());
     }
 
     /// Calculates the priority of a node in the group (currently the lowest index in the group vector)
     fn get_leader_priority(&self, node_address: &SocketAddr) -> usize {
-        let group = self.group.lock().expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
+        let group = self.group
+            .lock()
+            .expect("Erro ao obter prioridade do líder: Mutex lock do grupo falhou");
         for (i, n) in group.iter().enumerate() {
             if n.addr == *node_address {
                 return group.len()-i;

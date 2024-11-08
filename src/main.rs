@@ -59,15 +59,17 @@ impl Agent {
         // Channel for handling the death instruction
         let (death_tx, death_rx) = mpsc::channel();
         let death_tx_clone = death_tx.clone();
+        let (sender_tx, sender_rx) = mpsc::channel();
+        let (listener_tx, listener_rx) = mpsc::channel();
         
         // Spawns both threads
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
         
         let sender = thread::spawn(move ||
-            sender_clone.creater(send_actions, death_tx_clone));
+            sender_clone.creater(send_actions, death_tx_clone, sender_tx));
         let listener = thread::spawn(move ||
-            listener_clone.receiver(receive_actions, death_tx, test_id));
+            listener_clone.receiver(receive_actions, death_tx, listener_tx, test_id));
         
         // Threads results
         let s_acertos;
@@ -77,15 +79,25 @@ impl Agent {
         // If both threads end without sending anything, the agent should wait for them to finish
         match death_rx.recv() {
             Ok((t, n)) => {
-                // TODO: Descobrir o outro valor
                 match t {
                     "C" => {
                         s_acertos = n;
-                        r_acertos = 0;
+                        let mut t = 0;
+                        while let Ok(r) = listener_rx.try_recv() {
+                            t = r;
+                            println!("t: {}", t);
+                        }
+                        r_acertos = t;
+
                     },
                     "R" => {
-                        s_acertos = 0;
                         r_acertos = n;
+                        let mut t = 0;
+                        while let Ok(r) = sender_rx.try_recv() {
+                            println!("t: {}", t);
+                            t = r;
+                        }
+                        s_acertos = t;
                     },
                 e => {
                         debug!("Identificador Inválido {e}");
@@ -115,7 +127,7 @@ impl Agent {
     }
 
     /// Agent thread that always receives messages and checks if they are the expected ones from the selected test
-    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<(&str, u32)>, test_id: usize) -> u32 {
+    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<(&str, u32)>, survival_tx: Sender<u32>, test_id: usize) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         let mut expected_messages = Vec::new();
@@ -145,6 +157,7 @@ impl Agent {
                         let path = format!("tests/test_{test_id}/acertos_{}.txt", self.id);
                         debug_file!(path, &message);
                         acertos += 1;
+                        survival_tx.send(acertos).unwrap();
                     } else {
                         let path = format!("tests/test_{test_id}/erros{}_{i}.txt", self.id);
                         debug_file!(path, &message);
@@ -158,15 +171,17 @@ impl Agent {
     }
 
     /// Agent thread that sends preset messages from the selected test
-    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<(&str, u32)>) -> u32 {
+    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<(&str, u32)>, survival_tx: Sender<u32>) -> u32 {
         let mut acertos = 0;
         for action in actions {
             match action {
                 SendAction::Send { destination, message } => {
                     acertos += self.communication.send(destination, message.as_bytes().to_vec());
+                    survival_tx.send(acertos).unwrap();
                 },
                 SendAction::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
+                    survival_tx.send(acertos).unwrap();
                 },
                 SendAction::DieAfterSend {} => {
                     // Ignore send result because the run function cannot end until the receiver thread ends
