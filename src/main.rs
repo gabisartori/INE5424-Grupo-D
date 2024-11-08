@@ -5,7 +5,7 @@ use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 
 use logger::log::SharedLogger;
 use logger::log::Logger;
-use logger::{debug_file, debug_println, initializate_folders};
+use logger::{debug_file, debug, initializate_folders};
 use relcomm::reliable_communication::ReliableCommunication;
 use relcomm::node::Node;
 use tests::{Action, ReceiveAction, SendAction};
@@ -15,7 +15,7 @@ mod tests;
 
 struct Agent {
     id: usize,
-    communication: ReliableCommunication,
+    communication: Arc<ReliableCommunication>,
 }
 
 impl Agent {
@@ -88,7 +88,7 @@ impl Agent {
                         r_acertos = n;
                     },
                 e => {
-                        debug_println!("Agent {}: Identificador {e}", self.id);
+                        debug!("Identificador Inválido {e}");
                         s_acertos = 0;
                         r_acertos = 0;
                     }
@@ -97,15 +97,15 @@ impl Agent {
             Err(RecvError) => {
                 r_acertos = match listener.join() {
                     Ok(r) => r,
-                    Err(_) => {
-                        debug_println!("Agent {}: Erro ao esperar thread listener encerrar", self.id);
+                    Err(e) => {
+                        debug!("Erro ao esperar thread listener encerrar: {:?}", e);
                         0
                     },
                 };
                 s_acertos = match sender.join() {
                     Ok(s) => s,
-                    Err(_) => {
-                        debug_println!("Agent {}: Erro ao esperar thread sender encerrar", self.id);
+                    Err(e) => {
+                        debug!("Erro ao esperar thread sender encerrar: {:?}", e);
                         0
                     },
                 };
@@ -150,7 +150,7 @@ impl Agent {
                         debug_file!(path, &message);
                     }
                 },
-                Err(e) => { debug_println!("Agent {}: Mensagem recebida não é uma string utf-8 válida: {}", self.id, e); },
+                Err(e) => { debug!("Mensagem recebida não é uma string utf-8 válida: {}", e); },
             }
             i += 1;
         }

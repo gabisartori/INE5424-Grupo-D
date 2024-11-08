@@ -25,7 +25,8 @@ macro_rules! initializate_folders {
             let error_msg = format!("Erro ao criar a pasta '{}'", path);
             fs::create_dir_all(path.clone()).expect(&error_msg);
             // creates a result file for each test
-            let path = format!("{}/Resultado.txt", path);
+            let path = format!("{}/debug_agts", path);
+            fs::create_dir_all(path.clone()).expect(&error_msg);
             // File::create(path).expect("Erro ao criar o arquivo de resultado");
         }
         // File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
@@ -52,19 +53,33 @@ macro_rules! debug_file {
 
 /// writes a message in tests/debug.txt
 #[macro_export]
-macro_rules! debug_println {
+macro_rules! debug {
     ($($arg:tt)*) => {
         let args = std::env::args().collect::<Vec<String>>();
-        let path = if args.len() > 1{
-            let t_id = args[1].parse::<usize>().unwrap();
-            format!("tests/test_{}/debug.txt", t_id)
+        let (path0, path1, id) = if args.len() > 1{
+            (format!("tests/test_{}/debug.txt", args[1]),
+            format!("tests/test_{}/debug_agts/debug_agt_{}.txt", args[1], args[2]),
+            args[2].clone())
         } else {
-            format!("tests/debug.txt")
+            (format!("tests/debug.txt"), 
+            format!("tests/debug_main.txt"),
+            "main".to_string())
         };
+        /// writes a message in a all-purpose debug file
         let mut file: std::fs::File = match std::fs::OpenOptions::new()
                                             .create(true)
                                             .append(true)
-                                            .open(path) {
+                                            .open(path0) {
+            Ok(f) => f,
+            Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
+        };
+        let msf = format!("----------\nAgente {id}\n{}\n----------\n", format!($($arg)*));
+        std::io::Write::write_all(&mut file, msf.as_bytes()).expect("Erro ao escrever no arquivo");
+        /// writes a message in a debug file for each agent
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+                                            .create(true)
+                                            .append(true)
+                                            .open(path1) {
             Ok(f) => f,
             Err(e) => panic!("Erro ao abrir o arquivo: {}", e)
         };

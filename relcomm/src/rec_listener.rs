@@ -7,13 +7,12 @@ use crate::node::Node;
 use crate::channels::Channel;
 use crate::packet::Packet;
 use crate::rec_aux::{SendRequest, Broadcast, RecAux};
-use logger::debug_println;
+use logger::debug;
 use logger::log::{PacketStatus, SharedLogger};
 
 /// Listener thread that handles the reception of messages
 pub struct RecListener {
     host: Node,
-    // TODO: Make a global broadcast counter
     group: Arc<Mutex<Vec<Node>>>,
     channel: Arc<Channel>,
     broadcast: Broadcast,
@@ -46,27 +45,36 @@ impl RecListener {
     /// Thread to handle the reception of messages
     pub fn run(&self,
         messages_tx: Sender<Vec<u8>>,
-        acks_tx: Sender<Packet>,
-        register_from_sender_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
-        register_broadcast_waiters_rx: Receiver<Sender<Vec<u8>>>,
+        snd_acks_tx: Sender<Packet>,
+        brd_acks_tx: Sender<Packet>,
+        reg_snd_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
+        reg_brd_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
+        brd_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
-        let mut pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
-        let mut expected_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
+        let mut snd_pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
+        let mut brd_pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
+        let mut expected_snd_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
+        let mut expected_brd_acks: HashMap<(SocketAddr, SocketAddr), u32> = HashMap::new();
         let mut broadcast_waiters: Vec<Option<Sender<Vec<u8>>>> = Vec::new();
         loop {
             let packet = match self.channel.receive() {
                 Ok(packet) => packet,
                 Err(e) => {
-                    debug_println!("Agente {} falhou em receber um pacote do socket, erro: {e}", self.host.agent_number);
+                    debug!("Falhou ao receber um pacote do socket, erro: {e}");
                     continue;
                 }
+            };
+            let (reg, expected_acks, acks_tx, pkts_per_origin) = if packet.header.is_brd() {
+                (&reg_brd_rx, &mut expected_brd_acks, &brd_acks_tx, &mut brd_pkts_per_origin)
+            } else {
+                (&reg_snd_rx, &mut expected_snd_acks, &snd_acks_tx, &mut snd_pkts_per_origin)
             };
             if packet.header.is_ack() {
                 // logger
                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAck);
 
                 // Handle ack
-                while let Ok((key, start_seq)) = register_from_sender_rx.try_recv() {
+                while let Ok((key, start_seq)) = reg.try_recv() {
                     expected_acks.insert(key, start_seq);
                 }
                 match expected_acks.get_mut(&(packet.header.src_addr, packet.header.origin)) {
@@ -76,14 +84,14 @@ impl RecListener {
                         match acks_tx.send(packet.clone()) {
                             Ok(_) => {}
                             Err(e) => {
-                                debug_println!("Erro ao enviar ACK: {e}");
+                                debug!("Erro ao enviar ACK: {e}");
                                 // logger
                                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                             }
                         }
                     }
                     None => {
-                        debug_println!("ACK recebido sem destinatário esperando");
+                        debug!("ACK recebido sem destinatário esperando");
                         // logger
                         Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                     }
@@ -114,15 +122,13 @@ impl RecListener {
                         Self::receive_last_packet(&self, packets, &packet);
                     // Handling broadcasts
                     let dlv: bool = if packet.header.is_brd() {
+                        debug!("Recebeu um broadcast do Agente {}", origin.port() % 100);
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
-                            Broadcast::BEB => {
-                                true
-                            }
+                            Broadcast::BEB => {}
                             // URB: All broadcasts must be gossiped and then delivered
                             Broadcast::URB => {
                                 Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
-                                true
                             }
                             // AB: Must check if I'm the leader and should broadcast it or just gossip
                             // In AB, broadcast messages can only be delivered if they were sent by the leader
@@ -131,47 +137,34 @@ impl RecListener {
                             // who must not deliver the request to broadcast to the group,
                             // instead, it must broadcast the message and only deliver when it gets gossiped back to it
                             Broadcast::AB => {
-                                self.warn_brd_waiters(&mut broadcast_waiters, &register_broadcast_waiters_rx, &message);
-                                
-                                self.atm_gossip(message.clone(), &origin, sequence_number)
+                                Self::warn_brd_waiters(&mut broadcast_waiters, &brd_waiters_rx, &message);
+                                Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
                             }
                         }
-                    } else {
                         true
+                    } else {
+                        // TODO: FIX this breaking the 1:1 Sends
+                        // Create a way to diferentiate between a leader request and a normal message
+                        let origin_priority = self.get_leader_priority(&origin);
+                        let own_priority = self.get_leader_priority(&self.host.addr);
+                        if origin_priority < own_priority {
+                            // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
+                            debug!("É Líder e recebeu um pedido de {}", origin.port() % 100);
+                            Self::brd_req(&self.register_to_sender_tx, message.clone());
+                            false
+                        } else {true}
                     };
                     if dlv {
                         match messages_tx.send(message) {
                             Ok(_) => {}
                             Err(e) => {
-                                debug_println!("Erro ao enviar mensagem: {e}");
+                                debug!("Erro ao enviar mensagem: {e}");
                             }
                         }
                     }
                 }
                 packets.push(packet);
             }
-        }
-    }
-    
-    /// Decides what to do with a broadcast message in the AB algorithm
-    /// Based on your priority and the priority of the origin of the message
-    /// The return boolean is used to tell the listener thread whether the message should be delivered or not (in case it's a broadcast request for the leader)
-    fn atm_gossip(
-        &self,
-        message: Vec<u8>,
-        origin: &SocketAddr,
-        sequence_number: u32
-    ) -> bool {
-        let origin_priority = self.get_leader_priority(&origin);
-        let own_priority = self.get_leader_priority(&self.host.addr);
-        if origin_priority < own_priority {
-            // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-            Self::brd_req(&self.register_to_sender_tx, message);
-            false
-        } else {
-            // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
-            Self::gossip(&self.register_to_sender_tx, message, *origin, sequence_number);
-            true
         }
     }
 
@@ -210,8 +203,8 @@ impl RecListener {
     }
 
     /// Resends the message for anyone who is waiting for a broadcast
-    fn warn_brd_waiters(&self, broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, register_broadcast_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: &Vec<u8>) {
-        while let Ok(broadcast_waiter) = register_broadcast_waiters_rx.try_recv() {
+    fn warn_brd_waiters(broadcast_waiters: &mut Vec<Option<Sender<Vec<u8>>>>, brd_waiters_rx: &Receiver<Sender<Vec<u8>>>, message: &Vec<u8>) {
+        while let Ok(broadcast_waiter) = brd_waiters_rx.try_recv() {
             broadcast_waiters.push(Some(broadcast_waiter));
         }
         for waiter in broadcast_waiters.iter_mut() {

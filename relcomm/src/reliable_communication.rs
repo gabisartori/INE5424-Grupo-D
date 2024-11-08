@@ -4,17 +4,15 @@ disponibilizada pela camada de difusão confiável (Reliable Communication),
 permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
-use std::clone::Clone;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 use crate::channels::Channel;
-use crate::config::{BROADCAST, TIMEOUT, TIMEOUT_LIMIT, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT, GOSSIP_RATE, W_SIZE};
+use crate::config::{BROADCAST, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT};
 use crate::node::Node;
-use logger::debug_println;
+use logger::debug;
 use logger::log::SharedLogger;
 use crate::rec_aux::{SendRequest, SendRequestData, Broadcast, RecAux};
 use crate::rec_listener::RecListener;
@@ -41,7 +39,7 @@ impl ReliableCommunication {
         host: Node,
         group: Vec<Node>,
         logger: SharedLogger,
-    ) -> Result<Self, std::io::Error> {
+    ) -> Result<Arc<Self>, std::io::Error> {
         let channel = Channel::new(host.addr)?;
         let broadcast: Broadcast = match BROADCAST {
             "BEB" => Broadcast::BEB,
@@ -49,41 +47,40 @@ impl ReliableCommunication {
             "AB" => Broadcast::AB,
             _ => panic!("Falha ao converter broadcast {BROADCAST} para Broadcast"),
         };
-        let timeout_limit: u32 = TIMEOUT_LIMIT;
-        let gossip_rate: usize = GOSSIP_RATE;
-        let w_size: usize = W_SIZE;
-
-        let timeout = Duration::from_micros(TIMEOUT);
         let message_timeout = Duration::from_millis(MESSAGE_TIMEOUT);
         let broadcast_timeout = Duration::from_millis(BROADCAST_TIMEOUT);
         let group = Arc::new(Mutex::new(group));
-        let dst_seq_num_cnt = Mutex::new(HashMap::new());
 
-        let (register_to_sender_tx, register_to_sender_rx) = mpsc::channel();
-        let (receive_tx, receive_rx) = mpsc::channel();
+        let (register_to_sender_tx, reg_to_send_rx) = mpsc::channel();
+        let (messages_tx, receive_rx) = mpsc::channel();
+        let (reg_snd_to_listener_tx, reg_snd_rx) = mpsc::channel();
+        let (reg_brd_to_listener_tx, reg_brd_rx) = mpsc::channel();
+        let (broadcast_waiters_tx, brd_waiters_rx) = mpsc::channel();
+        let (snd_acks_tx, snd_acks_rx) = mpsc::channel();
+        let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
 
-        let (register_to_listener_tx, register_to_listener_rx) = mpsc::channel();
-        let (broadcast_waiters_tx, broadcast_waiters_rx) = mpsc::channel();
-        let receive_rx = Mutex::new(receive_rx);
 
-        let (acks_tx, acks_rx) = mpsc::channel();
-
-        let sender = RecSender::new(host.clone(), dst_seq_num_cnt, channel.clone(), Arc::clone(&group), broadcast.clone(), logger.clone(), timeout, timeout_limit, w_size, gossip_rate);
+        let sender = RecSender::new(host.clone(), channel.clone(), Arc::clone(&group), broadcast.clone(), logger.clone());
         let listener = RecListener::new(host.clone(), Arc::clone(&group), channel, broadcast.clone(), logger.clone(), register_to_sender_tx.clone());
 
         // Spawn all threads
         std::thread::spawn(move || {
-            sender.run(acks_rx, register_to_sender_rx, register_to_listener_tx);
+            sender.run(snd_acks_rx, brd_acks_rx, reg_to_send_rx, reg_snd_to_listener_tx, reg_brd_to_listener_tx);
         });
         std::thread::spawn(move || {
             listener.run(
-                receive_tx,
-                acks_tx,
-                register_to_listener_rx,
-                broadcast_waiters_rx,
+                messages_tx,
+                snd_acks_tx,
+                brd_acks_tx,
+                reg_snd_rx, 
+                reg_brd_rx,
+                brd_waiters_rx,
             );
         });
-        Ok(Self {
+
+        let receive_rx = Mutex::new(receive_rx);
+
+        Ok(Arc::new(Self {
             host,
             group,
             logger,
@@ -93,7 +90,7 @@ impl ReliableCommunication {
             broadcast_waiters_tx,
             receive_rx,
             register_to_sender_tx,
-        })
+        }))
     }
 
     /// Send a message to a specific destination
@@ -107,13 +104,13 @@ impl ReliableCommunication {
                 match self.send_nonblocking(&node.addr, message).recv() {
                     Ok(result) => result,
                     Err(e) => {
-                        debug_println!("Erro ao enviar mensagem na send: {e}");
+                        debug!("Erro ao enviar mensagem na send: {e}");
                         0
                     }
                 }
             },
             None => {
-                debug_println!("Erro ao enviar mensagem: ID de destino não encontrado");
+                debug!("Erro ao enviar mensagem: ID de destino não encontrado");
                 0
             }
         }
@@ -129,7 +126,7 @@ impl ReliableCommunication {
         match self.register_to_sender_tx.send(request) {
             Ok(_) => {}
             Err(e) => {
-                debug_println!("Erro ao registrar request: {e}");
+                debug!("Erro ao registrar request: {e}");
             }
         }
         result_rx
@@ -149,7 +146,7 @@ impl ReliableCommunication {
             }
             Err(RecvTimeoutError::Timeout) => false,
             Err(RecvTimeoutError::Disconnected) => {
-                debug_println!("Erro ao receber mensagem: Canal de comunicação desconectado");
+                debug!("Erro ao receber mensagem: Canal de comunicação desconectado");
                 false
             }
         }
@@ -172,7 +169,7 @@ impl ReliableCommunication {
         match result_rx.recv() {
             Ok(result) => result,
             Err(e) => {
-                debug_println!("Erro ao receber resultado do BEB: {e}");
+                debug!("Erro ao receber resultado do BEB: {e}");
                 0
             }
         }
@@ -194,7 +191,7 @@ impl ReliableCommunication {
         match self.broadcast_waiters_tx.send(broadcast_tx) {
             Ok(_) => {}
             Err(e) => {
-                debug_println!("Erro ao registrar broadcast waiter no AB: {e}");
+                debug!("Erro ao registrar broadcast waiter no AB: {e}");
             }
         }
         
@@ -214,19 +211,19 @@ impl ReliableCommunication {
             match self.register_to_sender_tx.send(request) {
                 Ok(_) => {}
                 Err(e) => {
-                    debug_println!("Erro ao enviar request de AB: {e}");
+                    debug!("Erro ao enviar request de AB: {e}");
                 }
             }
 
             // Wait for the request result
             match request_result_rx.recv() {
                 Ok(0) => {
-                    debug_println!("Agente {} falhou em enviar mensagem para o líder, tentando novamente...", self.host.agent_number);
+                    debug!("Falha em enviar mensagem para o líder, tentando novamente...");
                     continue;
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    debug_println!("Erro ao fazer requisitar AB para o lider: {e}");
+                    debug!("Erro ao fazer requisitar AB para o lider: {e}");
                     continue;
                 }
             }
@@ -239,12 +236,12 @@ impl ReliableCommunication {
                 match msg {
                     Ok(msg) => {
                         if msg == message {
-                            debug_println!("Agente {} recebeu a mensagem de broadcast de volta", self.host.agent_number);
+                            debug!("Recebeu a mensagem de broadcast de volta");
                             return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
                         }
                     }
                     Err(RecvTimeoutError::Timeout) => {
-                        debug_println!("Agent {} timed out when waiting broadcast from leader, will try again", self.host.agent_number);
+                        debug!("Timed out when waiting broadcast from leader, will try again");
                         break;
                     }
                     Err(e) => {

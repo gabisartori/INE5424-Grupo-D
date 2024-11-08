@@ -8,15 +8,17 @@ use crate::channels::Channel;
 use crate::packet::Packet;
 use crate::node::{Node, NodeState};
 use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
-use logger::debug_println;
+use crate::config::{TIMEOUT, TIMEOUT_LIMIT, GOSSIP_RATE, W_SIZE};
+
+use logger::debug;
 use logger::log::{MessageStatus, PacketStatus, SharedLogger};
 
 /// Sender thread that handles the sending of messages
 pub struct RecSender {
     host: Node,
-    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
+    // Keeps track of the sequence number, for sends and broadcasts
+    dst_seq_num_cnt: Mutex<HashMap<SocketAddr, (u32, u32)>>,
     channel: Arc<Channel>,
-    // TODO: Make the sequence number counter be saved in the group
     group: Arc<Mutex<Vec<Node>>>,
     broadcast: Broadcast,
     logger: SharedLogger,
@@ -31,27 +33,33 @@ impl RecAux for RecSender {}
 impl RecSender {
     /// Constructor
     pub fn new(
-        host: Node, dst_seq_num_cnt: Mutex<HashMap<SocketAddr, u32>>,
+        host: Node,
         channel: Arc<Channel>, group: Arc<Mutex<Vec<Node>>>,
         broadcast: Broadcast, logger: SharedLogger,
-        timeout: Duration, timeout_limit: u32,
-        w_size: usize, gossip_rate: usize,
     ) -> Self {
         Self {
-            host, dst_seq_num_cnt,
-            channel, group, broadcast,
-            logger, timeout, timeout_limit,
-            w_size, gossip_rate,
+            host,
+            dst_seq_num_cnt: Mutex::new(HashMap::new()),
+            channel,
+            group,
+            broadcast,
+            logger,
+            timeout: Duration::from_micros(TIMEOUT),
+            timeout_limit: TIMEOUT_LIMIT,
+            w_size: W_SIZE,
+            gossip_rate: GOSSIP_RATE,
         }
     }
 
     /// Thread to handle the sending of messages
     pub fn run(&self,
-        acks_rx: Receiver<Packet>,
-        register_from_user_rx: Receiver<SendRequest>,
-        register_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
+        snd_acks_rx: Receiver<Packet>,
+        brd_acks_rx: Receiver<Packet>,
+        reg_to_send_rx: Receiver<SendRequest>,
+        reg_snd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
+        reg_brd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
-        while let Ok(request) = register_from_user_rx.recv() {
+        while let Ok(request) = reg_to_send_rx.recv() {
             let messages_to_send = self.get_messages(&request);
             let mut success_count = 0;
             for packets in messages_to_send {
@@ -59,11 +67,16 @@ impl RecSender {
                 let first = match packets.first() {
                     Some(packet) => packet.clone(),
                     None => {
-                        debug_println!("Erro ao enviar mensagem: Pacote vazio");
+                        debug!("Erro ao enviar mensagem: Pacote vazio");
                         continue;
                     }
                 };
-                match register_to_listener_tx.send((
+                let (reg, acks_rx) = if first.header.is_brd() {
+                    (&reg_brd_to_listener_tx, &brd_acks_rx)
+                } else {
+                    (&reg_snd_to_listener_tx, &snd_acks_rx)
+                };
+                match reg.send((
                     (first.header.dst_addr, first.header.origin),
                     first.header.seq_num,
                 )) {
@@ -84,7 +97,7 @@ impl RecSender {
                                     .to_owned(),
                                 Some(packets[0].header.src_addr.port() as usize % 100),
                             );
-                        debug_println!("Erro ao enviar pedido de ACK para a Listener: {e}");
+                        debug!("Erro ao enviar pedido de ACK para a Listener: {e}");
                         continue;
                     }
                 }
@@ -113,7 +126,13 @@ impl RecSender {
                 let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
                 messages.push(packets);
             }
-            SendRequestData::StartBroadcast {} => match self.broadcast {
+            SendRequestData::RequestLeader {} => {
+                let leader = Self::get_leader(&self.group, &self.host);
+                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), false);
+                messages.push(packets);
+            }
+            SendRequestData::StartBroadcast {} => {
+                match self.broadcast {
                 Broadcast::BEB => {
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                         if node.state == NodeState::ALIVE {
@@ -125,19 +144,15 @@ impl RecSender {
                 Broadcast::URB | Broadcast::AB => {
                     let friends = self.get_friends();
                     for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) {
-                                messages.push(packets);
-                            }
+                        let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
+                        if friends.contains(node) {
+                            messages.push(packets);
                         }
                     }
-            },
-            SendRequestData::RequestLeader {} => {
-                let leader = Self::get_leader(&self.group, &self.host);
-                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
-                messages.push(packets);
-            }
+                }
+            }},
             SendRequestData::Gossip { origin, seq_num } => {
+                debug!("Gossiping for Agent {}, with seq_num {}", origin.port() % 100, seq_num);
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
                         self.host.addr,
@@ -164,7 +179,8 @@ impl RecSender {
         is_brd: bool
     ) -> Vec<Packet> {
         let mut seq_lock = self.dst_seq_num_cnt.lock().expect("Erro ao obter lock de dst_seq_num_cnt em get_pkts");
-        let start_seq = seq_lock.entry(*dst_addr).or_insert(0);
+        let start_seq_tup = seq_lock.entry(*dst_addr).or_insert((0, 0));
+        let start_seq = if is_brd {&mut start_seq_tup.1} else {&mut start_seq_tup.0};
         let packets = Packet::packets_from_message(
             *src_addr, *dst_addr, *origin, data, *start_seq, is_brd,
         );
@@ -180,20 +196,21 @@ impl RecSender {
         let start_packet = match packets.first() {
             Some(packet) => packet.header.seq_num,
             None => {
-                debug_println!("Erro ao enviar mensagem: Pacote vazio");
+                debug!("Erro ao enviar mensagem: Pacote vazio");
                 return false;
             }
+        };
+        // logger
+        let state = if packets[0].header.is_brd() {
+            PacketStatus::SentBroadcast
+        } else {
+            PacketStatus::Sent
         };
         while base < packets.len() {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
                 // logger
-                let state = if packets[next_seq_num].header.is_brd() {
-                    PacketStatus::SentBroadcast
-                } else {
-                    PacketStatus::Sent
-                };
                 Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num], state);
 
                 next_seq_num += 1;
@@ -212,12 +229,12 @@ impl RecSender {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug_println!("Agent {} timed out when sending message to agent {}", self.host.agent_number, packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port()%100);
+                        debug!("Timed out when sending message to agent {}", packets.first().expect("Packets vazio no Go-Back-N").header.dst_addr.port() % 100);
                         return false;
                     }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
-                    debug_println!("Erro ao receber ACKS, thread Listener desconectada");
+                    debug!("Erro ao receber ACKS, thread Listener desconectada");
                     return false;
                 },
             }
@@ -249,7 +266,7 @@ impl RecSender {
         let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
         for node in group.iter_mut() {
             if node.addr == *addr {
-                debug_println!("Agente {} marcou {} como morto", self.host.agent_number, node.agent_number);
+                debug!("Agente {} foi marcado como morto", node.agent_number);
                 node.state = NodeState::DEAD;
             }
         }
