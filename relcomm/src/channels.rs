@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::packet::Packet;
 use crate::config::{LOSS_RATE, CORRUPTION_RATE};
-use logger::debug_println;
+use logger::debug;
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
@@ -42,7 +42,7 @@ impl Channel {
                     // I'm pretty sure this error will never happen, but I can't make it so
                     // that Packet::from_bytes builds the header from the buffer slice without checking if the size is correct
                     // Which it'll always be since the HEADER_SIZE is a constant
-                    debug_println!("->-> Erro {{{e}}} ao receber pacote pelo socket");
+                    debug!("->-> Erro {{{e}}} ao receber pacote pelo socket");
                     continue;
                 }
             };
@@ -69,10 +69,10 @@ impl Channel {
             Ok(_) => true,
             Err(e) => {
                 if is_ack {
-                    debug_println!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
+                    debug!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
                 }
                 else {
-                    debug_println!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
+                    debug!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
                 false
             }
         }

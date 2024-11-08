@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::packet::Packet;
 use crate::node::{Node, NodeState};
-use logger::debug_println;
+use logger::debug;
 use logger::log::{Logger, LoggerState, MessageStatus, PacketStatus};
 
 pub enum SendRequestData {
@@ -55,7 +55,7 @@ pub trait RecAux {
     fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
             if node.state == NodeState::ALIVE {
-                debug_println!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
+                // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
                 return node.clone();
             }
         }
@@ -70,7 +70,7 @@ pub trait RecAux {
         match register_to_sender_tx.send(request) {
             Ok(_) => {}
             Err(e) => {
-                debug_println!("Erro ao fazer broadcast: {e}");
+                debug!("Erro ao fazer broadcast: {e}");
             }
         }
         request_rx
@@ -93,7 +93,7 @@ pub trait RecAux {
         match register_to_sender_tx.send(request) {
             Ok(_) => {}
             Err(e) => {
-                debug_println!("Erro ao fazer fofoca: {e}");
+                debug!("Erro ao fazer fofoca: {e}");
             }
         }
     }
