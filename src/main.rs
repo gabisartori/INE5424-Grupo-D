@@ -1,6 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, mpsc::{RecvError, Sender, self}};
-use std::thread;
+use std::{thread, vec};
 use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 
 use logger::log::SharedLogger;
@@ -146,7 +146,7 @@ impl Agent {
                 break;
             }
             // Receive the next message
-            let mut message: Vec<u8> = Vec::new();
+            let mut message = Vec::new();
             if !self.communication.receive(&mut message) {
                 break;
             }
@@ -220,7 +220,8 @@ fn main() {
             let file_path = format!("tests/test_{test_id}/Resultado.txt");
             let file_path = file_path.as_str();
             let final_path = "tests/Resultado.txt";
-            calculate_test(file_path, final_path, agent_num, test_name);
+            let expected = get_expected(test);
+            calculate_test(file_path, final_path, agent_num, test_name, test_id, expected);
         }
     } else if args.len() == main_len + 2 {
         // Sub-processo: Execução do agente
@@ -274,29 +275,96 @@ fn create_agents(
     Ok(agent)
 }
 
-// TODO: Fazer com que ela receba o teste e compare os resultados
+type Expected = (Vec<usize>, Vec<usize>, Vec<usize>);
+/// Calculates the expected number of sends, receives and deaths for each agent in the test
+fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
+    let agent_num: usize = test.len();
+    let mut send_actions = vec![0; agent_num];
+    let mut receive_actions = vec![0; agent_num];
+    let mut die_actions = vec![0; agent_num];
+    for (id, agent) in test.iter().enumerate() {
+        for action in agent {
+            match action {
+                Action::Send(s) => {
+                    match s {
+                        SendAction::Send { destination: _, message: _ } => {
+                            send_actions[id] += 1;
+                        },
+                        SendAction::Broadcast { message: _ } => {
+                            send_actions[id] += agent_num;
+                        },
+                        SendAction::DieAfterSend {} => {
+                            die_actions[id] += 1;
+                        }
+                        
+                    }
+                },
+                Action::Receive(r) => {
+                    match r {
+                        ReceiveAction::Receive { .. } => {
+                            receive_actions[id] += 1;
+                        },
+                        ReceiveAction::DieAfterReceive { .. } => {
+                            die_actions[id] += 1;
+                        }
+                    }
+                },
+                Action::Die() => {
+                    die_actions[id] += 1;
+                }
+            }
+        }
+    }
+    (send_actions, receive_actions, die_actions)
+}
+
 /// Reads and organizes the output file of all sub-processes in a test,
 /// then writes the results to a final file.
 /// The lines of output file must be formated as "AGENTE X -> ENVIOS: X - RECEBIDOS: X"
-fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_name: &str) {
+fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
+                test_name: &str, test_id: usize, expected: Expected) {
     let file = File::open(file_path).expect("Erro ao abrir o arquivo de log");
     let mut reader = BufReader::new(file);
 
-    let mut total_sends: u32 = 0;
-    let mut total_receivs: u32 = 0;
+    let (expected_s, expected_r, expected_d) = expected;
+
+    let mut total_sends = 0;
+    let mut total_receivs = 0;
     let mut line = String::new();
     // a vector to store the results, with a preset size
     let mut resultados: Vec<String> = vec![String::new(); agent_num];
+    let mut errors: Vec<String> = vec![String::new(); agent_num];
+    let mut total_expected_sends = 0;
+    let mut total_expected_receivs = 0;
     // for each line, extract the sends and receivs
     while BufRead::read_line(&mut reader, &mut line).unwrap() > 0 {
         let words: Vec<&str> = line.split_whitespace().collect();
-        let sends: u32 = words[4].parse().unwrap();
-        let receivs: u32 = words[7].parse().unwrap();
-        total_sends += sends;
-        total_receivs += receivs;
-        let idx = words[1].parse::<u32>().unwrap() as usize;
+        let idx = words[1].parse::<usize>().unwrap();
         // saves the line as str on the correct index in resultados
         resultados[idx] = line.clone();
+        // extract the sends and receivs from the line
+        let sends: usize = words[4].parse().unwrap();
+        let receivs: usize = words[7].parse().unwrap();
+        // check if the sends and receivs match the expected values
+        if expected_d[idx] != 0 {
+            errors[idx].push_str(&format!("Agente {idx} deveria morrer\n"));
+        }
+        if sends != expected_s[idx] {
+            errors[idx].push_str(&format!("Agente {idx
+                }: Enviados: {sends
+                } - Esperados: {
+                }\n", expected_s[idx]));
+        }
+        if receivs != expected_r[idx] {
+            errors[idx].push_str(&format!("Agente {idx
+                }: Recebidos: {receivs
+                } - Esperados: {
+                }\n", expected_r[idx]));
+        }
+        total_sends += sends;
+        total_receivs += receivs;
+        total_expected_sends += expected_s[idx];
+        total_expected_receivs += expected_r[idx];
         line.clear();
     }
     // turn results into a string and write it to the file
@@ -316,8 +384,15 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize, test_name
     Write::write_all(&mut file, result_str.as_bytes())
         .expect("Erro ao escrever no arquivo");
     // write the final results to the final file
-    let msg = format!("\n----------\nTeste {test_name
-    }\n----------\nTotal de Mensagens Enviadas: {total_sends
-    }\nTotal de Mensagens Recebidas: {total_receivs}\n");
+    let mut errors = errors.join("");
+    if errors.len() > 0 {
+        errors.push_str("----------\n");
+    }
+    let msg = format!("\n----------\nTeste {test_id
+    }: {test_name
+    }\n----------\n{errors}Total de Mensagens Enviadas: {total_sends
+    }/{total_expected_sends
+    }\nTotal de Mensagens Recebidas: {total_receivs
+    }/{total_expected_receivs}\n");
     debug_file!(final_path, &msg.as_bytes());
 }
