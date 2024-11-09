@@ -85,7 +85,6 @@ impl Agent {
                         let mut t = 0;
                         while let Ok(r) = listener_rx.try_recv() {
                             t = r;
-                            println!("t: {}", t);
                         }
                         r_acertos = t;
 
@@ -94,12 +93,11 @@ impl Agent {
                         r_acertos = n;
                         let mut t = 0;
                         while let Ok(r) = sender_rx.try_recv() {
-                            println!("t: {}", t);
                             t = r;
                         }
                         s_acertos = t;
                     },
-                e => {
+                    e => {
                         debug!("Identificador Inválido {e}");
                         s_acertos = 0;
                         r_acertos = 0;
@@ -127,7 +125,8 @@ impl Agent {
     }
 
     /// Agent thread that always receives messages and checks if they are the expected ones from the selected test
-    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<(&str, u32)>, survival_tx: Sender<u32>, test_id: usize) -> u32 {
+    fn receiver(&self, actions: Vec<ReceiveAction>, death_tx: Sender<(&str, u32)>,
+                survival_tx: Sender<u32>, test_id: usize) -> u32 {
         let mut acertos = 0;
         let mut i = 0;
         let mut expected_messages = Vec::new();
@@ -157,7 +156,7 @@ impl Agent {
                         let path = format!("tests/test_{test_id}/acertos_{}.txt", self.id);
                         debug_file!(path, &message);
                         acertos += 1;
-                        survival_tx.send(acertos).unwrap();
+                        let _ = survival_tx.send(acertos);
                     } else {
                         let path = format!("tests/test_{test_id}/erros{}_{i}.txt", self.id);
                         debug_file!(path, &message);
@@ -171,17 +170,18 @@ impl Agent {
     }
 
     /// Agent thread that sends preset messages from the selected test
-    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<(&str, u32)>, survival_tx: Sender<u32>) -> u32 {
+    fn creater(&self, actions: Vec<SendAction>, death_tx: Sender<(&str, u32)>,
+                survival_tx: Sender<u32>) -> u32 {
         let mut acertos = 0;
         for action in actions {
             match action {
                 SendAction::Send { destination, message } => {
                     acertos += self.communication.send(destination, message.as_bytes().to_vec());
-                    survival_tx.send(acertos).unwrap();
+                    let _ = survival_tx.send(acertos);
                 },
                 SendAction::Broadcast { message } => {
                     acertos += self.communication.broadcast(message.as_bytes().to_vec());
-                    survival_tx.send(acertos).unwrap();
+                    let _ = survival_tx.send(acertos);
                 },
                 SendAction::DieAfterSend {} => {
                     // Ignore send result because the run function cannot end until the receiver thread ends

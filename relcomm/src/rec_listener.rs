@@ -122,17 +122,9 @@ impl RecListener {
                         match self.broadcast {
                             // BEB: All broadcasts must be delivered
                             Broadcast::BEB => {}
-                            // URB: All broadcasts must be gossiped and then delivered
-                            Broadcast::URB => {
-                                Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
-                            }
-                            // AB: Must check if I'm the leader and should broadcast it or just gossip
-                            // In AB, broadcast messages can only be delivered if they were sent by the leader
-                            // However, since the leader is the only one that can broadcast,
-                            // this is only useful for the leader,
-                            // who must not deliver the request to broadcast to the group,
-                            // instead, it must broadcast the message and only deliver when it gets gossiped back to it
-                            Broadcast::AB => {
+                            // URB and AB: All broadcasts must be gossiped and then delivered
+                            // those who are waiting for the broadcast must be warned
+                            Broadcast::URB | Broadcast::AB => {
                                 Self::warn_brd_waiters(&mut broadcast_waiters, &brd_waiters_rx, &message);
                                 Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
                             }
@@ -143,6 +135,10 @@ impl RecListener {
                         // Create a way to diferentiate between a leader request and a normal message
                         let origin_priority = self.get_leader_priority(&origin);
                         let own_priority = self.get_leader_priority(&self.host.addr);
+                        // AB: Must check if I'm the leader and should broadcast it or just gossip
+                        // In AB, broadcast messages can only be delivered if they were sent by the leader
+                        // who must not deliver the request to broadcast to the group,
+                        // instead, it must broadcast the message and only deliver when it gets gossiped back to it
                         if origin_priority < own_priority {
                             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
                             debug!("Recebeu um Leader Request de {}", origin.port() % 100);
