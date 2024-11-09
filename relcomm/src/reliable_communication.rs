@@ -204,6 +204,7 @@ impl ReliableCommunication {
             let leader = Self::get_leader(&self.group, &self.host);
             if leader == self.host {
                 // Start the broadcast
+                debug!("Sou o líder, começando o broadcast");
                 Self::brd_req(&self.register_to_sender_tx, message.clone());
                 return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
             }
