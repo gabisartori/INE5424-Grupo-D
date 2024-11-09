@@ -182,8 +182,7 @@ impl ReliableCommunication {
     /// If the channel times out before your message arrives, it means the leader died
     fn wait_for_brd(&self, broadcast_rx: &Receiver<Vec<u8>>, message: Vec<u8>) -> Result<u32, RecvTimeoutError> {
         loop {
-            let msg = broadcast_rx.recv_timeout(self.broadcast_timeout);
-            match msg {
+            match broadcast_rx.recv_timeout(self.broadcast_timeout) {
                 Ok(msg) => {
                     if msg == message {
                         debug!("Recebeu a mensagem de broadcast de volta");

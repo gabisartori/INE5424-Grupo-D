@@ -7,7 +7,7 @@ debug:
 	@cat tests/Resultado.txt
 
 clean:
-	@rm -rf tests/*.txt
+	@rm -rf tests/
 	@rm -rf src/log
 	@rm -rf relcomm/log
 	@cargo clean
