@@ -99,6 +99,16 @@ pub trait RecAux {
         return host.clone();
     }
 
+    fn get_livings(group: &Arc<Mutex<Vec<Node>>>) -> Vec<Node> {
+        let mut livings = Vec::new();
+        for node in group.lock().expect("Falha ao ler do grupo").iter() {
+            if node.state == NodeState::ALIVE {
+                livings.push(node.clone());
+            }
+        }
+        livings
+    }
+
     fn log_msg(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100

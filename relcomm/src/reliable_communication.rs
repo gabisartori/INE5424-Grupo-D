@@ -165,6 +165,44 @@ impl ReliableCommunication {
         }
     }
 
+    /// Register to receive broadcasts confirmations
+    fn reg_to_brd(&self) -> Receiver<Vec<u8>> {
+        let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
+        match self.broadcast_waiters_tx.send(broadcast_tx) {
+            Ok(_) => {}
+            Err(e) => {
+                debug!("Erro ao registrar broadcast waiter no AB: {e}");
+            }
+        }
+        broadcast_rx        
+    }
+
+    /// Listen for any broadcasts until your message arrives
+    /// While there are broadcasts arriving, it means the leader is still alive
+    /// If the channel times out before your message arrives, it means the leader died
+    fn wait_for_brd(&self, broadcast_rx: &Receiver<Vec<u8>>, message: Vec<u8>) -> Result<u32, RecvTimeoutError> {
+        loop {
+            let msg = broadcast_rx.recv_timeout(self.broadcast_timeout);
+            match msg {
+                Ok(msg) => {
+                    if msg == message {
+                        debug!("Recebeu a mensagem de broadcast de volta");
+                        let len = Self::get_livings(&self.group).len() as u32;
+                        return Ok(len);
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    debug!("Timeout ao esperar por broadcast");
+                    return Err(RecvTimeoutError::Timeout);
+                }
+                Err(e) => {
+                    debug!("Erro ao esperar por broadcast: {e}");
+                    return Err(e);
+                }
+            }
+        }
+    }
+
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
@@ -182,22 +220,22 @@ impl ReliableCommunication {
     /// Uniform Reliable Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
-        Self::brd_req(&self.register_to_sender_tx, message);
-        // TODO: Make it so that URB waits for at least one node to receive the message
-        self.group.lock()
-        .expect("Falha ao fazer o URB, Não obteve lock de Grupo").len() as u32
+        let rx = self.reg_to_brd();
+        Self::brd_req(&self.register_to_sender_tx, message.clone());
+        match self.wait_for_brd(&rx, message) {
+            Ok(result) => {
+                result
+            },
+            Err(_) => {
+                0
+            }
+        }
     }
 
     /// Atomic Broadcast: sends a message to all nodes in the group and returns how many were successful
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
-        let (broadcast_tx, broadcast_rx) = mpsc::channel::<Vec<u8>>();
-        match self.broadcast_waiters_tx.send(broadcast_tx) {
-            Ok(_) => {}
-            Err(e) => {
-                debug!("Erro ao registrar broadcast waiter no AB: {e}");
-            }
-        }
+        let broadcast_rx = self.reg_to_brd();
         
         // Constantly try to get a leader and ask it to broadcast
         loop {
@@ -205,7 +243,7 @@ impl ReliableCommunication {
             if leader == self.host {
                 // Start the broadcast
                 debug!("Sou o líder, começando o broadcast");
-                Self::brd_req(&self.register_to_sender_tx, message.clone());
+                Self::brd_req(&self.register_to_sender_tx, message);
                 return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
             }
             // Ask the leader to broadcast and wait for confirmation
@@ -232,26 +270,15 @@ impl ReliableCommunication {
                     continue;
                 }
             }
-
-            // Listen for any broadcasts until your message arrives
-            // While there are broadcasts arriving, it means the leader is still alive
-            // If the channel times out before your message arrives, it means the leader died
-            loop {
-                let msg = broadcast_rx.recv_timeout(self.broadcast_timeout);
-                match msg {
-                    Ok(msg) => {
-                        if msg == message {
-                            debug!("Recebeu a mensagem de broadcast de volta");
-                            return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
-                        }
-                    }
-                    Err(RecvTimeoutError::Timeout) => {
-                        debug!("Timed out when waiting broadcast from leader, will try again");
-                        break;
-                    }
-                    Err(e) => {
-                        panic!("{:?}", e)
-                    }
+            match self.wait_for_brd(&broadcast_rx, message.clone()) {
+                Ok(result) => {
+                    return result;
+                },
+                Err(RecvTimeoutError::Timeout) => {
+                    continue;
+                }
+                Err(e) => {
+                    panic!("{:?}", e)
                 }
             }
         }
