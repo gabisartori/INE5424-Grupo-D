@@ -267,7 +267,13 @@ fn create_agents(
         .map(|i| Node::new(SocketAddr::new(ip, port + (i as u16)), i))
         .collect();
 
-    let logger = Arc::new(Mutex::new(Logger::new(true, true, true, agent_num)));
+    let logger = Arc::new(Mutex::new(
+        Logger::new(
+            true,
+            false,
+            false,
+            true,
+            agent_num)));
 
     let agent = Arc::new(
         Agent::new(id, nodes, logger)?

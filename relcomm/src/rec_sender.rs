@@ -87,6 +87,7 @@ impl RecSender {
                     }
                     Err(e) => {
                         debug!("Erro ao enviar pedido de ACK para a Listener: {e}");
+                        Self::log_pkt(&self.logger, &self.host, &first, PacketStatus::SentAckFailed);
                         continue;
                     }
                 }
@@ -97,6 +98,7 @@ impl RecSender {
                 } else {
                     // If the message wasn't sent, mark the destination as dead
                     self.mark_as_dead(&first.header.dst_addr);
+                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                 }
             }
 
