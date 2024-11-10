@@ -39,7 +39,7 @@ impl ReliableCommunication {
         group: Vec<Node>,
         logger: SharedLogger,
     ) -> Result<Arc<Self>, std::io::Error> {
-        let channel = Channel::new(host.addr)?;
+        let channel = Channel::new(host.addr, logger.clone(), host.clone())?;
         let broadcast: Broadcast = match BROADCAST {
             "BEB" => Broadcast::BEB,
             "URB" => Broadcast::URB,

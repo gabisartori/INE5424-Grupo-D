@@ -6,18 +6,18 @@ macro_rules! initializate_folders {
         // deletes the needed folder if they exists
         if (fs::metadata("tests").is_ok()) {
             fs::remove_dir_all("tests").expect("Erro ao deletar a pasta 'tests'");
-            fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
         };
+        fs::create_dir_all("tests").expect("Erro ao criar a pasta 'tests'");
 
         if (fs::metadata("src/log").is_ok()) {
             fs::remove_dir_all("src/log").expect("Erro ao deletar a pasta 'src/log'");
-            fs::create_dir_all("src/log").expect("Erro ao criar a pasta 'src/log'");
         };
+        fs::create_dir_all("src/log").expect("Erro ao criar a pasta 'src/log'");
 
         if (fs::metadata("relcomm/log").is_ok()) {
             fs::remove_dir_all("relcomm/log").expect("Erro ao deletar a pasta 'relcomm/log'");
-            fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
         };
+        fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
        
         // creates a folder for each test
         for i in 0..$tests_num {
@@ -28,7 +28,12 @@ macro_rules! initializate_folders {
             let path = format!("{}/debug_agts", path);
             fs::create_dir_all(path.clone()).expect(&error_msg);
             // File::create(path).expect("Erro ao criar o arquivo de resultado");
+
+            let path = format!("src/log/test_{}", i);
+            let error_msg = format!("Erro ao criar a pasta '{}'", path);
+            fs::create_dir_all(path.clone()).expect(&error_msg);
         }
+
         // File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
     };
 }
@@ -129,6 +134,7 @@ pub enum PacketStatus {
     Waiting,
     Timeout,
     Unknown,
+    InjectedFailure
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -313,6 +319,14 @@ impl DebugLog {
                         target_agent_id.unwrap()
                     )
                 }
+                PacketStatus::InjectedFailure => {
+                    format!(
+                        "(State: {:?}) failed to receive packet {} from Agent {} (injected failure)",
+                        state,
+                        seq_num,
+                        target_agent_id.unwrap()
+                    )                    
+                }
                 PacketStatus::SentAck => {
                     format!(
                         "(State: {:?}) sent ACK for packet {} to Agent {}",
@@ -440,6 +454,7 @@ pub struct Logger {
     show_agent_logs: bool,
     show_packet_logs: bool,
     show_message_logs: bool,
+    show_errors: bool,
     n_agents: usize,
 }
 
@@ -449,12 +464,14 @@ impl Logger {
         show_agent_logs: bool,
         show_packet_logs: bool,
         show_message_logs: bool,
+        show_errors: bool,
         n_agents: usize,
     ) -> Self { 
         Self {
             show_agent_logs,
             show_packet_logs,
             show_message_logs,
+            show_errors,
             n_agents,
         }
     }
@@ -525,6 +542,37 @@ impl Logger {
                 let path = format!("src/log/agent_{}.txt", agent_id);
                 debug_file!(path, msg_buffer.as_bytes());
             }
+
+            if self.show_errors && (matches!(logger_state, LoggerState::Packet { state: 
+                                                                    PacketStatus::SentFailed | 
+                                                                    PacketStatus::ReceivedFailed |
+                                                                    PacketStatus::ReceivedAckFailed | 
+                                                                    PacketStatus::SentAckFailed |
+                                                                    PacketStatus::InjectedFailure, .. }) ||
+
+                                        matches!(logger_state, LoggerState::Message { state : 
+                                                                    MessageStatus::ReceivedFailed |
+                                                                    MessageStatus::SentFailed, .. }) ||
+
+                                        matches!(logger_state, LoggerState::Agent { state : 
+                                                                    AgentStatus::FailedToReceive |
+                                                                    AgentStatus::FailedToSend | 
+                                                                    AgentStatus::InitFailed |
+                                                                    AgentStatus::Down, .. })                                                                
+                                                                )
+                                                                               
+            {
+                let args = std::env::args().collect::<Vec<String>>();
+                let path = if args.len() > 1{
+                    format!("src/log/test_{}/agent_{}.txt", args[1], agent_id)
+                } else {
+                    format!("src/log/log_msgs.txt")
+                };
+                
+                debug_file!(path, msg_buffer.as_bytes());
+
+            }
+
         } else {
             // couldnt identify the agent, so write to the general log file
             let path = format!("src/log/log_msgs.txt");

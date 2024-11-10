@@ -5,21 +5,26 @@ e implementa sockets para comunicação entre os processos participantes.
 use std::net::UdpSocket;
 use std::sync::Arc;
 
+use crate::node::Node;
 use crate::packet::Packet;
 use crate::config::LOSS_RATE;
+use crate::rec_aux::RecAux;
 use logger::debug;
+use logger::log::SharedLogger;
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
 pub struct Channel {
     socket: Arc<UdpSocket>,
+    logger: SharedLogger,
+    host: Node
 }
 
 impl Channel {
     /// Constructor
-    pub fn new(bind_addr: std::net::SocketAddr) -> Result<Arc<Self>, std::io::Error> {
+    pub fn new(bind_addr: std::net::SocketAddr, logger: SharedLogger, host: Node) -> Result<Arc<Self>, std::io::Error> {
         let socket = Arc::new(UdpSocket::bind(bind_addr)?);
-        Ok(Arc::new(Self { socket }))
+        Ok(Arc::new(Self { socket, logger, host }))
     }
 
     /// Validates the received message
@@ -48,10 +53,15 @@ impl Channel {
             };
             // Simula perda de pacotes, usand o parâmetro LOSS_RATE
             if rand::random::<f32>() < LOSS_RATE {
+                Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::InjectedFailure);
                 continue;
             }
             // Verifica se o pacote foi corrompido
-            if !self.validate_message(&packet) { continue; }
+            if !self.validate_message(&packet) { 
+                Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::ReceivedFailed);
+                continue; 
+            }
+
             return Ok(packet);
         }
     }
@@ -73,11 +83,14 @@ impl Channel {
             Err(e) => {
                 if is_ack {
                     debug!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
+                    Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentAckFailed);
                 }
                 else {
                     debug!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
+                    Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentFailed);
                 false
             }
         }
     }
 }
+impl RecAux for Channel {}
