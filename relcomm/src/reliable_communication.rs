@@ -80,8 +80,8 @@ impl ReliableCommunication {
             );
         });
 
-        let message_timeout = Duration::from_millis(MESSAGE_TIMEOUT);
-        let broadcast_timeout = Duration::from_millis(BROADCAST_TIMEOUT);
+        let message_timeout = MESSAGE_TIMEOUT;
+        let broadcast_timeout = BROADCAST_TIMEOUT;
         let receive_rx = Mutex::new(receive_rx);
 
         Ok(Arc::new(Self {
@@ -148,7 +148,10 @@ impl ReliableCommunication {
                 buffer.extend(msg);
                 true
             }
-            Err(RecvTimeoutError::Timeout) => false,
+            Err(RecvTimeoutError::Timeout) => {
+                debug!("Timeout ao receber mensagem");
+                false
+            },
             Err(RecvTimeoutError::Disconnected) => {
                 debug!("Erro ao receber mensagem: Canal de comunicação desconectado");
                 false
@@ -242,31 +245,31 @@ impl ReliableCommunication {
             if leader == self.host {
                 // Start the broadcast
                 debug!("Sou o líder, começando o broadcast");
-                Self::brd_req(&self.register_to_sender_tx, message);
-                return self.group.lock().expect("Erro ao terminar o AB, não obteve-se o Mutex lock do grupo").len() as u32;
-            }
-            // Ask the leader to broadcast and wait for confirmation
-            let (request, request_result_rx) = SendRequest::new (
-                message.clone(),
-                SendRequestData::RequestLeader {},
-            );
-            match self.register_to_sender_tx.send(request) {
-                Ok(_) => {}
-                Err(e) => {
-                    debug!("Erro ao enviar request de AB: {e}");
+                Self::brd_req(&self.register_to_sender_tx, message.clone());
+            } else {
+                // Ask the leader to broadcast and wait for confirmation
+                let (request, request_result_rx) = SendRequest::new (
+                    message.clone(),
+                    SendRequestData::RequestLeader {},
+                );
+                match self.register_to_sender_tx.send(request) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug!("Erro ao enviar request de AB: {e}");
+                    }
                 }
-            }
 
-            // Wait for the request result
-            match request_result_rx.recv() {
-                Ok(0) => {
-                    debug!("Falha em enviar mensagem para o líder, tentando novamente...");
-                    continue;
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    debug!("Erro ao fazer requisitar AB para o lider: {e}");
-                    continue;
+                // Wait for the request result
+                match request_result_rx.recv() {
+                    Ok(0) => {
+                        debug!("Falha em enviar mensagem para o líder, tentando novamente...");
+                        continue;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug!("Erro ao fazer requisitar AB para o lider: {e}");
+                        continue;
+                    }
                 }
             }
             match self.wait_for_brd(&broadcast_rx, message.clone()) {

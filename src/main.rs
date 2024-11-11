@@ -270,8 +270,8 @@ fn create_agents(
     let logger = Arc::new(Mutex::new(
         Logger::new(
             true,
-            false,
-            false,
+            true,
+            true,
             true,
             agent_num)));
 
