@@ -40,7 +40,7 @@ impl RecSender {
             logger,
             dst_seq_num_cnt: Mutex::new(HashMap::new()),
             broadcast,
-            timeout: Duration::from_micros(TIMEOUT),
+            timeout: TIMEOUT,
             timeout_limit: TIMEOUT_LIMIT,
             w_size: W_SIZE,
             gossip_rate: GOSSIP_RATE,
@@ -218,7 +218,7 @@ impl RecSender {
                     next_seq_num = base;
                     timeout_count += 1;
                     if timeout_count == self.timeout_limit {
-                        debug!("Timed out when sending message to agent {}", packets.first()
+                        debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from agent {}", packets.first()
                         .expect("Packets vazio no Go-Back-N").header.dst_addr.port() % 100);
                         return false;
                     }
@@ -235,9 +235,17 @@ impl RecSender {
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
     fn get_friends(&self) -> Vec<Node> {
         let mut sus_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let group = sus_group.iter_mut().filter(|n| n.state == NodeState::ALIVE).map(|n| n.clone()).collect::<Vec<Node>>();
+        let mut group = Vec::new();
+        let mut start = 0;
+        for node in  sus_group.iter_mut() {
+            if node.state == NodeState::ALIVE {
+                group.push(node.clone());
+            }
+            if node.agent_number == self.host.agent_number {
+                start = group.len();
+            }
+        }
 
-        let start = (self.host.agent_number + 1) % group.len();
         let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
 
