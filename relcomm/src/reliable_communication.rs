@@ -177,7 +177,7 @@ impl ReliableCommunication {
                 debug!("Erro ao registrar broadcast waiter no AB: {e}");
             }
         }
-        broadcast_rx        
+        broadcast_rx
     }
 
     /// Listen for any broadcasts until your message arrives
