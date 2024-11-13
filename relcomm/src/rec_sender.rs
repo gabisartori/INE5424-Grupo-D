@@ -119,7 +119,7 @@ impl RecSender {
             },
             SendRequestData::RequestLeader {} => {
                 let leader = Self::get_leader(&self.group, &self.host);
-                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), false);
+                let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
                 messages.push(packets);
             },
             SendRequestData::Gossip { origin, seq_num } => {
