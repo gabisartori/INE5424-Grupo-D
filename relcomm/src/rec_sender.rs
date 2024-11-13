@@ -214,7 +214,7 @@ impl RecSender {
                     // The listener also guarantees that the packet is >= base
                     base = (packet.header.seq_num - start_packet as u32 + 1) as usize;
                     timeout_count = 0;                    
-                }
+                },
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;

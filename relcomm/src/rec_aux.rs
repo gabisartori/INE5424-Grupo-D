@@ -108,7 +108,7 @@ pub trait RecAux {
         }
         livings
     }
-
+    
     fn log_msg(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100

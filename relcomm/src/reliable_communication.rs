@@ -5,6 +5,7 @@ permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
 use std::net::SocketAddr;
+use std::thread;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::time::Duration;
@@ -12,6 +13,7 @@ use std::time::Duration;
 use logger::{log::SharedLogger, debug};
 use crate::config::{BROADCAST, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT};
 use crate::channels::Channel;
+use crate::failure_detection::FailureDetection;
 use crate::node::Node;
 use crate::rec_aux::{SendRequest, SendRequestData, Broadcast, RecAux};
 use crate::rec_listener::RecListener;
@@ -57,27 +59,36 @@ impl ReliableCommunication {
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
 
 
-        let sender = RecSender::new(host.clone(), group.clone(), 
+        let sender = RecSender::new(host.clone(), group.clone(),
             channel.clone(), broadcast.clone(), logger.clone());
         
         // Spawn sender thread
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             sender.run(
                 snd_acks_rx, brd_acks_rx, reg_to_send_rx,
                 reg_snd_to_listener_tx, reg_brd_to_listener_tx
             );
         });
 
+        let (hb_tx, hb_rx) = mpsc::channel();
+
         let listener = RecListener::new(host.clone(), 
-            group.clone(), channel, broadcast.clone(), logger.clone(),
+            group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
             register_to_sender_tx.clone());
+        
+        let failure_detection = FailureDetection::new(group.clone(), channel.clone(), host.clone());
 
         // Spawn listener thread
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             listener.run(
                 messages_tx, snd_acks_tx, brd_acks_tx,
-                reg_snd_rx, reg_brd_rx, brd_waiters_rx,
+                reg_snd_rx, reg_brd_rx, hb_tx, brd_waiters_rx,
             );
+        });
+
+        // spawn fail detection thread
+        thread::spawn(move || {
+            failure_detection.run(hb_rx);
         });
 
         let message_timeout = MESSAGE_TIMEOUT;

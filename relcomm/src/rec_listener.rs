@@ -48,6 +48,7 @@ impl RecListener {
         brd_acks_tx: Sender<Packet>,
         reg_snd_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
         reg_brd_rx: Receiver<((SocketAddr, SocketAddr), u32)>,
+        hb_tx: Sender<Packet>,
         brd_waiters_rx: Receiver<Sender<Vec<u8>>>,
     ) {
         let mut snd_pkts_per_origin: HashMap<SocketAddr, Vec<Packet>> = HashMap::new();
@@ -68,7 +69,15 @@ impl RecListener {
             } else {
                 (&reg_snd_rx, &mut expected_snd_acks, &snd_acks_tx, &mut snd_pkts_per_origin)
             };
-            if packet.header.is_ack() {
+            if packet.header.is_hearbeat() {
+                match hb_tx.send(packet.clone()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        debug!("Erro ao enviar heartbeat: {e}");
+                    }
+                }
+                continue;
+            } else if packet.header.is_ack() {
                 // logger
                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAck);
 
