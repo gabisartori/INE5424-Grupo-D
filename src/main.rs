@@ -1,5 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex, mpsc::{RecvError, Sender, self}};
+use std::sync::{Arc, mpsc::{RecvError, Sender, self}};
 use std::{thread, vec};
 use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 
@@ -273,13 +273,13 @@ fn create_agents(
         .map(|i| Node::new(SocketAddr::new(ip, port + (i as u16)), i))
         .collect();
 
-    let logger = Arc::new(Mutex::new(
+    let logger = Arc::new(
         Logger::new(
             true,
             true,
             true,
             true,
-            agent_num)));
+            agent_num));
 
     let agent = Arc::new(
         Agent::new(id, nodes, logger)?
