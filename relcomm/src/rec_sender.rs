@@ -212,7 +212,8 @@ impl RecSender {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;                    
+                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;
+                    timeout_count = 0;                    
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
