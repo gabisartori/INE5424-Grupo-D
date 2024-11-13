@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! initializate_folders {
     ($tests_num:expr) => {
-        use std::fs::{self, File};
+        use std::fs;
         // deletes the needed folder if they exists
         if (fs::metadata("tests").is_ok()) {
             fs::remove_dir_all("tests").expect("Erro ao deletar a pasta 'tests'");
@@ -33,8 +33,6 @@ macro_rules! initializate_folders {
             let error_msg = format!("Erro ao criar a pasta '{}'", path);
             fs::create_dir_all(path.clone()).expect(&error_msg);
         }
-
-        // File::create("tests/Resultado.txt").expect("Erro ao criar o arquivo de resultado final");
     };
 }
 
@@ -445,7 +443,7 @@ impl DebugLog {
     }
 }
 
-pub type SharedLogger = Arc<Mutex<Logger>>;
+pub type SharedLogger = Arc<Logger>;
 
 /// Creates the log files for each Agent, and writes the log messages obtained from the DebugLog struct.
 #[derive(Debug, Clone, Copy)]
@@ -500,7 +498,7 @@ impl Logger {
         self.log(logger_state);
     }
 
-    pub fn log(&mut self, logger_state: LoggerState) {
+    pub fn log(&self, logger_state: LoggerState) {
         // with the logger state, we can get the log message
         let log = DebugLog::new().get_log(logger_state.clone());
         let msg_buffer = format!("{}\n", log);

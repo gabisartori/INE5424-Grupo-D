@@ -109,7 +109,7 @@ pub trait RecAux {
         livings
     }
 
-    fn log_msg(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: MessageStatus) {
+    fn log_msg(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100
         } else {
@@ -121,13 +121,10 @@ pub trait RecAux {
             target_agent_id: Some(other_id),
             message_id: pkt.header.seq_num as usize,
         };
-        logger
-            .lock()
-            .expect("Couldn't acquire logger Lock on Sender")
-            .log(logger_state);
+        logger.log(logger_state);
     }
 
-    fn log_pkt(logger: &Arc<Mutex<Logger>>, host: &Node, pkt: &Packet, state: PacketStatus) {
+    fn log_pkt(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: PacketStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             pkt.header.dst_addr.port() as usize % 100
         } else {
@@ -140,9 +137,6 @@ pub trait RecAux {
             seq_num: pkt.header.seq_num as usize,
         };
 
-        logger
-            .lock()
-            .expect("Couldn't acquire logger Lock on Sender")
-            .log(logger_state);
+        logger.log(logger_state);
     }
 }
