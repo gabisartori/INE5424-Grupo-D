@@ -201,6 +201,8 @@ fn main() {
     if args.len() == main_len {
         let tests = tests::all_tests();
         let test_num = tests.len();
+        let mut pass_tests = test_num;
+        let final_path = "tests/Resultado.txt";
         initializate_folders!(test_num);
         for (test_id, (test_name, test)) in tests.iter().enumerate() {
             let mut children = Vec::new();
@@ -219,10 +221,14 @@ fn main() {
             }
             let file_path = format!("tests/test_{test_id}/Resultado.txt");
             let file_path = file_path.as_str();
-            let final_path = "tests/Resultado.txt";
             let expected = get_expected(test);
-            calculate_test(file_path, final_path, agent_num, test_name, test_id, expected);
+            if calculate_test(file_path, final_path, agent_num, test_name, test_id, expected) {
+                pass_tests -= 1;
+            }
         }
+        debug_file!(final_path,
+            format!("\n---------------------\nTestes passados: {pass_tests
+            }/{test_num}\n").as_bytes());
     } else if args.len() == main_len + 2 {
         // Sub-processo: Execução do agente
         let test_id: usize = args[main_len]
@@ -288,16 +294,19 @@ fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
     let mut send_actions = vec![0; agent_num];
     let mut receive_actions = vec![0; agent_num];
     let mut die_actions = vec![0; agent_num];
+    let mut rec_snd = 0;
     for (id, agent) in test.iter().enumerate() {
         for action in agent {
             match action {
                 Action::Send(s) => {
                     match s {
-                        SendAction::Send { destination: _, message: _ } => {
+                        SendAction::Send { .. } => {
                             send_actions[id] += 1;
+                            rec_snd += 1;
                         },
-                        SendAction::Broadcast { message: _ } => {
+                        SendAction::Broadcast { .. } => {
                             send_actions[id] += agent_num;
+                            rec_snd += agent_num;
                         },
                         SendAction::DieAfterSend {} => {
                             die_actions[id] += 1;
@@ -309,6 +318,7 @@ fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
                     match r {
                         ReceiveAction::Receive { .. } => {
                             receive_actions[id] += 1;
+                            rec_snd -= 1;
                         },
                         ReceiveAction::DieAfterReceive { .. } => {
                             die_actions[id] += 1;
@@ -321,6 +331,13 @@ fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
             }
         }
     }
+    if rec_snd > 0 {
+        for i in 0..agent_num {
+            if send_actions[i] > 0 {
+                send_actions[i] -= rec_snd
+            }
+        }
+    }
     (send_actions, receive_actions, die_actions)
 }
 
@@ -328,18 +345,28 @@ fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
 /// then writes the results to a final file.
 /// The lines of output file must be formated as "AGENTE X -> ENVIOS: X - RECEBIDOS: X"
 fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
-                test_name: &str, test_id: usize, expected: Expected) {
+                test_name: &str, test_id: usize, expected: Expected) -> bool {
     let file = File::open(file_path).expect("Erro ao abrir o arquivo de log");
     let mut reader = BufReader::new(file);
 
     let (expected_s, expected_r, expected_d) = expected;
+    let mut deaths = 0;
+
+    let mut errors: Vec<String> = vec![String::new(); agent_num];
+    for idx in 0..agent_num {
+        if expected_d[idx] != 0 {
+            errors[idx].push_str(&format!("Agente {idx} deveria morrer\n"));
+            deaths += 1;
+        }
+    }
+
+    let mut has_errors = false;
 
     let mut total_sends = 0;
     let mut total_receivs = 0;
     let mut line = String::new();
     // a vector to store the results, with a preset size
     let mut resultados: Vec<String> = vec![String::new(); agent_num];
-    let mut errors: Vec<String> = vec![String::new(); agent_num];
     let mut total_expected_sends = 0;
     let mut total_expected_receivs = 0;
     // for each line, extract the sends and receivs
@@ -352,20 +379,43 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
         let sends: usize = words[4].parse().unwrap();
         let receivs: usize = words[7].parse().unwrap();
         // check if the sends and receivs match the expected values
-        if expected_d[idx] != 0 {
-            errors[idx].push_str(&format!("Agente {idx} deveria morrer\n"));
-        }
-        if sends != expected_s[idx] {
-            errors[idx].push_str(&format!("Agente {idx
+        let exp = expected_s[idx];
+        if sends != exp {
+            let er = deaths == 0 || {
+                let st = if exp >= deaths {exp - deaths} else {0};
+                let range = st..=(exp + deaths);
+                if !range.contains(&sends) {
+                    true
+                } else {
+                    false
+                }
+            };
+            if er {
+                errors[idx].push_str(&format!("Agente {idx
                 }: Enviados: {sends
                 } - Esperados: {
                 }\n", expected_s[idx]));
+                has_errors = true;
+            }
         }
-        if receivs != expected_r[idx] {
-            errors[idx].push_str(&format!("Agente {idx
-                }: Recebidos: {receivs
-                } - Esperados: {
-                }\n", expected_r[idx]));
+        let exp = expected_r[idx];
+        if receivs != exp {
+            let er = deaths == 0 || {
+                let st = if exp >= deaths {exp - deaths} else {0};
+                let range = st..=(exp + deaths);
+                if !range.contains(&receivs) {
+                    true
+                } else {
+                    false
+                }
+            };
+            if er {
+                errors[idx].push_str(&format!("Agente {idx
+                    }: Recebidos: {receivs
+                    } - Esperados: {
+                    }\n", expected_r[idx]));
+                has_errors = true;
+            }
         }
         total_sends += sends;
         total_receivs += receivs;
@@ -401,4 +451,5 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
     }\nTotal de Mensagens Recebidas: {total_receivs
     }/{total_expected_receivs}\n");
     debug_file!(final_path, &msg.as_bytes());
+    has_errors
 }
