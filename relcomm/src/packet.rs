@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 // use crate::config::BUFFER_SIZE;
 use crate::flags::Flags;
 use crate::header::Header;
+use crate::node::Node;
 
 #[derive(Clone)]
 pub struct Packet {
@@ -35,6 +36,12 @@ impl Packet {
         let checksum = Self::checksum(&header, &data);
         header.checksum = checksum;
         Self { header, data }
+    }
+
+    pub fn heart_beat(host: &Node, dst_addr: SocketAddr) -> Self {
+        let mut header = Header::new(host.addr, dst_addr, host.addr, host.agent_number as u32, Flags::EMP, 0);
+        header.checksum = Header::checksum(&header);
+        Self { header, data: Vec::new() }
     }
 
     pub fn get_ack(&self) -> Self {

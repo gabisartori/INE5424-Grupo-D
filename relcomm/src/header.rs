@@ -72,6 +72,10 @@ impl Header {
         self.flags.is_set(Flags::BRD)
     }
 
+    pub fn is_hearbeat(&self) -> bool {
+        self.flags == Flags::EMP
+    }
+
     fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {
         let mut bytes = Vec::new();
         match addr.ip() {

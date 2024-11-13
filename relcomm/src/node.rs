@@ -12,14 +12,15 @@ impl Node {
         Self {
             addr,
             agent_number,
-            state: NodeState::ALIVE,
+            state: NodeState::NonInit,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeState {
+    NonInit,
     ALIVE,
     DEAD,
-    // SUSPECT,
+    SUSPECT,
 }
