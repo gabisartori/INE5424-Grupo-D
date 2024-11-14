@@ -355,7 +355,7 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
     let mut errors: Vec<String> = vec![String::new(); agent_num];
     for idx in 0..agent_num {
         if expected_d[idx] != 0 {
-            errors[idx].push_str(&format!("Agente {idx} deveria morrer\n"));
+            errors[0].push_str(&format!("Agente {idx} deveria morrer\n"));
             deaths += 1;
         }
     }
@@ -381,16 +381,7 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
         // check if the sends and receivs match the expected values
         let exp = expected_s[idx];
         if sends != exp {
-            let er = deaths == 0 || {
-                let st = if exp >= deaths {exp - deaths} else {0};
-                let range = st..=(exp + deaths);
-                if !range.contains(&sends) {
-                    true
-                } else {
-                    false
-                }
-            };
-            if er {
+            if exp + deaths <= sends && exp <= sends + deaths {
                 errors[idx].push_str(&format!("Agente {idx
                 }: Enviados: {sends
                 } - Esperados: {
@@ -400,16 +391,7 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
         }
         let exp = expected_r[idx];
         if receivs != exp {
-            let er = deaths == 0 || {
-                let st = if exp >= deaths {exp - deaths} else {0};
-                let range = st..=(exp + deaths);
-                if !range.contains(&receivs) {
-                    true
-                } else {
-                    false
-                }
-            };
-            if er {
+            if exp + deaths <= receivs && exp <= receivs + deaths {
                 errors[idx].push_str(&format!("Agente {idx
                     }: Recebidos: {receivs
                     } - Esperados: {
