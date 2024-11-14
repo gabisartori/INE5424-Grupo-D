@@ -39,7 +39,7 @@ impl Packet {
     }
 
     pub fn heart_beat(host: &Node, dst_addr: SocketAddr) -> Self {
-        let mut header = Header::new(host.addr, dst_addr, host.addr, host.agent_number as u32, Flags::EMP, 0);
+        let mut header = Header::new(host.addr, dst_addr, host.addr, host.agent_number as u32, Flags::HB, 0);
         header.checksum = Header::checksum(&header);
         Self { header, data: Vec::new() }
     }
@@ -94,9 +94,21 @@ impl Packet {
     }
 }
 
+
 impl std::fmt::Debug for Packet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num,
-        self.header.src_addr.port(), self.header.dst_addr.port(), self.header.origin.port())
+        self.header.src_addr.port() % 100, self.header.dst_addr.port() % 100, self.header.origin.port() % 100)
+    }
+}
+
+
+impl std::fmt::Display for Packet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pkt = if self.header.is_ack() { "ACK" } else if self.header.is_hearbeat() {
+            "Heartbeat"} else if self.header.is_brd() {
+            "Broadcast" } else { "Packet" };
+        write!(f, "{pkt} num {}: Agent {} -> Agent {}, origin: {}", self.header.seq_num,
+        self.header.src_addr.port() % 100, self.header.dst_addr.port() % 100, self.header.origin.port() % 100)
     }
 }

@@ -10,6 +10,7 @@ impl Flags {
     pub const ACK: Flags = Flags { value: 1 };
     pub const LST: Flags = Flags { value: 2 };
     pub const BRD: Flags = Flags { value: 4 };
+    pub const HB: Flags = Flags { value: 8 };
 
     pub fn is_set(&self, flag: Flags) -> bool {
         self.value & flag.value != 0
@@ -25,6 +26,9 @@ impl Flags {
         }
         if self.is_set(Flags::BRD) {
             result.push_str("BRD ");
+        }
+        if self.is_set(Flags::HB) {
+            result.push_str("HB ");
         }
         result
     }

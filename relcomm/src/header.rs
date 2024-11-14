@@ -73,7 +73,7 @@ impl Header {
     }
 
     pub fn is_hearbeat(&self) -> bool {
-        self.flags == Flags::EMP
+        self.flags.is_set(Flags::HB)
     }
 
     fn addr_to_bytes(addr: SocketAddr) -> Vec<u8> {

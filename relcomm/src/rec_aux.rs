@@ -91,7 +91,7 @@ pub trait RecAux {
     /// Returns the node with the highest priority (currently the first one alive in the group vector)
     fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state == NodeState::ALIVE {
+            if node.state != NodeState::Dead {
                 // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
                 return node.clone();
             }
@@ -99,10 +99,11 @@ pub trait RecAux {
         return host.clone();
     }
 
+    /// Returns a vector with all nodes that are not dead
     fn get_livings(group: &Arc<Mutex<Vec<Node>>>) -> Vec<Node> {
         let mut livings = Vec::new();
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state == NodeState::ALIVE {
+            if node.state != NodeState::Dead {
                 livings.push(node.clone());
             }
         }

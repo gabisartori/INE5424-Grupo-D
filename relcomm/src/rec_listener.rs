@@ -70,7 +70,7 @@ impl RecListener {
                 (&reg_snd_rx, &mut expected_snd_acks, &snd_acks_tx, &mut snd_pkts_per_origin)
             };
             if packet.header.is_hearbeat() {
-                match hb_tx.send(packet.clone()) {
+                match hb_tx.send(packet) {
                     Ok(_) => {}
                     Err(e) => {
                         debug!("Erro ao enviar heartbeat: {e}");
