@@ -7,7 +7,7 @@ use std::sync::mpsc::{Receiver, Sender, RecvTimeoutError};
 use logger::{log::{PacketStatus, MessageStatus, SharedLogger}, debug};
 use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
 use crate::config::{TIMEOUT, TIMEOUT_LIMIT, GOSSIP_RATE, W_SIZE};
-use crate::node::{Node, NodeState};
+use crate::node::Node;
 use crate::channels::Channel;
 use crate::packet::Packet;
 
@@ -55,8 +55,12 @@ impl RecSender {
         reg_snd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
         reg_brd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
+        let mut msg_buffer = Vec::new();
         while let Ok(request) = reg_to_send_rx.recv() {
-            let messages_to_send = self.get_messages(&request);
+            let mut messages_to_send = self.get_messages(&request);
+            for msg in msg_buffer.drain(..) {
+                messages_to_send.push(msg);
+            }
             // logger
             let state = if messages_to_send[0][0].header.is_brd() {
                 MessageStatus::SentBroadcast
@@ -66,22 +70,24 @@ impl RecSender {
             let mut success_count = 0;
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
-                let first = match packets.first() {
-                    Some(packet) => packet.clone(),
-                    None => {
-                        debug!("Erro ao enviar mensagem: Pacote vazio");
-                        continue;
+                let first = &packets[0];
+                // TODO: Add logic to check if destination is still alive,
+                // if not, break the loop, reset the sequence number and return false
+                let mut unborn = false;
+                {
+                    let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
+                    let target = group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address");
+                    if target.is_dead() {
+                        debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
+                        Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
+                        continue;                    
+                    }
+                    if target.non_initiated() {
+                        unborn = true;
+                        Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
+                        debug!("Erro ao enviar mensagem: Agent {} ainda não está inicializado", target.agent_number);
                     }
                 };
-                let target = {
-                    let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
-                    group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address").clone()
-                };
-                if target.state == NodeState::Dead {
-                    debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
-                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
-                    continue;                    
-                }
                 let (reg, acks_rx) = if first.header.is_brd() {
                     (&reg_brd_to_listener_tx, &brd_acks_rx)
                 } else {
@@ -104,6 +110,9 @@ impl RecSender {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
+                } else if unborn {
+                    // If the target is not initiated, we need to wait for it to be alive
+                    msg_buffer.push(packets);
                 }
             }
 
@@ -134,7 +143,7 @@ impl RecSender {
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
                         self.host.addr,
-                        node.addr,
+                        node,
                         *origin,
                         request.data.clone(),
                         *seq_num,
@@ -156,7 +165,7 @@ impl RecSender {
                         let friends = self.get_friends();
                         for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                            if friends.contains(node) {
+                            if friends.contains(&node.addr) {
                                 messages.push(packets);
                             }
                         }
@@ -212,8 +221,6 @@ impl RecSender {
 
 
             // Wait for an ACK
-            // TODO: Somewhere around here: add logic to check if destination is still alive,
-            // if not, break the loop, reset the sequence number and return false
             match acks_rx.recv_timeout(self.timeout) {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
@@ -224,22 +231,22 @@ impl RecSender {
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;
-                    let target = {
+                    {
                         let group = self.group
                             .lock()
                             .expect("Erro ao obter lock de grupo em go_back_n");
-                        group.iter().find(|node| node.addr == first.dst_addr)
-                            .expect("Invalid Address")
-                            .clone()
+                        let target = group.iter().find(|node| node.addr == first.dst_addr)
+                            .expect("Invalid Address");
+                        if target.is_dead() {
+                            debug!("Erro ao enviar mensagem: Agent {} não está vivo", Self::get_agnt(&first.dst_addr));
+                            return false;
+                        }
+                        // if the target is suspect or not initiated, there will be a limit to the number of timeouts
+                        if (!target.is_alive()) && timeout_count == self.timeout_limit {
+                            debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from Agent {}", Self::get_agnt(&first.dst_addr));
+                            return false;
+                        }
                     };
-                    if target.state == NodeState::Dead {
-                        debug!("Erro ao enviar mensagem: Agent {} não está vivo", Self::get_agnt(&first.dst_addr));
-                        return false;
-                    }
-                    if timeout_count == self.timeout_limit {
-                        debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from agent {}", Self::get_agnt(&first.dst_addr));
-                        // return false;
-                    }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
                     debug!("Erro ao receber ACKS, thread Listener desconectada");
@@ -251,9 +258,18 @@ impl RecSender {
     }
 
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
-    fn get_friends(&self) -> Vec<Node> {
-        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let start = (self.host.agent_number as usize + 1) % group.len();
+    fn get_friends(&self) -> Vec<SocketAddr> {
+        let or_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let mut group = Vec::new();
+        let mut start = 0;
+        for node in or_group.iter() {
+            if !node.is_dead() {
+                group.push(node.addr);
+            }
+            if node.agent_number == self.host.agent_number {
+                start = group.len();
+            }
+        }
 
         let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();

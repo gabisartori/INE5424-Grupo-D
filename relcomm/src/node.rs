@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeState {
-    NonInit,
+    Unborn,
     Alive,
     Dead,
     Suspect,
@@ -20,7 +20,19 @@ impl Node {
         Self {
             addr,
             agent_number,
-            state: NodeState::NonInit,
+            state: NodeState::Unborn,
         }
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.state == NodeState::Dead
+    }
+
+    pub fn non_initiated(&self) -> bool {
+        self.state == NodeState::Unborn
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.state == NodeState::Alive
     }
 }

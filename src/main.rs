@@ -381,21 +381,23 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
         // check if the sends and receivs match the expected values
         let exp = expected_s[idx];
         if sends != exp {
-            if exp + deaths <= sends && exp <= sends + deaths {
+            if !(sends <= exp + deaths && exp <= sends + deaths) {
                 errors[idx].push_str(&format!("Agente {idx
                 }: Enviados: {sends
                 } - Esperados: {
-                }\n", expected_s[idx]));
+                }, com {deaths
+                } mortes\n", expected_s[idx]));
                 has_errors = true;
             }
         }
         let exp = expected_r[idx];
         if receivs != exp {
-            if exp + deaths <= receivs && exp <= receivs + deaths {
+            if !(receivs <= exp + deaths && exp <= receivs + deaths) {
                 errors[idx].push_str(&format!("Agente {idx
                     }: Recebidos: {receivs
                     } - Esperados: {
-                    }\n", expected_r[idx]));
+                    }, com {deaths
+                    } mortes\n", expected_r[idx]));
                 has_errors = true;
             }
         }
@@ -428,7 +430,8 @@ fn calculate_test(file_path: &str, final_path: &str, agent_num: usize,
     }
     let msg = format!("\n----------\nTeste {test_id
     }: {test_name
-    }\n----------\n{errors}Total de Mensagens Enviadas: {total_sends
+    }\n----------\n{errors
+    }Total de Mensagens Enviadas: {total_sends
     }/{total_expected_sends
     }\nTotal de Mensagens Recebidas: {total_receivs
     }/{total_expected_receivs}\n");

@@ -185,7 +185,7 @@ impl ReliableCommunication {
         match self.broadcast_waiters_tx.send(broadcast_tx) {
             Ok(_) => {}
             Err(e) => {
-                debug!("Erro ao registrar broadcast waiter no AB: {e}");
+                debug!("Erro ao registrar broadcast waiter: {e}");
             }
         }
         broadcast_rx
@@ -266,6 +266,7 @@ impl ReliableCommunication {
                         debug!("Erro ao enviar request de AB: {e}");
                     }
                 }
+                prev_leader = leader;
                 // Wait for the request result
                 match request_result_rx.recv() {
                     Ok(0) => {
@@ -278,8 +279,10 @@ impl ReliableCommunication {
                         continue;
                     }
                 }
-                prev_leader = leader;
-            } // never make more than 1 request to the same leader
+            } else {
+                // never make more than 1 request to the same leader
+                debug!("Tentando de novo o líder {leader} para fazer broadcast");
+            }
             match self.wait_for_brd(&broadcast_rx, message.clone()) {
                 Ok(result) => {
                     debug!("Recebeu a mensagem de broadcast de volta");
@@ -290,7 +293,7 @@ impl ReliableCommunication {
                     continue;
                 }
                 Err(e) => {
-                    debug!("Erro ao esperar por broadcast: {e}");
+                    debug!("Erro ao esperar por Atomic Broadcast: {e}");
                     panic!("{:?}", e)
                 }
             }
