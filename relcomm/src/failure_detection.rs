@@ -7,6 +7,8 @@ e sinalizem os protocolos de comunicação confiável sobre possíveis saídas d
 use std::{thread, vec};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use logger::debug;
+
 use crate::config::{HEARTBEAT_INTERVAL, HEARTBEAT_MISS_LIMIT};
 use crate::node::{Node, NodeState};
 use crate::channels::Channel;
@@ -60,6 +62,9 @@ impl FailureDetection {
                 hb_miss_cnt[id] = 0;
                 hb_miss[id] = 0;
                 let node = &mut group[id];
+                if node.state == NodeState::Unborn {
+                    debug!("Node {} is now alive", node.agent_number);
+                }
                 node.state = NodeState::Alive;
             }
             for i in 0..agent_num {

@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use logger::{debug, log::{Logger, LoggerState, MessageStatus, PacketStatus}};
-use crate::node::{Node, NodeState};
+use crate::node::Node;
 use crate::packet::Packet;
 
 pub enum SendRequestData {
@@ -91,7 +91,7 @@ pub trait RecAux {
     /// Returns the node with the highest priority (currently the first one alive in the group vector)
     fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state != NodeState::Dead {
+            if !node.is_dead() {
                 // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
                 return node.clone();
             }
@@ -103,7 +103,7 @@ pub trait RecAux {
     fn get_livings(group: &Arc<Mutex<Vec<Node>>>) -> Vec<Node> {
         let mut livings = Vec::new();
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
-            if node.state != NodeState::Dead {
+            if !node.is_dead() {
                 livings.push(node.clone());
             }
         }
