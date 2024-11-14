@@ -73,6 +73,15 @@ impl RecSender {
                         continue;
                     }
                 };
+                let target = {
+                    let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
+                    group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address").clone()
+                };
+                if target.state == NodeState::Dead {
+                    debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
+                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
+                    continue;                    
+                }
                 let (reg, acks_rx) = if first.header.is_brd() {
                     (&reg_brd_to_listener_tx, &brd_acks_rx)
                 } else {
@@ -95,10 +104,6 @@ impl RecSender {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
-                } else {
-                    // If the message wasn't sent, mark the destination as dead
-                    self.mark_as_dead(&first.header.dst_addr);
-                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                 }
             }
 
@@ -115,11 +120,13 @@ impl RecSender {
         match &request.options {
             SendRequestData::Send { destination_address } => {
                 let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
+                debug!("Starting send from {}", packets[0]);
                 messages.push(packets);
             },
             SendRequestData::RequestLeader {} => {
                 let leader = Self::get_leader(&self.group, &self.host);
                 let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
+                debug!("Requesting leader with {}", packets[0]);
                 messages.push(packets);
             },
             SendRequestData::Gossip { origin, seq_num } => {
@@ -140,10 +147,8 @@ impl RecSender {
                 match self.broadcast {
                     Broadcast::BEB => {
                         for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
-                            if node.state == NodeState::ALIVE {
-                                let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
-                                messages.push(packets);
-                            }
+                            let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
+                            messages.push(packets);
                         }
                     }
                     Broadcast::URB | Broadcast::AB => {
@@ -219,10 +224,21 @@ impl RecSender {
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;
-                    if timeout_count == self.timeout_limit {
-                        debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from agent {}", packets.first()
-                        .expect("Packets vazio no Go-Back-N").header.dst_addr.port() % 100);
+                    let target = {
+                        let group = self.group
+                            .lock()
+                            .expect("Erro ao obter lock de grupo em go_back_n");
+                        group.iter().find(|node| node.addr == first.dst_addr)
+                            .expect("Invalid Address")
+                            .clone()
+                    };
+                    if target.state == NodeState::Dead {
+                        debug!("Erro ao enviar mensagem: Agent {} não está vivo", Self::get_agnt(&first.dst_addr));
                         return false;
+                    }
+                    if timeout_count == self.timeout_limit {
+                        debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from agent {}", Self::get_agnt(&first.dst_addr));
+                        // return false;
                     }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
@@ -236,17 +252,8 @@ impl RecSender {
 
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
     fn get_friends(&self) -> Vec<Node> {
-        let mut sus_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
-        let mut group = Vec::new();
-        let mut start = 0;
-        for node in  sus_group.iter_mut() {
-            if node.state == NodeState::ALIVE {
-                group.push(node.clone());
-            }
-            if node.agent_number == self.host.agent_number {
-                start = group.len();
-            }
-        }
+        let group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let start = (self.host.agent_number as usize + 1) % group.len();
 
         let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
@@ -257,18 +264,6 @@ impl RecSender {
             friends.extend_from_slice(&group[start..]);
             friends.extend_from_slice(&group[..end]);
         }
-
         friends
-    }
-    
-    /// Marks a node as dead
-    fn mark_as_dead(&self, addr: &SocketAddr) {
-        let mut group = self.group.lock().expect("Erro ao marcar como morto: Mutex lock do grupo falhou");
-        for node in group.iter_mut() {
-            if node.addr == *addr {
-                debug!("Agente {} foi marcado como morto", node.agent_number);
-                node.state = NodeState::DEAD;
-            }
-        }
     }
 }

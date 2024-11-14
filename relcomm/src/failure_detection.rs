@@ -19,7 +19,7 @@ pub struct FailureDetection {
 }
 
 impl FailureDetection {
-
+    /// Creates a new FailureDetection instance
     pub fn new(group: Arc<Mutex<Vec<Node>>>,
         channel: Arc<Channel>
         , host: Node) -> Self {
@@ -29,40 +29,46 @@ impl FailureDetection {
             host,
         }
     }
-
-    fn send_heart_beat(&self) {
-        let group = self.group.lock().expect("Failed to lock group on send_heart_beat");
-        for node in group.iter() {
-            let pkt = Packet::heart_beat(&self.host, node.addr);
-            self.channel.send(&pkt);
-        }
-    }
+    /// Starts the failure detection process
+    /// This function will run in a separate thread
+    /// It will send heartbeats to all nodes in the group
+    /// wait for heartbeats from all nodes in the group
+    /// and mark nodes as suspect or dead if they don't respond
     pub fn run(self, hb_rx: mpsc::Receiver<Packet>) {
-        let agent_number = self.group.lock().unwrap().len();
-        let mut hb_miss_cnt: Vec<i32> = vec![-1; agent_number];
+        let (heart_beats, agent_num) = {
+            let group = self.group.lock().expect("Failed to lock group on failure_detection start");
+            let len = group.len();
+            if len == 0 {
+                panic!("No agents in the group");
+            }
+            let heart_beats = group.iter().map(|node| {
+                Packet::heart_beat(&self.host, node.addr)
+            }).collect::<Vec<Packet>>();
+            (heart_beats, len)
+        };
+        let mut hb_miss_cnt: Vec<i32> = vec![-1; agent_num];
         loop {
-            self.send_heart_beat();
+            // Broadcast heartbeats
+            for pkt in heart_beats.iter() {
+                self.channel.send(pkt);
+            }
             thread::sleep(HEARTBEAT_INTERVAL);
             let mut group = self.group.lock().expect("Failed to lock group on failure_detection");
-            let mut hb_miss = vec![0; agent_number];
+            let mut hb_miss = vec![1; agent_num];
             while let Ok(hb) = hb_rx.try_recv() {
                 let id = hb.header.seq_num as usize;
+                hb_miss_cnt[id] = 0;
+                hb_miss[id] = 0;
                 let node = &mut group[id];
-                match node.state {
-                    NodeState::ALIVE => {}
-                    _ => {
-                        node.state = NodeState::ALIVE;
-                        hb_miss_cnt[id] = 0;
-                        hb_miss[id] = 1;
-                    }
-                }
+                node.state = NodeState::Alive;
             }
-            for i in 0..agent_number {
-                if hb_miss[i] == 0 {
+            for i in 0..agent_num {
+                if hb_miss[i] == 1 {
                     hb_miss_cnt[i] += 1;
-                    group[i].state = NodeState::SUSPECT;
                     if hb_miss_cnt[i] >= HEARTBEAT_MISS_LIMIT {
-                        group[i].state = NodeState::DEAD;
+                        group[i].state = NodeState::Dead;
+                    } else {
+                        group[i].state = NodeState::Suspect;
                     }
                 }
             }            
