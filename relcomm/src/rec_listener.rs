@@ -169,7 +169,7 @@ impl RecListener {
         let own_priority = self.get_leader_priority(&self.host.addr);
         if origin_priority < own_priority {
             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-            debug!("Recebeu um Leader Request de {}", origin.port() % 100);
+            debug!("Recebeu um Leader Request de {}", Self::get_agnt(origin));
             Self::brd_req(&self.register_to_sender_tx, message.clone());
             false
         } else {

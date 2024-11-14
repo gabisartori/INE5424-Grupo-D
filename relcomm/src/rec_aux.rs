@@ -108,12 +108,16 @@ pub trait RecAux {
         }
         livings
     }
+
+    fn get_agnt(addr: &SocketAddr) -> usize {
+        addr.port() as usize % 100
+    }
     
     fn log_msg(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
-            pkt.header.dst_addr.port() as usize % 100
+            Self::get_agnt(&pkt.header.dst_addr)
         } else {
-            pkt.header.src_addr.port() as usize % 100
+            Self::get_agnt(&pkt.header.src_addr)
         };
         let logger_state = LoggerState::Message {
             state,
@@ -126,9 +130,9 @@ pub trait RecAux {
 
     fn log_pkt(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: PacketStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
-            pkt.header.dst_addr.port() as usize % 100
+            Self::get_agnt(&pkt.header.dst_addr)
         } else {
-            pkt.header.src_addr.port() as usize % 100
+            Self::get_agnt(&pkt.header.src_addr)
         };
         let logger_state = LoggerState::Packet {
             state,

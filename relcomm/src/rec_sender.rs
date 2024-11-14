@@ -123,7 +123,7 @@ impl RecSender {
                 messages.push(packets);
             },
             SendRequestData::Gossip { origin, seq_num } => {
-                debug!("Gossiping for Agent {}, with seq_num {}", origin.port() % 100, seq_num);
+                debug!("Gossiping msg from Agent {}, with seq_num {}", Self::get_agnt(&origin), seq_num);
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
                         self.host.addr,
@@ -147,6 +147,7 @@ impl RecSender {
                         }
                     }
                     Broadcast::URB | Broadcast::AB => {
+                        debug!("Starting broadcast");
                         let friends = self.get_friends();
                         for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
@@ -182,15 +183,15 @@ impl RecSender {
         let mut base = 0;
         let mut next_seq_num = 0;
         let mut timeout_count = 0;
-        let start_packet = match packets.first() {
-            Some(packet) => packet.header.seq_num,
+        let first = match packets.first() {
+            Some(packet) => packet.header.clone(),
             None => {
                 debug!("Erro ao enviar mensagem: Pacote vazio");
                 return false;
             }
         };
         // logger
-        let state = if packets[0].header.is_brd() {
+        let state = if first.is_brd() {
             PacketStatus::SentBroadcast
         } else {
             PacketStatus::Sent
@@ -212,8 +213,8 @@ impl RecSender {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    base = (packet.header.seq_num - start_packet as u32 + 1) as usize;
-                    timeout_count = 0;                    
+                    base = (packet.header.seq_num - first.seq_num as u32 + 1) as usize;
+                    timeout_count = 0;
                 },
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
