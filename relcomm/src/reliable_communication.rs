@@ -160,7 +160,7 @@ impl ReliableCommunication {
                 true
             }
             Err(RecvTimeoutError::Timeout) => {
-                debug!("Timeout ao receber mensagem");
+                debug!("Timed out waiting for message");
                 false
             },
             Err(RecvTimeoutError::Disconnected) => {
@@ -199,17 +199,14 @@ impl ReliableCommunication {
             match broadcast_rx.recv_timeout(self.broadcast_timeout) {
                 Ok(msg) => {
                     if msg == message {
-                        debug!("Recebeu a mensagem de broadcast de volta");
                         let len = Self::get_livings(&self.group).len() as u32;
                         return Ok(len);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    debug!("Timeout ao esperar por broadcast");
                     return Err(RecvTimeoutError::Timeout);
                 }
                 Err(e) => {
-                    debug!("Erro ao esperar por broadcast: {e}");
                     return Err(e);
                 }
             }
@@ -249,15 +246,15 @@ impl ReliableCommunication {
     /// This algorithm garantees that all messages are delivered in the same order to all nodes
     fn ab(&self, message: Vec<u8>) -> u32 {
         let broadcast_rx = self.reg_to_brd();
-        
         // Constantly try to get a leader and ask it to broadcast
+        let mut prev_leader = self.host.agent_number;
         loop {
-            let leader = Self::get_leader(&self.group, &self.host);
-            if leader == self.host {
+            let leader = Self::get_leader(&self.group, &self.host).agent_number;
+            if leader == self.host.agent_number {
                 // Start the broadcast
                 debug!("Sou o líder, começando o broadcast");
                 Self::brd_req(&self.register_to_sender_tx, message.clone());
-            } else {
+            } else if leader != prev_leader {
                 // Ask the leader to broadcast and wait for confirmation
                 let (request, request_result_rx) = SendRequest::new (
                     message.clone(),
@@ -269,7 +266,6 @@ impl ReliableCommunication {
                         debug!("Erro ao enviar request de AB: {e}");
                     }
                 }
-
                 // Wait for the request result
                 match request_result_rx.recv() {
                     Ok(0) => {
@@ -282,15 +278,19 @@ impl ReliableCommunication {
                         continue;
                     }
                 }
-            }
+                prev_leader = leader;
+            } // never make more than 1 request to the same leader
             match self.wait_for_brd(&broadcast_rx, message.clone()) {
                 Ok(result) => {
+                    debug!("Recebeu a mensagem de broadcast de volta");
                     return result;
                 },
                 Err(RecvTimeoutError::Timeout) => {
+                    debug!("Timed out ao esperar por broadcast do Agente {leader}");
                     continue;
                 }
                 Err(e) => {
+                    debug!("Erro ao esperar por broadcast: {e}");
                     panic!("{:?}", e)
                 }
             }
