@@ -72,7 +72,7 @@ impl RecSender {
                 // Register the destination address and the sequence to the listener thread
                 let first = &packets[0];
                 // TODO: Add logic to check if destination is still alive,
-                // if not, break the loop, reset the sequence number and return false
+                // if not, reset the sequence number (for transient failures) and continue
                 let mut unborn = false;
                 {
                     let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
@@ -84,6 +84,7 @@ impl RecSender {
                     }
                     if target.non_initiated() {
                         unborn = true;
+                        // TODO: Turn it in a new send_request instead of a message buffer
                         Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                         debug!("Erro ao enviar mensagem: Agent {} ainda não está inicializado", target.agent_number);
                     }
