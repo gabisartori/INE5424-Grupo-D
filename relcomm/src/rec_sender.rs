@@ -61,6 +61,10 @@ impl RecSender {
             for msg in msg_buffer.drain(..) {
                 messages_to_send.push(msg);
             }
+            if messages_to_send.is_empty() {
+                // If there are no messages to send, we can skip the rest of the loop
+                continue;
+            }
             // logger
             let state = if messages_to_send[0][0].header.is_brd() {
                 MessageStatus::SentBroadcast
@@ -71,13 +75,13 @@ impl RecSender {
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
                 let first = &packets[0];
-                // TODO: Add logic to check if destination is still alive,
-                // if not, reset the sequence number (for transient failures) and continue
                 let mut unborn = false;
                 {
                     let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
                     let target = group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address");
                     if target.is_dead() {
+                        // TODO: if destination is not alive, reset the sequence number
+                        // (for transient failures) and continue
                         debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
                         Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                         continue;                    
