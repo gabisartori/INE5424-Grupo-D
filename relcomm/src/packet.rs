@@ -15,10 +15,16 @@ pub struct Packet {
 impl Packet {
     // Tamanho do buffer
     pub const BUFFER_SIZE: usize = 2<<9;
-    pub fn new(src_addr: SocketAddr, dst_addr: SocketAddr,
-            origin: SocketAddr, seq_num: u32, is_last: bool,
-            is_ack: bool, is_brd: bool, data: Vec<u8>) -> Self {
-        
+    pub fn new(
+        src_addr: SocketAddr,
+        dst_addr: SocketAddr,
+        origin: SocketAddr,
+        seq_num: u32,
+        is_last: bool,
+        is_ack: bool,
+        is_brd: bool,
+        data: Vec<u8>
+    ) -> Self {
         let mut flags:Flags = {
             Flags::EMP
         };
@@ -94,14 +100,12 @@ impl Packet {
     }
 }
 
-
 impl std::fmt::Debug for Packet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num,
         self.header.src_addr.port() % 100, self.header.dst_addr.port() % 100, self.header.origin.port() % 100)
     }
 }
-
 
 impl std::fmt::Display for Packet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

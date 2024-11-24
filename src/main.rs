@@ -55,22 +55,22 @@ impl Agent {
                 }
             }
         }
-    
+
         // Channel for handling the death instruction
         let (death_tx, death_rx) = mpsc::channel();
         let death_tx_clone = death_tx.clone();
         let (sender_tx, sender_rx) = mpsc::channel();
         let (listener_tx, listener_rx) = mpsc::channel();
-        
+
         // Spawns both threads
         let sender_clone = Arc::clone(&self);
         let listener_clone = Arc::clone(&self);
-        
+
         let sender = thread::spawn(move ||
             sender_clone.creater(send_actions, death_tx_clone, sender_tx));
         let listener = thread::spawn(move ||
             listener_clone.receiver(receive_actions, death_tx, listener_tx, test_id));
-        
+
         // Threads results
         let s_acertos;
         let r_acertos;
@@ -239,7 +239,7 @@ fn main() {
             .expect("Falha ao converter agent_id para usize");
         let (_, mut test) = tests::all_tests()[test_id].clone();
         let agent_num = test.len();
-        
+
         let agent = create_agents(
             agent_id,
             agent_num,
@@ -311,7 +311,7 @@ fn get_expected(test: &Vec<Vec<Action>>) -> Expected {
                         SendAction::DieAfterSend {} => {
                             die_actions[id] += 1;
                         }
-                        
+
                     }
                 },
                 Action::Receive(r) => {

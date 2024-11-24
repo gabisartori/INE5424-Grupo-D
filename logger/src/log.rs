@@ -18,7 +18,7 @@ macro_rules! initializate_folders {
             fs::remove_dir_all("relcomm/log").expect("Erro ao deletar a pasta 'relcomm/log'");
         };
         fs::create_dir_all("relcomm/log").expect("Erro ao criar a pasta 'relcomm/log'");
-       
+
         // creates a folder for each test
         for i in 0..$tests_num {
             let path = format!("tests/test_{}", i);
@@ -558,7 +558,7 @@ impl Logger {
                                                                     AgentStatus::InitFailed |
                                                                     AgentStatus::Down, .. })                                                                
                                                                 )
-                                                                               
+
             {
                 let args = std::env::args().collect::<Vec<String>>();
                 let path = if args.len() > 1{
@@ -566,7 +566,7 @@ impl Logger {
                 } else {
                     format!("src/log/log_msgs.txt")
                 };
-                
+
                 debug_file!(path, msg_buffer.as_bytes());
 
             }

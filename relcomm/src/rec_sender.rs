@@ -224,7 +224,6 @@ impl RecSender {
                 Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num-1], state);
             }
 
-
             // Wait for an ACK
             match acks_rx.recv_timeout(self.timeout) {
                 Ok(packet) => {
