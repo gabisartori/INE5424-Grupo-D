@@ -228,7 +228,7 @@ pub fn broadcast_test_3() -> Test {
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
         // Agent 2
         vec![
-            Action::Send(SendAction::Broadcast {  message: "message_0".to_string() }),
+            Action::Send(SendAction::Broadcast { message: "message_0".to_string() }),
             Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })
             ],
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
