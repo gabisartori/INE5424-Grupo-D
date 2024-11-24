@@ -41,7 +41,6 @@ impl SendRequest {
     }
 }
 
-
 #[derive(PartialEq, Clone)]
 pub enum Broadcast {
     BEB,
@@ -113,7 +112,7 @@ pub trait RecAux {
     fn get_agnt(addr: &SocketAddr) -> usize {
         addr.port() as usize % 100
     }
-    
+
     fn log_msg(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: MessageStatus) {
         let other_id = if host.addr == pkt.header.src_addr {
             Self::get_agnt(&pkt.header.dst_addr)

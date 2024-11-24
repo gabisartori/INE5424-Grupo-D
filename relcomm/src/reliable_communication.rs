@@ -58,10 +58,9 @@ impl ReliableCommunication {
         let (snd_acks_tx, snd_acks_rx) = mpsc::channel();
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
 
-
         let sender = RecSender::new(host.clone(), group.clone(),
             channel.clone(), broadcast.clone(), logger.clone());
-        
+
         // Spawn sender thread
         thread::spawn(move || {
             sender.run(
@@ -75,7 +74,7 @@ impl ReliableCommunication {
         let listener = RecListener::new(host.clone(), 
             group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
             register_to_sender_tx.clone());
-        
+
         let failure_detection = FailureDetection::new(group.clone(), channel.clone(), host.clone());
 
         // Spawn listener thread

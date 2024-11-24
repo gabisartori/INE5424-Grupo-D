@@ -76,7 +76,7 @@ impl FailureDetection {
                         group[i].state = NodeState::Suspect;
                     }
                 }
-            }            
+            }
         }
     }
 }

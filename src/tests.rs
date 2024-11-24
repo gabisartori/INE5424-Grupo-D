@@ -261,7 +261,7 @@ pub fn broadcast_test_4() -> Test {
         vec![Action::Receive(ReceiveAction::Receive { message: "message_0".to_string() })],
     ]
 }
-  
+
 /// 10 Nodos, um faz vários broadcasts, o líder morre em algum momento
 pub fn broadcast_test_5() -> Test {
     vec![

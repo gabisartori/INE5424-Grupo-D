@@ -123,7 +123,7 @@ impl RecListener {
                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
 
                 if packet.header.seq_num < expected { continue; }
-                
+
                 if packet.header.is_last() {
                     let (message, origin, sequence_number) =
                         Self::receive_last_packet(&self, packets, &packet);
