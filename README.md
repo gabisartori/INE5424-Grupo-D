@@ -31,3 +31,8 @@ https://www.canva.com/design/DAGRm6bWnwc/qEeIQ6RPytZut8Np-IAKaA/edit?utm_content
 ```
 https://www.canva.com/design/DAGU_iLvZ2Y/H34CzSa8yhMFCtW5I0MSvA/view?utm_content=DAGU_iLvZ2Y&utm_campaign=share_your_design&utm_medium=link&utm_source=shareyourdesignpanel
 ```
+
+# Slides da entraga 4:
+```
+https://www.canva.com/design/DAGWHm7y4ks/H3vT08Tsjkf3Tue0Wh6CHw/edit?utm_content=DAGWHm7y4ks&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+```
