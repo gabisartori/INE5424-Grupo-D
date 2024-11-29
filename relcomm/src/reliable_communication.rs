@@ -56,9 +56,22 @@ impl ReliableCommunication {
         let (broadcast_waiters_tx, brd_waiters_rx) = mpsc::channel();
         let (snd_acks_tx, snd_acks_rx) = mpsc::channel();
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
+        let (hb_tx, hb_rx) = mpsc::channel();
 
         let sender = RecSender::new(host.clone(), group.clone(),
             channel.clone(), reg_to_snd_tx.clone(), broadcast.clone(), logger.clone());
+
+        let listener = RecListener::new(host.clone(), 
+            group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
+            reg_to_snd_tx.clone());
+
+        let mut failure_detection = FailureDetection::new(group.clone());
+
+        // spawn failure detection thread
+        let (heart_beats, agent_num) = FailureDetection::get_hbs(&group, &host);
+        thread::spawn(move || {
+            failure_detection.run(hb_rx, channel, heart_beats, agent_num);
+        });
 
         // Spawn sender thread
         thread::spawn(move || {
@@ -68,25 +81,12 @@ impl ReliableCommunication {
             );
         });
 
-        let (hb_tx, hb_rx) = mpsc::channel();
-
-        let listener = RecListener::new(host.clone(), 
-            group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
-            reg_to_snd_tx.clone());
-
-        let failure_detection = FailureDetection::new(group.clone(), channel.clone(), host.clone());
-
         // Spawn listener thread
         thread::spawn(move || {
             listener.run(
                 messages_tx, snd_acks_tx, brd_acks_tx,
                 reg_snd_rx, reg_brd_rx, hb_tx, brd_waiters_rx,
             );
-        });
-
-        // spawn fail detection thread
-        thread::spawn(move || {
-            failure_detection.run(hb_rx);
         });
 
         let message_timeout = MESSAGE_TIMEOUT;

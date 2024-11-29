@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
 
 use logger::{log::{PacketStatus, SharedLogger}, debug};
+use crate::failure_detection::FailureDetection;
 use crate::rec_aux::{SendRequest, Broadcast, RecAux};
 use crate::channels::Channel;
 use crate::packet::Packet;
@@ -70,7 +71,7 @@ impl RecListener {
                 (&reg_snd_rx, &mut expected_snd_acks, &snd_acks_tx, &mut snd_pkts_per_origin)
             };
             if packet.header.is_hearbeat() {
-                // TODO: make the heartbeat handling in this thread
+                FailureDetection::handle_hb(&packet, &self.group);
                 match hb_tx.send(packet) {
                     Ok(_) => {}
                     Err(e) => {
