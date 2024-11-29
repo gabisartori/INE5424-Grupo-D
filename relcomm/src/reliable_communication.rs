@@ -4,7 +4,6 @@ disponibilizada pela camada de difusão confiável (Reliable Communication),
 permitindo o envio e recebimento de mensagens com garantias de entrega e ordem.
 */
 
-use std::net::SocketAddr;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
@@ -28,7 +27,7 @@ pub struct ReliableCommunication {
     broadcast_timeout: Duration,
     broadcast_waiters_tx: Sender<Sender<Vec<u8>>>,
     receive_rx: Mutex<Receiver<Vec<u8>>>,
-    register_to_sender_tx: Sender<SendRequest>,
+    reg_to_snd_tx: Sender<SendRequest>,
 }
 
 impl RecAux for ReliableCommunication {}
@@ -50,7 +49,7 @@ impl ReliableCommunication {
         };
         let group = Arc::new(Mutex::new(group));
 
-        let (register_to_sender_tx, reg_to_send_rx) = mpsc::channel();
+        let (reg_to_snd_tx, reg_to_send_rx) = mpsc::channel();
         let (messages_tx, receive_rx) = mpsc::channel();
         let (reg_snd_to_listener_tx, reg_snd_rx) = mpsc::channel();
         let (reg_brd_to_listener_tx, reg_brd_rx) = mpsc::channel();
@@ -59,7 +58,7 @@ impl ReliableCommunication {
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
 
         let sender = RecSender::new(host.clone(), group.clone(),
-            channel.clone(), broadcast.clone(), logger.clone());
+            channel.clone(), reg_to_snd_tx.clone(), broadcast.clone(), logger.clone());
 
         // Spawn sender thread
         thread::spawn(move || {
@@ -73,7 +72,7 @@ impl ReliableCommunication {
 
         let listener = RecListener::new(host.clone(), 
             group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
-            register_to_sender_tx.clone());
+            reg_to_snd_tx.clone());
 
         let failure_detection = FailureDetection::new(group.clone(), channel.clone(), host.clone());
 
@@ -103,7 +102,7 @@ impl ReliableCommunication {
             broadcast_timeout,
             broadcast_waiters_tx,
             receive_rx,
-            register_to_sender_tx,
+            reg_to_snd_tx,
         }))
     }
 
@@ -115,7 +114,7 @@ impl ReliableCommunication {
         };
         match node {
             Some(node) => {
-                match self.send_nonblocking(&node.addr, message).recv() {
+                match Self::send_nonblocking(&self.reg_to_snd_tx, &node.addr, message).recv() {
                     Ok(result) => result,
                     Err(e) => {
                         debug!("Erro ao enviar mensagem na send: {e}");
@@ -128,22 +127,6 @@ impl ReliableCommunication {
                 0
             }
         }
-    }
-
-    fn send_nonblocking(&self, dst_addr: &SocketAddr, message: Vec<u8>) -> Receiver<u32> {
-        let (request, result_rx) = SendRequest::new(
-            message,
-            SendRequestData::Send {
-                destination_address: *dst_addr,
-            },
-        );
-        match self.register_to_sender_tx.send(request) {
-            Ok(_) => {}
-            Err(e) => {
-                debug!("Erro ao registrar request: {e}");
-            }
-        }
-        result_rx
     }
 
     /// Read one already received message or wait for a message to arrive
@@ -215,7 +198,7 @@ impl ReliableCommunication {
     /// Best-Effort Broadcast: attempts to send a message to all nodes in the group and return how many were successful
     /// This algorithm does not garantee delivery to all nodes if the sender fails
     fn beb(&self, message: Vec<u8>) -> u32 {
-        let result_rx = Self::brd_req(&self.register_to_sender_tx, message);
+        let result_rx = Self::brd_req(&self.reg_to_snd_tx, message);
 
         match result_rx.recv() {
             Ok(result) => result,
@@ -230,7 +213,7 @@ impl ReliableCommunication {
     /// This algorithm garantees that all nodes receive the message if the sender does not fail
     fn urb(&self, message: Vec<u8>) -> u32 {
         let rx = self.reg_to_brd();
-        Self::brd_req(&self.register_to_sender_tx, message.clone());
+        Self::brd_req(&self.reg_to_snd_tx, message.clone());
         match self.wait_for_brd(&rx, message) {
             Ok(result) => {
                 result
@@ -252,14 +235,14 @@ impl ReliableCommunication {
             if leader == self.host.agent_number {
                 // Start the broadcast
                 debug!("Sou o líder, começando o broadcast");
-                Self::brd_req(&self.register_to_sender_tx, message.clone());
+                Self::brd_req(&self.reg_to_snd_tx, message.clone());
             } else if leader != prev_leader {
                 // Ask the leader to broadcast and wait for confirmation
                 let (request, request_result_rx) = SendRequest::new (
                     message.clone(),
                     SendRequestData::RequestLeader {},
                 );
-                match self.register_to_sender_tx.send(request) {
+                match self.reg_to_snd_tx.send(request) {
                     Ok(_) => {}
                     Err(e) => {
                         debug!("Erro ao enviar request de AB: {e}");

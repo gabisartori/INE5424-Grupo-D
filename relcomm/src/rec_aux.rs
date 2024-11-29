@@ -6,6 +6,7 @@ use logger::{debug, log::{Logger, LoggerState, MessageStatus, PacketStatus}};
 use crate::node::Node;
 use crate::packet::Packet;
 
+#[derive(Clone)]
 pub enum SendRequestData {
     // Creates one message to be sent to a specific destination
     Send {
@@ -21,6 +22,7 @@ pub enum SendRequestData {
     },
 }
 
+#[derive(Clone)]
 pub struct SendRequest {
     pub result_tx: Sender<u32>,
     pub data: Vec<u8>,
@@ -142,5 +144,22 @@ pub trait RecAux {
         };
 
         logger.log(logger_state);
+    }
+
+    fn send_nonblocking(reg_to_snd_tx: &Sender<SendRequest>,
+        dst_addr: &SocketAddr, msg: Vec<u8>) -> Receiver<u32> {
+        let (request, result_rx) = SendRequest::new(
+            msg,
+            SendRequestData::Send {
+                destination_address: *dst_addr,
+            },
+        );
+        match reg_to_snd_tx.send(request) {
+            Ok(_) => {}
+            Err(e) => {
+                debug!("Erro ao registrar request: {e}");
+            }
+        }
+        result_rx
     }
 }

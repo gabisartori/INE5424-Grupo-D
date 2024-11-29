@@ -16,7 +16,7 @@ pub struct RecListener {
     channel: Arc<Channel>,
     broadcast: Broadcast,
     logger: SharedLogger,
-    register_to_sender_tx: Sender<SendRequest>,
+    reg_to_snd_tx: Sender<SendRequest>,
 }
 
 impl RecAux for RecListener {}
@@ -29,7 +29,7 @@ impl RecListener {
         channel: Arc<Channel>,
         broadcast: Broadcast,
         logger: SharedLogger,
-        register_to_sender_tx: Sender<SendRequest>,
+        reg_to_snd_tx: Sender<SendRequest>,
     ) -> Self {
         Self {
             host,
@@ -37,7 +37,7 @@ impl RecListener {
             channel,
             broadcast,
             logger,
-            register_to_sender_tx,
+            reg_to_snd_tx,
         }
     }
 
@@ -136,7 +136,7 @@ impl RecListener {
                             // those who are waiting for the broadcast must be warned
                             Broadcast::URB => {
                                 Self::warn_brd_waiters(&mut broadcast_waiters, &brd_waiters_rx, &message);
-                                Self::gossip(&self.register_to_sender_tx, message.clone(), origin, sequence_number);
+                                Self::gossip(&self.reg_to_snd_tx, message.clone(), origin, sequence_number);
                                 true
                             },
                             Broadcast::AB => {
@@ -171,11 +171,11 @@ impl RecListener {
         if origin_priority < own_priority {
             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
             debug!("Recebeu um Leader Request de {}", Self::get_agnt(origin));
-            Self::brd_req(&self.register_to_sender_tx, message.clone());
+            Self::brd_req(&self.reg_to_snd_tx, message.clone());
             false
         } else {
             // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
-            Self::gossip(&self.register_to_sender_tx, message.clone(), *origin, sequence_number);
+            Self::gossip(&self.reg_to_snd_tx, message.clone(), *origin, sequence_number);
             true
         }
     }
