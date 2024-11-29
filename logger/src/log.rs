@@ -578,5 +578,3 @@ impl Logger {
         }
     }
 }
-
-// TODO: Implement timeout controller

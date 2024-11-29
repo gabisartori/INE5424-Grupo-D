@@ -24,6 +24,7 @@ pub struct RecSender {
     timeout_limit: u32,
     w_size: usize,
     gossip_rate: usize,
+    reg_to_snd_tx: Sender<SendRequest>,
 }
 
 impl RecAux for RecSender {}
@@ -31,7 +32,7 @@ impl RecAux for RecSender {}
 impl RecSender {
     /// Constructor
     pub fn new( host: Node, group: Arc<Mutex<Vec<Node>>>,
-        channel: Arc<Channel>, broadcast: Broadcast,
+        channel: Arc<Channel>, reg_to_snd_tx: Sender<SendRequest>, broadcast: Broadcast,
         logger: SharedLogger) -> Self {
         Self {
             host,
@@ -44,6 +45,7 @@ impl RecSender {
             timeout_limit: TIMEOUT_LIMIT,
             w_size: W_SIZE,
             gossip_rate: GOSSIP_RATE,
+            reg_to_snd_tx,
         }
     }
 
@@ -55,14 +57,12 @@ impl RecSender {
         reg_snd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
         reg_brd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
-        let mut msg_buffer = Vec::new();
-        while let Ok(request) = reg_to_send_rx.recv() {
-            let mut messages_to_send = self.get_messages(&request);
-            for msg in msg_buffer.drain(..) {
-                messages_to_send.push(msg);
-            }
+        'req: while let Ok(request) = reg_to_send_rx.recv() {
+            let messages_to_send = self.get_messages(&request);
             if messages_to_send.is_empty() {
                 // If there are no messages to send, we can skip the rest of the loop
+                debug!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>\nNenhuma mensagem para enviar");
+                let _ = request.result_tx.send(0);
                 continue;
             }
             // logger
@@ -72,27 +72,25 @@ impl RecSender {
                 MessageStatus::Sent
             };
             let mut success_count = 0;
-            for packets in messages_to_send {
+            for packets in &messages_to_send {
                 // Register the destination address and the sequence to the listener thread
-                let first = &packets[0];
-                let mut unborn = false;
-                {
+                let first = &packets[0];                
+                let target = {
                     let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
-                    let target = group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address");
-                    if target.is_dead() {
-                        // TODO: if destination is not alive, reset the sequence number
-                        // (for transient failures) and continue
-                        debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
-                        Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
-                        continue;                    
-                    }
-                    if target.non_initiated() {
-                        unborn = true;
-                        // TODO: Turn it in a new send_request instead of a message buffer
-                        Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
-                        debug!("Erro ao enviar mensagem: Agent {} ainda não está inicializado", target.agent_number);
-                    }
+                    group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address").clone()
                 };
+                if target.is_dead() {
+                    debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
+                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
+                    self.reset_seq_num(&first);
+                    continue;
+                } else if target.non_initiated() {
+                    debug!("Erro ao enviar mensagem: Agent {} ainda não está inicializado", target.agent_number);
+                    // remaking the request
+                    self.resend_request(request.clone(), &messages_to_send.clone());
+                    // needs to reset the sequence number and ignore the rest of the loop
+                    continue 'req;
+                }
                 let (reg, acks_rx) = if first.header.is_brd() {
                     (&reg_brd_to_listener_tx, &brd_acks_rx)
                 } else {
@@ -115,15 +113,24 @@ impl RecSender {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
-                } else if unborn {
-                    // If the target is not initiated, we need to wait for it to be alive
-                    msg_buffer.push(packets);
                 }
             }
 
             // Notify the caller that the request was completed
             // The caller may have chosen to not wait for the result, so we ignore if the channel was disconnected
             let _ = request.result_tx.send(success_count);
+        }
+    }
+
+    fn resend_request(&self, request: SendRequest, messages: &Vec<Vec<Packet>>) {
+        for msg in messages {
+            self.reset_seq_num(&msg[0]);
+        }
+        match self.reg_to_snd_tx.send(request) {
+            Ok(_) => {}
+            Err(e) => {
+                debug!("Erro ao registrar request: {e}");
+            }
         }
     }
 
@@ -179,6 +186,19 @@ impl RecSender {
             }
         }  
         messages
+    }
+
+
+    fn reset_seq_num(&self, first: &Packet) {
+        let mut seq_lock = self.dst_seq_num_cnt
+            .lock()
+            .expect("Erro ao obter lock de dst_seq_num_cnt em reset_seq_num");
+        let start_seq_tup = seq_lock.entry(first.header.dst_addr).or_insert((0, 0));
+        if first.header.is_brd() {
+            start_seq_tup.1 = first.header.seq_num;
+        } else {
+            start_seq_tup.0 = first.header.seq_num;
+        }
     }
 
     /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
@@ -275,14 +295,17 @@ impl RecSender {
             }
         }
 
-        let end = (start + self.gossip_rate) % group.len();
         let mut friends = Vec::new();
-
-        if start < end {
-            friends.extend_from_slice(&group[start..end]);
-        } else {
-            friends.extend_from_slice(&group[start..]);
-            friends.extend_from_slice(&group[..end]);
+        for i in start..group.len() {
+            friends.push(group[i]);
+        }
+        for i in 0..start {
+            if friends.len() < self.gossip_rate {
+                friends.push(group[i]);
+            }
+            else {
+                break;
+            }
         }
         friends
     }

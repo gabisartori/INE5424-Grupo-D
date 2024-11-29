@@ -72,6 +72,7 @@ impl FailureDetection {
                     hb_miss_cnt[i] += 1;
                     if hb_miss_cnt[i] >= HEARTBEAT_MISS_LIMIT {
                         group[i].state = NodeState::Dead;
+                        debug!(">> Node {} is dead", group[i].agent_number);
                     } else {
                         group[i].state = NodeState::Suspect;
                     }
