@@ -1,9 +1,8 @@
 all:
-	@cargo run -q --release
-	@cat tests/Resultado.txt
+	@cargo run -p hashmap -q -r
 
-debug:
-	@cargo run -q
+test:
+	@cargo run -p relcomm_tests -q -r
 	@cat tests/Resultado.txt
 
 clean:

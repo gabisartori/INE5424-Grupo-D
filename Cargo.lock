@@ -5,11 +5,6 @@ version = 3
 [[package]]
 name = "INE5424"
 version = "0.1.0"
-dependencies = [
- "logger",
- "rand",
- "relcomm",
-]
 
 [[package]]
 name = "byteorder"
@@ -32,6 +27,15 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "hashmap"
+version = "0.1.0"
+dependencies = [
+ "logger",
+ "rand",
+ "relcomm",
 ]
 
 [[package]]
@@ -114,6 +118,15 @@ dependencies = [
  "lazy_static",
  "logger",
  "rand",
+]
+
+[[package]]
+name = "relcomm_tests"
+version = "0.1.0"
+dependencies = [
+ "logger",
+ "rand",
+ "relcomm",
 ]
 
 [[package]]
