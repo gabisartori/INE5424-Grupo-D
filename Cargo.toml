@@ -3,7 +3,10 @@ name = "INE5424"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-rand = "0.8.5"
-relcomm = { path = "./relcomm" }
-logger = { path = "./logger" }
+[workspace]
+members = [
+    "relcomm",
+    "relcomm_tests",
+    "hashmap",
+    "logger",
+]
