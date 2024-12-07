@@ -59,7 +59,10 @@ impl RecListener {
         let mut broadcast_waiters: Vec<Option<Sender<Vec<u8>>>> = Vec::new();
         loop {
             let packet = match self.channel.receive() {
-                Ok(packet) => packet,
+                Ok(packet) => {
+                    debug!("> Recebeu do canal: {packet}");
+                    packet
+                },
                 Err(e) => {
                     debug!("Falhou ao receber um pacote do socket, erro: {e}");
                     continue;
@@ -117,13 +120,19 @@ impl RecListener {
                 let expected = packets.last().map_or(0, |p| p.header.seq_num + 1);
 
                 // Ignore the packet if the sequence number is higher than expected
-                if packet.header.seq_num > expected {continue;}
+                if packet.header.seq_num > expected {
+                    debug!("expected seq_num {expected}, recebeu {packet}");
+                    continue;
+                }
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
                 // logger
                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
 
-                if packet.header.seq_num < expected { continue; }
+                if packet.header.seq_num < expected {
+                    debug!("expected seq_num {expected}, recebeu {packet}");
+                    continue;
+                }
 
                 if packet.header.is_last() {
                     let (message, origin, sequence_number) =
