@@ -54,6 +54,7 @@ impl Channel {
             // Simula perda de pacotes, usand o parâmetro LOSS_RATE
             if rand::random::<f32>() < LOSS_RATE {
                 Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::InjectedFailure);
+                debug!("Falha ao ler {}", packet);
                 continue;
             }
             // Verifica se o pacote foi corrompido
@@ -70,6 +71,7 @@ impl Channel {
     pub fn send(&self, packet: &Packet) -> bool {
         // Simula perda de pacotes, usand o parâmetro LOSS_RATE
         if rand::random::<f32>() < LOSS_RATE {
+            debug!("Falha ao enviar {}", packet);
             return false;
         }
 

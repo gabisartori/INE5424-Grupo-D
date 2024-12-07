@@ -53,6 +53,7 @@ pub enum Broadcast {
 pub trait RecAux {
     /// Creates a broadcast request and sends it to the sender thread
     fn brd_req(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>) -> Receiver<u32>{
+        debug!("Enviando broadcast");
         let (request, request_rx) = SendRequest::new(
             data,
             SendRequestData::StartBroadcast {},

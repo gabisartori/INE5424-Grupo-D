@@ -12,6 +12,7 @@ use relcomm::node::Node;
 use logger::debug;
 use crate::hashmap::DistrHash;
 use crate::config::INTERVAL;
+use crate::config::MSG_LIMIT;
 
 pub struct Agent {
     id: usize,
@@ -39,8 +40,7 @@ impl Agent {
         let mut w = 0;
         let mut r = 0;
         // let file = file.as_bytes();
-        // remaing_msgs is a random number between 0 and 100
-        let mut remaing_msgs = rand::random::<u32>() % 100;
+        let mut remaing_msgs = rand::random::<u32>() % MSG_LIMIT;
         loop {
             let (msg, key) = if remaing_msgs > 0 {
                 let key = rand::random::<u32>();
@@ -102,7 +102,6 @@ pub fn create_agents(
             true,
             true,
             agent_num));
-    debug!("Agent {} created", id);
 
     let agent = Agent::new(id, nodes, logger)?;
     Ok(agent)

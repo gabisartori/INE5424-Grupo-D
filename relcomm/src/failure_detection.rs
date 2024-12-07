@@ -30,7 +30,9 @@ impl FailureDetection {
     }
 
     pub fn get_hbs(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> (Vec<Packet>, usize) {
-        let group = group.lock().expect("Failed to lock group on get_hbs");
+        let group = group
+            .lock()
+            .expect("Failed to lock group on get_hbs");
         let len = group.len();
         if len == 0 {
             panic!("No agents in the group");
@@ -54,14 +56,18 @@ impl FailureDetection {
                 channel.send(pkt);
             }
             thread::sleep(HEARTBEAT_INTERVAL);
-            let mut group = self.group.lock().expect("Failed to lock group on failure_detection loop");
+            let mut group = self.group
+                .lock()
+                .expect("Failed to lock group on failure_detection loop");
             let hb_miss = Self::process_heartbeats(&mut group, &mut self.hb_miss_cnt, &hb_rx);
             for i in 0..agent_num {
                 if hb_miss[i] == 1 {
                     self.hb_miss_cnt[i] += 1;
                     if self.hb_miss_cnt[i] >= HEARTBEAT_MISS_LIMIT {
+                        if group[i].state != NodeState::Dead {
+                            debug!(">> Node {} is dead", group[i].agent_number);
+                        }
                         group[i].state = NodeState::Dead;
-                        debug!(">> Node {} is dead", group[i].agent_number);
                     } else {
                         group[i].state = NodeState::Suspect;
                     }
@@ -84,9 +90,11 @@ impl FailureDetection {
 
     pub fn handle_hb(hb: &Packet, group_locked: &Arc<Mutex<Vec<Node>>>) {
         let agt_num = hb.header.seq_num as usize;
-        let mut group = group_locked.lock().expect("Failed to lock group on handle_hb");
+        let mut group = group_locked
+            .lock()
+            .expect("Failed to lock group on handle_hb");
         let node = &mut group[agt_num];
-        if node.state == NodeState::Unborn {
+        if node.state != NodeState::Alive {
             debug!("Node {} is now alive", node.agent_number);
         }
         node.state = NodeState::Alive;

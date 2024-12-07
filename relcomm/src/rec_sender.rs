@@ -76,8 +76,12 @@ impl RecSender {
                 // Register the destination address and the sequence to the listener thread
                 let first = &packets[0];                
                 let target = {
-                    let group = self.group.lock().expect("Erro ao obter lock de grupo em run");
-                    group.iter().find(|node| node.addr == first.header.dst_addr).expect("Invalid Address").clone()
+                    let group = self.group
+                        .lock()
+                        .expect("Erro ao obter lock de grupo em run");
+                    group.iter()
+                        .find(|node| node.addr == first.header.dst_addr)
+                        .expect("Invalid Address").clone()
                 };
                 if target.is_dead() {
                     debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
@@ -91,10 +95,12 @@ impl RecSender {
                     // needs to reset the sequence number and ignore the rest of the loop
                     continue 'req;
                 }
-                let (reg, acks_rx) = if first.header.is_brd() {
-                    (&reg_brd_to_listener_tx, &brd_acks_rx)
-                } else {
-                    (&reg_snd_to_listener_tx, &snd_acks_rx)
+                let (reg, acks_rx) = {
+                    if first.header.is_brd() {
+                        (&reg_brd_to_listener_tx, &brd_acks_rx)
+                    } else {
+                        (&reg_snd_to_listener_tx, &snd_acks_rx)
+                    }
                 };
                 match reg.send((
                     (first.header.dst_addr, first.header.origin),
@@ -165,17 +171,25 @@ impl RecSender {
                 }
             },
             SendRequestData::StartBroadcast {} => {
+                debug!("Starting broadcast");
                 match self.broadcast {
                     Broadcast::BEB => {
-                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                        for node in self.group
+                            .lock()
+                            .expect("Couldn't get grupo lock on get_messages")
+                            .iter()
+                        {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
                             messages.push(packets);
                         }
                     }
                     Broadcast::URB | Broadcast::AB => {
-                        debug!("Starting broadcast");
                         let friends = self.get_friends();
-                        for node in self.group.lock().expect("Couldn't get grupo lock on get_messages").iter() {
+                        for node in self.group
+                            .lock()
+                            .expect("Couldn't get grupo lock on get_messages")
+                            .iter()
+                        {
                             let packets = self.get_pkts(&self.host.addr, &node.addr, &self.host.addr, request.data.clone(), true);
                             if friends.contains(&node.addr) {
                                 messages.push(packets);
@@ -230,14 +244,17 @@ impl RecSender {
             }
         };
         // logger
-        let state = if first.is_brd() {
-            PacketStatus::SentBroadcast
-        } else {
-            PacketStatus::Sent
+        let state = {
+            if first.is_brd() {
+                PacketStatus::SentBroadcast
+            } else {
+                PacketStatus::Sent
+            }
         };
         while base < packets.len() {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
+                debug!("> Sending {} through the channel", packets[next_seq_num]);
                 self.channel.send(&packets[next_seq_num]);
                 next_seq_num += 1;
                 // logger
@@ -249,6 +266,7 @@ impl RecSender {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
+                    debug!("Confirmado {}", packet);
                     base = (packet.header.seq_num - first.seq_num as u32 + 1) as usize;
                     timeout_count = 0;
                 },
@@ -259,15 +277,19 @@ impl RecSender {
                         let group = self.group
                             .lock()
                             .expect("Erro ao obter lock de grupo em go_back_n");
-                        let target = group.iter().find(|node| node.addr == first.dst_addr)
+                        let target = group.iter()
+                            .find(|node| node.addr == first.dst_addr)
                             .expect("Invalid Address");
                         if target.is_dead() {
                             debug!("Erro ao enviar mensagem: Agent {} não está vivo", Self::get_agnt(&first.dst_addr));
                             return false;
                         }
-                        // if the target is suspect or not initiated, there will be a limit to the number of timeouts
+                        // if the target is suspect or not initiated,
+                        // there will be a limit to the number of timeouts
                         if (!target.is_alive()) && timeout_count == self.timeout_limit {
-                            debug!("Timed out {TIMEOUT_LIMIT} times when waiting for ACK from Agent {}", Self::get_agnt(&first.dst_addr));
+                            debug!("Timed out {TIMEOUT_LIMIT
+                                } times when waiting for ACK from Agent {}",
+                                Self::get_agnt(&first.dst_addr));
                             return false;
                         }
                     };
@@ -283,7 +305,9 @@ impl RecSender {
 
     /// Currently, the friends are the next N nodes in the group vector, where N is the gossip rate
     fn get_friends(&self) -> Vec<SocketAddr> {
-        let or_group = self.group.lock().expect("Couldn't get grupo lock on get_friends");
+        let or_group = self.group
+            .lock()
+            .expect("Couldn't get grupo lock on get_friends");
         let mut group = Vec::new();
         let mut start = 0;
         for node in or_group.iter() {
