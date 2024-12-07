@@ -59,7 +59,7 @@ macro_rules! debug_file {
 macro_rules! debug {
     ($($arg:tt)*) => {
         let args = std::env::args().collect::<Vec<String>>();
-        let (path0, path1, id) = if args.len() > 1{
+        let (path0, path1, id) = if args.len() > 2 {
             (format!("tests/test_{}/debug.txt", args[1]),
             format!("tests/test_{}/debug_agts/debug_agt_{}.txt", args[1], args[2]),
             args[2].clone())
