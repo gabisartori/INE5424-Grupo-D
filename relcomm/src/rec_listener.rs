@@ -61,7 +61,7 @@ impl RecListener {
             let packet = match self.channel.receive() {
                 Ok(packet) => {
                     if !packet.header.is_heartbeat(){
-                        debug!("Recebeu do canal: {packet}");
+                        // debug!("Recebeu do canal: {packet}");
                     }
                     packet
                 },
@@ -132,7 +132,7 @@ impl RecListener {
                 Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
 
                 if packet.header.seq_num < expected {
-                    debug!("expected seq_num {expected}, recebeu {packet}");
+                    // debug!("expected seq_num {expected}, recebeu {packet}");
                     continue;
                 }
 
@@ -168,7 +168,7 @@ impl RecListener {
                         }
                     }
                 }
-                debug!(">>> pushing {packet} on the packets buffer");
+                // debug!(">>> pushing {packet} on the packets buffer");
                 packets.push(packet);
             }
         }
@@ -183,7 +183,7 @@ impl RecListener {
         let own_priority = self.get_leader_priority(&self.host.addr);
         if origin_priority < own_priority {
             // If the origin priority is lower than yours, it means the the origin considers you the leader and you must broadcast the message
-            debug!("Recebeu um Leader Request de {}", Self::get_agnt(origin));
+            // debug!("Recebeu um Leader Request de {}", Self::get_agnt(origin));
             Self::brd_req(&self.reg_to_snd_tx, message.clone());
             false
         } else {
@@ -201,7 +201,7 @@ impl RecListener {
         match packets.first() {
             Some(p) => {
                 if p.header.is_last() {
-                    debug!("> Ignorando pacote remanescente de uma mensagem anterior");
+                    // debug!("> Ignorando pacote remanescente de uma mensagem anterior");
                     packets.remove(0);
                 }
             }

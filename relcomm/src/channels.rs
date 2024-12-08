@@ -73,7 +73,7 @@ impl Channel {
             return false;
         }
         if !packet.header.is_heartbeat() {
-            debug!("Enviando pelo socket: {packet}");
+            // debug!("Enviando pelo socket: {packet}");
         }
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => true,

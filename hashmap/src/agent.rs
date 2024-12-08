@@ -13,6 +13,7 @@ use crate::config::{KEYS, MSG_NUM, MSG_SIZE, WRITE_READ_RATIO};
 pub struct Agent {
     id: usize,
     hash_table: Arc<DistrHash>,
+    listener_handle: std::thread::JoinHandle<()>,
 }
 
 impl Agent {
@@ -26,34 +27,31 @@ impl Agent {
                 nodes,
                 logger,
             )?;
+        let (hash_table, listener_handle) = DistrHash::new(communication);
         Ok(Agent {
             id,
-            hash_table: DistrHash::new(communication),
+            hash_table,
+            listener_handle
         })
     }
 
-    pub fn run(&self) -> std::time::Duration {
+    pub fn run(self) -> std::time::Duration {
         let start = std::time::Instant::now();
         for _ in 0..MSG_NUM {
             // Decide if it will read or write
             let key: String = Agent::get_random_key();
             if rand::random::<f32>() < WRITE_READ_RATIO {
                 let msg = Agent::get_rnd_msg(MSG_SIZE);
-                match self.hash_table.write(&key, &msg) {
-                    Ok(_) => println!("Agent {} wrote key {}", self.id, key),
-                    Err(e) => println!("Error: {}", e),
-                }
+                let _ = self.hash_table.write(&key, &msg);
             } else {
-                match self.hash_table.read(&key) {
-                    Some(msg) => println!("Agent {} read key {}: {}", self.id, key, msg),
-                    None => println!("Agent {} could not read key {}", self.id, key),
-                }
+                let _ = self.hash_table.read(&key);
             }
             
         }
-        if self.id == 0 { std::thread::sleep(std::time::Duration::from_secs(20)); }
+        let total = start.elapsed();
+        self.listener_handle.join().unwrap();
         debug!("->-> Agente {} finished", self.id);
-        start.elapsed()
+        total
     }
 
     fn get_random_key() -> String {
