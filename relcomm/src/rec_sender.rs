@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, Sender, RecvTimeoutError};
 
 use logger::{log::{PacketStatus, MessageStatus, SharedLogger}, debug};
 use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
-use crate::config::{GOSSIP_RATE, HEARTBEAT_MISS_LIMIT, TIMEOUT, TIMEOUT_LIMIT, W_SIZE};
+use crate::config::{GOSSIP_RATE, TIMEOUT, TIMEOUT_LIMIT, W_SIZE};
 use crate::node::Node;
 use crate::channels::Channel;
 use crate::packet::Packet;
@@ -24,7 +24,6 @@ pub struct RecSender {
     timeout_limit: u32,
     w_size: usize,
     gossip_rate: usize,
-    reg_to_snd_tx: Sender<SendRequest>,
 }
 
 impl RecAux for RecSender {}
@@ -32,7 +31,7 @@ impl RecAux for RecSender {}
 impl RecSender {
     /// Constructor
     pub fn new( host: Node, group: Arc<Mutex<Vec<Node>>>,
-        channel: Arc<Channel>, reg_to_snd_tx: Sender<SendRequest>, broadcast: Broadcast,
+        channel: Arc<Channel>, broadcast: Broadcast,
         logger: SharedLogger) -> Self {
         Self {
             host,
@@ -45,7 +44,6 @@ impl RecSender {
             timeout_limit: TIMEOUT_LIMIT,
             w_size: W_SIZE,
             gossip_rate: GOSSIP_RATE,
-            reg_to_snd_tx,
         }
     }
 
@@ -114,39 +112,11 @@ impl RecSender {
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
                 }
-                else {
-                    self.resend_request(packets, &request);
-                }
             }
             // Notify the caller that the request was completed
             let _ = request.result_tx.send(success_count);
             // The caller may have chosen to not wait for the result,
             // so we ignore if the channel was disconnected
-        }
-    }
-
-    /// Resends a request, resetting the sequence number of all nodes
-    fn resend_request(&self, pkts: Vec<Packet>, req: &SendRequest) {
-        let attempts = if let SendRequestData::ResendPkt { attempts, .. } = req.options { attempts + 1} else { 1 };
-        if attempts >= (HEARTBEAT_MISS_LIMIT/2) as u32 {
-            let mut group = self.group
-                .lock()
-                .expect("Erro ao obter lock de grupo em resend_request");
-            let target = group.iter_mut()
-                .find(|node| node.addr == pkts[0].header.dst_addr)
-                .expect("Invalid Address");
-            target.set_as_dead();
-            debug!("Erro ao re-enviar mensagem: Tentativas {attempts} esgotadas");
-            self.reset_seq_num(&pkts[0]);
-            return;
-        }
-        // debug!("Reenviando mensagem com {} tentativas", attempts);
-        let req = SendRequest::new(Vec::new(), SendRequestData::ResendPkt { pkts, attempts }).0;
-        match self.reg_to_snd_tx.send(req) {
-            Ok(_) => {}
-            Err(e) => {
-                debug!("Erro ao registrar request: {e}");
-            }
         }
     }
 
@@ -207,9 +177,6 @@ impl RecSender {
                         }
                     }
                 }
-            },
-            SendRequestData::ResendPkt { pkts,.. } => {
-                messages.push(pkts.clone());
             },
         }  
         messages
@@ -288,26 +255,12 @@ impl RecSender {
                 Err(RecvTimeoutError::Timeout) => {
                     next_seq_num = base;
                     timeout_count += 1;
-                    {
-                        let group = self.group
-                            .lock()
-                            .expect("Erro ao obter lock de grupo em go_back_n");
-                        let target = group.iter()
-                            .find(|node| node.addr == first.dst_addr)
-                            .expect("Invalid Address");
-                        if target.is_dead() {
-                            debug!("Erro ao enviar mensagem: Agent {} não está vivo", Self::get_agnt(&first.dst_addr));
-                            return false;
-                        }
-                        // if the target is suspect or not initiated,
-                        // there will be a limit to the number of timeouts
-                        if (!target.is_alive()) && timeout_count == self.timeout_limit {
-                            debug!("Timed out {TIMEOUT_LIMIT
-                                } times when waiting for ACK from Agent {}",
-                                Self::get_agnt(&first.dst_addr));
-                            return false;
-                        }
-                    };
+                    if timeout_count == self.timeout_limit {
+                        debug!("Timed out {TIMEOUT_LIMIT
+                            } times when waiting for ACK from Agent {}",
+                            Self::get_agnt(&first.dst_addr));
+                        return false;
+                    }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
                     debug!("Erro ao receber ACKS, thread Listener desconectada");
