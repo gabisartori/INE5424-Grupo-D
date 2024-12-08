@@ -1,5 +1,6 @@
 // Importações necessárias
 use std::net::SocketAddr;
+use std::fmt::{self, Debug, Display, Formatter};
 
 // use crate::config::BUFFER_SIZE;
 use crate::flags::Flags;
@@ -100,16 +101,16 @@ impl Packet {
     }
 }
 
-impl std::fmt::Debug for Packet {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for Packet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Packet {}: {} -> {}, origin: {}", self.header.seq_num,
         self.header.src_addr.port() % 100, self.header.dst_addr.port() % 100, self.header.origin.port() % 100)
     }
 }
 
-impl std::fmt::Display for Packet {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let pkt = if self.header.is_ack() { "ACK" } else if self.header.is_hearbeat() {
+impl Display for Packet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let pkt = if self.header.is_ack() { "ACK" } else if self.header.is_heartbeat() {
             "Heartbeat"} else if self.header.is_brd() {
             "Broadcast" } else { "Packet" };
         write!(f, "{pkt} num {}: Agent {} -> Agent {}, origin: {}", self.header.seq_num,

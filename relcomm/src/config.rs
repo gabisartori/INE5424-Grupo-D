@@ -1,8 +1,8 @@
 use std::time::Duration;
 pub const BROADCAST: &str = "AB";
 pub const TIMEOUT: Duration = Duration::from_millis(5);
-pub const TIMEOUT_LIMIT: u32 = 10;
-pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(1000);
+pub const TIMEOUT_LIMIT: u32 = 5;
+pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(2000);
 pub const BROADCAST_TIMEOUT: Duration = Duration::from_millis(500);
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 pub const HEARTBEAT_MISS_LIMIT: i32 = 5;

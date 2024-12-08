@@ -54,7 +54,6 @@ impl Channel {
             // Simula perda de pacotes, usand o parâmetro LOSS_RATE
             if rand::random::<f32>() < LOSS_RATE {
                 Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::InjectedFailure);
-                debug!("Falha ao ler {}", packet);
                 continue;
             }
             // Verifica se o pacote foi corrompido
@@ -71,25 +70,20 @@ impl Channel {
     pub fn send(&self, packet: &Packet) -> bool {
         // Simula perda de pacotes, usand o parâmetro LOSS_RATE
         if rand::random::<f32>() < LOSS_RATE {
-            debug!("Falha ao enviar {}", packet);
             return false;
         }
-
-        let agent_s = packet.header.src_addr.port() % 100;
-        let agent_d = packet.header.dst_addr.port() % 100;
-        let pk = packet.header.seq_num;
-        let is_ack = packet.header.is_ack();
-
+        if !packet.header.is_heartbeat() {
+            debug!("Enviando pelo socket: {packet}");
+        }
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => true,
-            Err(e) => {
-                if is_ack {
-                    debug!("->-> Erro {{{e}}} ao enviar ACK {pk} do Agente {agent_s} para o Agente {agent_d} pelo socket");
+            Err(_) => {
+                if packet.header.is_ack() {
                     Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentAckFailed);
                 }
                 else {
-                    debug!("->-> Erro {{{e}}} ao enviar pacote {pk} do Agente {agent_s} para o Agente {agent_d}");}
                     Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentFailed);
+                }
                 false
             }
         }

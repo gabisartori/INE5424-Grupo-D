@@ -60,7 +60,9 @@ impl RecListener {
         loop {
             let packet = match self.channel.receive() {
                 Ok(packet) => {
-                    debug!("> Recebeu do canal: {packet}");
+                    if !packet.header.is_heartbeat(){
+                        debug!("Recebeu do canal: {packet}");
+                    }
                     packet
                 },
                 Err(e) => {
@@ -73,7 +75,7 @@ impl RecListener {
             } else {
                 (&reg_snd_rx, &mut expected_snd_acks, &snd_acks_tx, &mut snd_pkts_per_origin)
             };
-            if packet.header.is_hearbeat() {
+            if packet.header.is_heartbeat() {
                 FailureDetection::handle_hb(&packet, &self.group);
                 match hb_tx.send(packet) {
                     Ok(_) => {}
