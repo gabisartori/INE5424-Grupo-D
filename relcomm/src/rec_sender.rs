@@ -88,12 +88,6 @@ impl RecSender {
                     Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                     self.reset_seq_num(&first);
                     continue;
-                } else if target.non_initiated() {
-                    debug!("Erro ao enviar mensagem: Agent {} ainda não está inicializado", target.agent_number);
-                    // remaking the request
-                    self.resend_request(request.clone(), &messages_to_send.clone());
-                    // needs to reset the sequence number and ignore the rest of the loop
-                    continue 'req;
                 }
                 let (reg, acks_rx) = {
                     if first.header.is_brd() {
@@ -119,20 +113,24 @@ impl RecSender {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
+                } else {
+                    self.resend_request(&request, &messages_to_send);
+                    continue 'req;
                 }
             }
-
             // Notify the caller that the request was completed
-            // The caller may have chosen to not wait for the result, so we ignore if the channel was disconnected
             let _ = request.result_tx.send(success_count);
+            // The caller may have chosen to not wait for the result,
+            // so we ignore if the channel was disconnected
         }
     }
 
-    fn resend_request(&self, request: SendRequest, messages: &Vec<Vec<Packet>>) {
+    /// Resends a request, resetting the sequence number of all nodes
+    fn resend_request(&self, request: &SendRequest, messages: &Vec<Vec<Packet>>) {
         for msg in messages {
             self.reset_seq_num(&msg[0]);
         }
-        match self.reg_to_snd_tx.send(request) {
+        match self.reg_to_snd_tx.send(request.clone()) {
             Ok(_) => {}
             Err(e) => {
                 debug!("Erro ao registrar request: {e}");
@@ -215,7 +213,8 @@ impl RecSender {
         }
     }
 
-    /// Builds the packets based on the message and the destination. Will also update the sequence number counter for the destination
+    /// Builds the packets based on the message and the destination.
+    /// Will also update the sequence number counter for the destination
     fn get_pkts(&self, src_addr: &SocketAddr, dst_addr: &SocketAddr,
         origin: &SocketAddr, data: Vec<u8>, is_brd: bool) -> Vec<Packet>
     {
