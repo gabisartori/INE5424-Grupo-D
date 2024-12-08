@@ -16,7 +16,6 @@ fn main() {
         for t in 0..TESTS_NUM {
             let mut children = Vec::new();
             for i in 0..AGENT_NUM {
-                print!("Criando agente {}", i);
                 let c = std::process::Command::new(std::env::current_exe().unwrap())
                     .arg(t.to_string()) // Passando o ID do teste
                     .arg(i.to_string()) // Passando o ID do agente
@@ -48,7 +47,9 @@ fn main() {
         };
         // Output the results to a file
         let file_path = format!("tests/test_{test_id}/Resultado.txt");
-        let msg = format!("AGENTE {agent_id} -> {} seconds to broadcast {} messages\n", time.as_secs_f32(), config::MSG_NUM);
+        let msg = format!("AGENTE {agent_id} -> {} seconds to broadcast {} messages\n", time.as_secs_f32(),
+        config::MSG_NUM);
+        println!("{}", msg);
         debug_file!(file_path, &msg.as_bytes());
     } else {
         println!("uso: cargo run");

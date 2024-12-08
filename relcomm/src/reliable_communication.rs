@@ -252,8 +252,8 @@ impl ReliableCommunication {
                 // Wait for the request result
                 match request_result_rx.recv() {
                     Ok(0) => {
-                        debug!("Falha em enviar mensagem para o líder, tentando novamente...");
-                        continue;
+                        // debug!("Falha em enviar mensagem para o líder, tentando novamente...");
+                        // continue;
                     }
                     Ok(_) => {}
                     Err(e) => {

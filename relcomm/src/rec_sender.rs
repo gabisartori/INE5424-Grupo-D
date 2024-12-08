@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, Sender, RecvTimeoutError};
 
 use logger::{log::{PacketStatus, MessageStatus, SharedLogger}, debug};
 use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
-use crate::config::{TIMEOUT, TIMEOUT_LIMIT, GOSSIP_RATE, W_SIZE};
+use crate::config::{GOSSIP_RATE, HEARTBEAT_MISS_LIMIT, TIMEOUT, TIMEOUT_LIMIT, W_SIZE};
 use crate::node::Node;
 use crate::channels::Channel;
 use crate::packet::Packet;
@@ -57,7 +57,7 @@ impl RecSender {
         reg_snd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
         reg_brd_to_listener_tx: Sender<((SocketAddr, SocketAddr), u32)>,
     ) {
-        'req: while let Ok(request) = reg_to_send_rx.recv() {
+        while let Ok(request) = reg_to_send_rx.recv() {
             let messages_to_send = self.get_messages(&request);
             if messages_to_send.is_empty() {
                 // If there are no messages to send, we can skip the rest of the loop
@@ -72,7 +72,7 @@ impl RecSender {
                 MessageStatus::Sent
             };
             let mut success_count = 0;
-            for packets in &messages_to_send {
+            for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
                 let first = &packets[0];                
                 let target = {
@@ -84,7 +84,7 @@ impl RecSender {
                         .expect("Invalid Address").clone()
                 };
                 if target.is_dead() {
-                    debug!("Erro ao enviar mensagem: Agent {} está morto", target.agent_number);
+                    debug!("Erro ao enviar mensagem: {} está morto", target);
                     Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                     self.reset_seq_num(&first);
                     continue;
@@ -113,9 +113,9 @@ impl RecSender {
                 // Go back-N algorithm to send packets
                 if self.go_back_n(&packets, &acks_rx) {
                     success_count += 1;
-                } else {
-                    self.resend_request(&request, &messages_to_send);
-                    continue 'req;
+                }
+                else {
+                    self.resend_request(packets, &request);
                 }
             }
             // Notify the caller that the request was completed
@@ -126,11 +126,23 @@ impl RecSender {
     }
 
     /// Resends a request, resetting the sequence number of all nodes
-    fn resend_request(&self, request: &SendRequest, messages: &Vec<Vec<Packet>>) {
-        for msg in messages {
-            self.reset_seq_num(&msg[0]);
+    fn resend_request(&self, pkts: Vec<Packet>, req: &SendRequest) {
+        let attempts = if let SendRequestData::ResendPkt { attempts, .. } = req.options { attempts + 1} else { 1 };
+        if attempts >= (HEARTBEAT_MISS_LIMIT/2) as u32 {
+            let mut group = self.group
+                .lock()
+                .expect("Erro ao obter lock de grupo em resend_request");
+            let target = group.iter_mut()
+                .find(|node| node.addr == pkts[0].header.dst_addr)
+                .expect("Invalid Address");
+            target.set_as_dead();
+            debug!("Erro ao re-enviar mensagem: Tentativas {attempts} esgotadas");
+            self.reset_seq_num(&pkts[0]);
+            return;
         }
-        match self.reg_to_snd_tx.send(request.clone()) {
+        debug!("Reenviando mensagem com {} tentativas", attempts);
+        let req = SendRequest::new(Vec::new(), SendRequestData::ResendPkt { pkts, attempts }).0;
+        match self.reg_to_snd_tx.send(req) {
             Ok(_) => {}
             Err(e) => {
                 debug!("Erro ao registrar request: {e}");
@@ -143,8 +155,8 @@ impl RecSender {
     fn get_messages(&self, request: &SendRequest) -> Vec<Vec<Packet>> {
         let mut messages = Vec::new();
         match &request.options {
-            SendRequestData::Send { destination_address } => {
-                let packets = self.get_pkts( &self.host.addr,destination_address, &self.host.addr, request.data.clone(), false);
+            SendRequestData::Send { dst_addr } => {
+                let packets = self.get_pkts( &self.host.addr, dst_addr, &self.host.addr, request.data.clone(), false);
                 debug!("Starting send from {}", packets[0]);
                 messages.push(packets);
             },
@@ -195,7 +207,10 @@ impl RecSender {
                         }
                     }
                 }
-            }
+            },
+            SendRequestData::ResendPkt { pkts,.. } => {
+                messages.push(pkts.clone());
+            },
         }  
         messages
     }
@@ -207,8 +222,10 @@ impl RecSender {
             .expect("Erro ao obter lock de dst_seq_num_cnt em reset_seq_num");
         let start_seq_tup = seq_lock.entry(first.header.dst_addr).or_insert((0, 0));
         if first.header.is_brd() {
+            debug!("->-> Agent {} brd seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
             start_seq_tup.1 = first.header.seq_num;
         } else {
+            debug!("->->-> Agent {} Send seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
             start_seq_tup.0 = first.header.seq_num;
         }
     }
@@ -226,6 +243,7 @@ impl RecSender {
         let packets = Packet::packets_from_message(
             *src_addr, *dst_addr, *origin, data, *seq_num, is_brd,
         );
+        debug!("<< Agent {} seq_num was {} and was set to {}", Self::get_agnt(dst_addr), *seq_num, *seq_num + packets.len() as u32);
         *seq_num += packets.len() as u32;
         packets
     }
@@ -253,7 +271,6 @@ impl RecSender {
         while base < packets.len() {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
-                debug!("> Sending {} through the channel", packets[next_seq_num]);
                 self.channel.send(&packets[next_seq_num]);
                 next_seq_num += 1;
                 // logger
@@ -265,7 +282,6 @@ impl RecSender {
                 Ok(packet) => {
                     // Assume that the listener is sending the number of the highest packet it received
                     // The listener also guarantees that the packet is >= base
-                    debug!("Confirmado {}", packet);
                     base = (packet.header.seq_num - first.seq_num as u32 + 1) as usize;
                     timeout_count = 0;
                 },
@@ -320,7 +336,12 @@ impl RecSender {
 
         let mut friends = Vec::new();
         for i in start..group.len() {
-            friends.push(group[i]);
+            if friends.len() < self.gossip_rate {
+                friends.push(group[i]);
+            }
+            else {
+                break;
+            }
         }
         for i in 0..start {
             if friends.len() < self.gossip_rate {

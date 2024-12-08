@@ -72,7 +72,7 @@ impl Header {
         self.flags.is_set(Flags::BRD)
     }
 
-    pub fn is_hearbeat(&self) -> bool {
+    pub fn is_heartbeat(&self) -> bool {
         self.flags.is_set(Flags::HB)
     }
 

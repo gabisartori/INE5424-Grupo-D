@@ -10,7 +10,7 @@ use crate::packet::Packet;
 pub enum SendRequestData {
     // Creates one message to be sent to a specific destination
     Send {
-        destination_address: SocketAddr,
+        dst_addr: SocketAddr,
     },
     // Creates as many messages as needed to broadcast to the group
     StartBroadcast {},
@@ -19,6 +19,10 @@ pub enum SendRequestData {
     Gossip {
         origin: SocketAddr,
         seq_num: u32,
+    },
+    ResendPkt {
+        pkts: Vec<Packet>,
+        attempts: u32,
     },
 }
 
@@ -74,7 +78,7 @@ pub trait RecAux {
     /// Since gossip algorithms are meant to ensure that the message will be successfully difused,
     /// even if there are failing nodes, this function doesn't need to wait for the result of the gossip.
     /// (It's also important to not block the listener thread when it needs to gossip a message)
-    fn gossip(register_to_sender_tx: &Sender<SendRequest>, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
+    fn gossip(reg_to_snd_tx: &Sender<SendRequest>, data: Vec<u8>, origin: SocketAddr, seq_num: u32) {
         let (request, _) = SendRequest::new(
             data,
             SendRequestData::Gossip {
@@ -82,7 +86,7 @@ pub trait RecAux {
                 seq_num,
             },
         );
-        match register_to_sender_tx.send(request) {
+        match reg_to_snd_tx.send(request) {
             Ok(_) => {}
             Err(e) => {
                 debug!("Erro ao fazer fofoca: {e}");
@@ -152,7 +156,7 @@ pub trait RecAux {
         let (request, result_rx) = SendRequest::new(
             msg,
             SendRequestData::Send {
-                destination_address: *dst_addr,
+                dst_addr: *dst_addr,
             },
         );
         match reg_to_snd_tx.send(request) {

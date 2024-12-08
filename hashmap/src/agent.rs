@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 
-use logger::log::SharedLogger;
-use logger::log::Logger;
+use logger::log::{SharedLogger, Logger};
+use logger::debug;
 
 use relcomm::reliable_communication::ReliableCommunication;
 use relcomm::node::Node;
@@ -52,6 +52,7 @@ impl Agent {
             
         }
         if self.id == 0 { std::thread::sleep(std::time::Duration::from_secs(20)); }
+        debug!("->-> Agente {} finished", self.id);
         start.elapsed()
     }
 

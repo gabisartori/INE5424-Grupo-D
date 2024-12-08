@@ -1,6 +1,6 @@
 pub const TESTS_NUM: usize = 1;
-pub const MSG_NUM: u32 = 100;
-pub const AGENT_NUM: usize = 10;
+pub const MSG_NUM: u32 = 5;
+pub const AGENT_NUM: usize = 5;
 pub const MSG_SIZE: usize = 10;
 pub const KEYS: [&str; 10] = [
     "key1",

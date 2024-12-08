@@ -65,7 +65,7 @@ impl FailureDetection {
                     self.hb_miss_cnt[i] += 1;
                     if self.hb_miss_cnt[i] >= HEARTBEAT_MISS_LIMIT {
                         if group[i].state != NodeState::Dead {
-                            debug!(">> Node {} is dead", group[i].agent_number);
+                            debug!("Agent {} is dead", group[i].agent_number);
                         }
                         group[i].state = NodeState::Dead;
                     } else {
@@ -93,10 +93,6 @@ impl FailureDetection {
         let mut group = group_locked
             .lock()
             .expect("Failed to lock group on handle_hb");
-        let node = &mut group[agt_num];
-        if node.state != NodeState::Alive {
-            debug!("Node {} is now alive", node.agent_number);
-        }
-        node.state = NodeState::Alive;
+        group[agt_num].state = NodeState::Alive;
     }
 }
