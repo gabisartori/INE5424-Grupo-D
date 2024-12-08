@@ -234,7 +234,7 @@ impl ReliableCommunication {
             let leader = Self::get_leader(&self.group, &self.host).agent_number;
             if leader == self.host.agent_number {
                 // Start the broadcast
-                debug!("Sou o líder, começando o broadcast");
+                // debug!("Sou o líder, começando o broadcast");
                 Self::brd_req(&self.reg_to_snd_tx, message.clone());
             } else if leader != prev_leader {
                 // Ask the leader to broadcast and wait for confirmation

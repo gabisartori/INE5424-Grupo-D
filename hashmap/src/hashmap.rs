@@ -17,18 +17,18 @@ pub struct DistrHash {
 impl DistrHash {
     pub fn new(
         communication: Arc<ReliableCommunication>,
-    ) -> Arc<Self>{
+    ) -> (Arc<Self>, thread::JoinHandle<()>) {
         let instance= Arc::new(DistrHash {
             communication,
             hash_table: Mutex::new(HashMap::new()),
         });
-        thread::spawn({
+        let listener_handle = thread::spawn({
             let instance = instance.clone();
             move || {
                 instance.listener();
             }
         });
-        instance
+        (instance, listener_handle)
     }
 
     pub fn write(&self, key: &String, msg: &String) -> Result<(), Error> {
@@ -45,15 +45,14 @@ impl DistrHash {
     fn listener(&self) {
         loop {
             let mut buffer = vec![];
-            if self.communication.receive(&mut buffer) {
-                match formatter::from_bytes(buffer) {
-                    Ok((key, value)) => {
-                        let mut table = self.hash_table.lock().unwrap();
-                        table.insert(key, value);
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                    }
+            if !self.communication.receive(&mut buffer) { break ; }
+            match formatter::from_bytes(buffer) {
+                Ok((key, value)) => {
+                    let mut table = self.hash_table.lock().unwrap();
+                    table.insert(key, value);
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
                 }
             }
         }
