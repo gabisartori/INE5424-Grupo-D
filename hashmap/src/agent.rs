@@ -1,6 +1,4 @@
-use std::thread;
 use std::sync::Arc;
-use std::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 
@@ -9,10 +7,8 @@ use logger::log::Logger;
 
 use relcomm::reliable_communication::ReliableCommunication;
 use relcomm::node::Node;
-use logger::debug;
 use crate::hashmap::DistrHash;
-use crate::config::INTERVAL;
-use crate::config::MSG_LIMIT;
+use crate::config::{KEYS, MSG_NUM, MSG_SIZE, WRITE_READ_RATIO};
 
 pub struct Agent {
     id: usize,
@@ -36,46 +32,43 @@ impl Agent {
         })
     }
 
-    pub fn run(&self) -> (u32, u32) {
-        let mut w = 0;
-        let mut r = 0;
-        // let file = file.as_bytes();
-        let mut remaing_msgs = rand::random::<u32>() % MSG_LIMIT;
-        loop {
-            let (msg, key) = if remaing_msgs > 0 {
-                let key = rand::random::<u32>();
-                (self.get_rnd_msg(10), key)
-            } else {
-                (vec![0; 10], self.id as u32)
-            };
-            self.hash_table.write(&key, msg);
-            remaing_msgs -= 1;
-            w += 1;
-            thread::sleep(Duration::from_millis(INTERVAL));
-            let msg = self.hash_table.read(&key);
-            match msg {
-                Some(m) => {
-                    r += 1;
-                    // if the message is all zeros, must exit
-                    if m.iter().all(|&x| x == 0) {
-                        debug!("Agent {id} finished", id=self.id);
-                        break;
-                    }
+    pub fn run(&self) -> std::time::Duration {
+        let start = std::time::Instant::now();
+        for _ in 0..MSG_NUM {
+            // Decide if it will read or write
+            let key: String = Agent::get_random_key();
+            if rand::random::<f32>() < WRITE_READ_RATIO {
+                let msg = Agent::get_rnd_msg(MSG_SIZE);
+                match self.hash_table.write(&key, &msg) {
+                    Ok(_) => println!("Agent {} wrote key {}", self.id, key),
+                    Err(e) => println!("Error: {}", e),
                 }
-                None => {
-                    debug!("Read failed on key {key}");
+            } else {
+                match self.hash_table.read(&key) {
+                    Some(msg) => println!("Agent {} read key {}: {}", self.id, key, msg),
+                    None => println!("Agent {} could not read key {}", self.id, key),
                 }
             }
+            
         }
-        return (w, r);
+        if self.id == 0 { std::thread::sleep(std::time::Duration::from_secs(20)); }
+        start.elapsed()
     }
 
-    fn get_rnd_msg(&self, size: usize) -> Vec<u8> {
+    fn get_random_key() -> String {
+        let x = rand::random::<u8>() % KEYS.len() as u8;
+        KEYS[x as usize].to_string()        
+    }
+
+    fn get_rnd_msg(size: usize) -> String {
         let mut msg = Vec::new();
+        let mut x;
         for _ in 0..size {
-            msg.push(rand::random::<u8>());
+            x = b":"[0];
+            while x == b":"[0] { x = rand::random::<u8>()%26+97; }
+            msg.push(x);
         }
-        msg
+        String::from_utf8(msg).unwrap()
     }
 }
 
