@@ -166,6 +166,7 @@ impl RecListener {
                         }
                     }
                 }
+                debug!(">>> pushing {packet} on the packets buffer");
                 packets.push(packet);
             }
         }
@@ -184,19 +185,23 @@ impl RecListener {
             Self::brd_req(&self.reg_to_snd_tx, message.clone());
             false
         } else {
-            // If the origin priority is higher or equal to yours, it means the origin is the leader and you must simply gossip the message
+            // If the origin priority is higher or equal to yours,
+            // it means the origin is the leader and you must simply gossip the message
             Self::gossip(&self.reg_to_snd_tx, message.clone(), *origin, sequence_number);
             true
         }
     }
 
     /// When a packet marked as last is received, the packets are merged and the message is returned
-    fn receive_last_packet(&self,packets: &mut Vec<Packet>,
+    fn receive_last_packet(&self, packets: &mut Vec<Packet>,
         packet: &Packet) -> (Vec<u8>, SocketAddr, u32) {
         // Ignore the first packet if its the remnant of a previous message
-        match packets.first() { 
+        match packets.first() {
             Some(p) => {
-                if p.header.is_last() { packets.remove(0); }
+                if p.header.is_last() {
+                    debug!("> Ignorando pacote remanescente de uma mensagem anterior");
+                    packets.remove(0);
+                }
             }
             None => {}
         }
