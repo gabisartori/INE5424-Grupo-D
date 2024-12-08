@@ -37,7 +37,7 @@ impl Agent {
 
     pub fn run(self) -> std::time::Duration {
         let start = std::time::Instant::now();
-        for _ in 0..MSG_NUM {
+        for i in 0..MSG_NUM {
             // Decide if it will read or write
             let key: String = Agent::get_random_key();
             if rand::random::<f32>() < WRITE_READ_RATIO {
@@ -46,7 +46,9 @@ impl Agent {
             } else {
                 let _ = self.hash_table.read(&key);
             }
-            
+            if i % 10 == 0 {
+                println!("Agente {} enviou {i}/{MSG_NUM} mensagens", self.id,);
+            }
         }
         let total = start.elapsed();
         self.listener_handle.join().unwrap();

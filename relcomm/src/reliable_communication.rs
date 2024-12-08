@@ -59,7 +59,7 @@ impl ReliableCommunication {
         let (hb_tx, hb_rx) = mpsc::channel();
 
         let sender = RecSender::new(host.clone(), group.clone(),
-            channel.clone(), reg_to_snd_tx.clone(), broadcast.clone(), logger.clone());
+            channel.clone(), broadcast.clone(), logger.clone());
 
         let listener = RecListener::new(host.clone(), 
             group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
@@ -252,8 +252,8 @@ impl ReliableCommunication {
                 // Wait for the request result
                 match request_result_rx.recv() {
                     Ok(0) => {
-                        // debug!("Falha em enviar mensagem para o líder, tentando novamente...");
-                        // continue;
+                        debug!("Falha em enviar mensagem para o líder, tentando novamente...");
+                        continue;
                     }
                     Ok(_) => {}
                     Err(e) => {

@@ -14,4 +14,4 @@ pub const KEYS: [&str; 10] = [
     "key9",
     "key10"
 ];
-pub const WRITE_READ_RATIO: f32 = 1.;
+pub const WRITE_READ_RATIO: f32 = 0.5;

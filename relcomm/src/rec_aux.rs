@@ -20,10 +20,6 @@ pub enum SendRequestData {
         origin: SocketAddr,
         seq_num: u32,
     },
-    ResendPkt {
-        pkts: Vec<Packet>,
-        attempts: u32,
-    },
 }
 
 #[derive(Clone)]
