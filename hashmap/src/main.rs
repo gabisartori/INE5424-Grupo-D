@@ -1,6 +1,7 @@
 mod config;
 mod hashmap;
 mod agent;
+mod formatter;
 
 use logger::{initializate_folders, debug_file};
 
@@ -41,13 +42,13 @@ fn main() {
             agent_id,
             AGENT_NUM,
         );
-        let (w, r) = match agent {
+        let time = match agent {
             Ok(agent) => agent.run(),
             Err(e) => panic!("Falha ao criar agente {}: {}", agent_id, e),
         };
         // Output the results to a file
         let file_path = format!("tests/test_{test_id}/Resultado.txt");
-        let msg = format!("AGENTE {agent_id} -> ENVIOS: {w} - RECEBIDOS: {r}\n");
+        let msg = format!("AGENTE {agent_id} -> {} seconds to broadcast {} messages\n", time.as_secs_f32(), config::MSG_NUM);
         debug_file!(file_path, &msg.as_bytes());
     } else {
         println!("uso: cargo run");

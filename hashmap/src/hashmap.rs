@@ -1,20 +1,17 @@
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::io::Error;
+
 
 use std::collections::HashMap;
-// the hashmap
-
-
-
 use relcomm::reliable_communication::ReliableCommunication;
 
-use crate::config::{KEY_SIZE, MSG_SIZE};
+use crate::formatter;
 
 /// Struct that represents the distributed hash table
 pub struct DistrHash {
     communication: Arc<ReliableCommunication>,
-    hash_table: Mutex<HashMap<u32, Vec<u8>>>,
+    hash_table: Mutex<HashMap<String, String>>,
 }
 
 impl DistrHash {
@@ -28,36 +25,36 @@ impl DistrHash {
         thread::spawn({
             let instance = instance.clone();
             move || {
-                instance.update_table();
+                instance.listener();
             }
         });
         instance
     }
 
-    pub fn write(&self, key: &u32, msg: Vec<u8>) {
-        let mut table = self.hash_table.lock().unwrap();
-        let key_bytes = key.to_string();
-        let key_bytes = key_bytes.as_bytes();
-        let mut key_bytes = key_bytes.to_vec();
-        key_bytes.extend_from_slice(msg.as_slice());        
-        table.insert(key.clone(), msg);
-        self.communication.broadcast(key_bytes);
-        return;
+    pub fn write(&self, key: &String, msg: &String) -> Result<(), Error> {
+        let bytes = formatter::to_bytes(key, msg)?;
+        self.communication.broadcast(bytes);
+        Ok(())
     }
 
-    pub fn read(&self, key: &u32) -> Option<Vec<u8>> {
+    pub fn read(&self, key: &String) -> Option<String> {
         let table = self.hash_table.lock().unwrap();
         table.get(key).cloned()
     }
 
-    fn update_table(&self) {
+    fn listener(&self) {
         loop {
-            let mut buffer = vec![0; MSG_SIZE];
+            let mut buffer = vec![];
             if self.communication.receive(&mut buffer) {
-                let key = u32::from_be_bytes(buffer[0..KEY_SIZE].try_into().unwrap());
-                let value = buffer[KEY_SIZE..MSG_SIZE].to_vec();
-                let mut table = self.hash_table.lock().unwrap();
-                table.insert(key, value);
+                match formatter::from_bytes(buffer) {
+                    Ok((key, value)) => {
+                        let mut table = self.hash_table.lock().unwrap();
+                        table.insert(key, value);
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                    }
+                }
             }
         }
     }
