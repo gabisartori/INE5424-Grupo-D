@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
 
-use logger::{log::{PacketStatus, SharedLogger}, debug};
+use logger::debug;
 use crate::failure_detection::FailureDetection;
 use crate::rec_aux::{SendRequest, Broadcast, RecAux};
 use crate::channels::Channel;
@@ -16,7 +16,6 @@ pub struct RecListener {
     group: Arc<Mutex<Vec<Node>>>,
     channel: Arc<Channel>,
     broadcast: Broadcast,
-    logger: SharedLogger,
     reg_to_snd_tx: Sender<SendRequest>,
 }
 
@@ -29,7 +28,6 @@ impl RecListener {
         group: Arc<Mutex<Vec<Node>>>,
         channel: Arc<Channel>,
         broadcast: Broadcast,
-        logger: SharedLogger,
         reg_to_snd_tx: Sender<SendRequest>,
     ) -> Self {
         Self {
@@ -37,7 +35,6 @@ impl RecListener {
             group,
             channel,
             broadcast,
-            logger,
             reg_to_snd_tx,
         }
     }
@@ -80,9 +77,6 @@ impl RecListener {
                 }
                 continue;
             } else if packet.header.is_ack() {
-                // logger
-                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAck);
-
                 // Handle ack
                 while let Ok((key, start_seq)) = reg.try_recv() {
                     expected_acks.insert(key, start_seq);
@@ -95,21 +89,14 @@ impl RecListener {
                             Ok(_) => {}
                             Err(e) => {
                                 debug!("Erro ao enviar ACK: {e}");
-                                // logger
-                                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                             }
                         }
                     }
                     None => {
                         debug!("ACK recebido sem destinatário esperando");
-                        // logger
-                        Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::ReceivedAckFailed);
                     }
                 }
             } else {
-                // logger
-                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::Received);
-
                 // Handle data
                 let packets = pkts_per_origin
                     .entry(packet.header.origin)
@@ -118,13 +105,11 @@ impl RecListener {
 
                 // Ignore the packet if the sequence number is higher than expected
                 if packet.header.seq_num > expected {
-                    debug!("expected seq_num {expected}, recebeu {packet}");
+                    // debug!("expected seq_num {expected}, recebeu {packet}");
                     continue;
                 }
                 // Send ack otherwise
                 self.channel.send(&packet.get_ack());
-                // logger
-                Self::log_pkt(&self.logger, &self.host, &packet, PacketStatus::SentAck);
 
                 if packet.header.seq_num < expected {
                     continue;
@@ -212,9 +197,6 @@ impl RecListener {
             Some(p) => { p }
             None => { &packet }
         };
-        // logger
-        Self::log_pkt(&self.logger, &self.host, &p, PacketStatus::ReceivedLastPacket);
-
         let seq_num: u32 = p.header.seq_num;
         packets.clear();
 

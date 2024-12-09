@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use logger::{log::SharedLogger, debug};
+use logger::debug;
 use crate::config::{BROADCAST, MESSAGE_TIMEOUT, BROADCAST_TIMEOUT};
 use crate::channels::Channel;
 use crate::failure_detection::FailureDetection;
@@ -21,7 +21,6 @@ use crate::rec_sender::RecSender;
 pub struct ReliableCommunication {
     pub host: Node,
     pub group: Arc<Mutex<Vec<Node>>>,
-    pub logger: SharedLogger,
     broadcast: Broadcast,
     message_timeout: Duration,
     broadcast_timeout: Duration,
@@ -37,10 +36,9 @@ impl ReliableCommunication {
     /// This thread will be responsible for handling the destination of each received packet
     pub fn new(
         host: Node,
-        group: Vec<Node>,
-        logger: SharedLogger,
+        group: Vec<Node>
     ) -> Result<Arc<Self>, std::io::Error> {
-        let channel = Channel::new(host.addr, logger.clone(), host.clone())?;
+        let channel = Channel::new(host.addr)?;
         let broadcast: Broadcast = match BROADCAST {
             "BEB" => Broadcast::BEB,
             "URB" => Broadcast::URB,
@@ -58,12 +56,15 @@ impl ReliableCommunication {
         let (brd_acks_tx, brd_acks_rx) = mpsc::channel();
         let (hb_tx, hb_rx) = mpsc::channel();
 
-        let sender = RecSender::new(host.clone(), group.clone(),
-            channel.clone(), broadcast.clone(), logger.clone());
+        let sender = RecSender::new(host.clone(), group.clone(), channel.clone(), broadcast.clone());
 
-        let listener = RecListener::new(host.clone(), 
-            group.clone(), channel.clone(), broadcast.clone(), logger.clone(),
-            reg_to_snd_tx.clone());
+        let listener = RecListener::new(
+            host.clone(),
+            group.clone(),
+            channel.clone(),
+            broadcast.clone(),
+            reg_to_snd_tx.clone()
+        );
 
         let mut failure_detection = FailureDetection::new(group.clone());
 
@@ -96,7 +97,6 @@ impl ReliableCommunication {
         Ok(Arc::new(Self {
             host,
             group,
-            logger,
             broadcast,
             message_timeout,
             broadcast_timeout,

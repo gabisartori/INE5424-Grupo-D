@@ -8,4 +8,4 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 pub const HEARTBEAT_MISS_LIMIT: i32 = 5;
 pub const GOSSIP_RATE: usize = 3;
 pub const W_SIZE: usize = 5;
-pub const LOSS_RATE: f32= 0.01;
+pub const LOSS_RATE: f32= 0.;

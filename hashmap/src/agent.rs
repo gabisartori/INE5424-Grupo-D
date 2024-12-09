@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-
-use logger::log::{SharedLogger, Logger};
 use logger::debug;
 
 use relcomm::reliable_communication::ReliableCommunication;
@@ -19,13 +17,11 @@ pub struct Agent {
 impl Agent {
     fn new(
         id: usize,
-        nodes: Vec<Node>,
-        logger: SharedLogger,
+        nodes: Vec<Node>
     ) -> Result<Self, std::io::Error> {
         let communication = ReliableCommunication::new(
                 nodes[id].clone(),
-                nodes,
-                logger,
+                nodes
             )?;
         let (hash_table, listener_handle) = DistrHash::new(communication);
         Ok(Agent {
@@ -89,14 +85,6 @@ pub fn create_agents(
                  i))
         .collect();
 
-    let logger = Arc::new(
-        Logger::new(
-            true,
-            true,
-            true,
-            true,
-            agent_num));
-
-    let agent = Agent::new(id, nodes, logger)?;
+    let agent = Agent::new(id, nodes)?;
     Ok(agent)
 }

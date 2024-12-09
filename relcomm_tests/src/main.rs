@@ -3,8 +3,6 @@ use std::sync::{Arc, mpsc::{RecvError, Sender, self}};
 use std::{thread, vec};
 use std::{fs::{File, OpenOptions}, io::{Write, BufRead, BufReader}};
 
-use logger::log::SharedLogger;
-use logger::log::Logger;
 use logger::{debug_file, debug, initializate_folders};
 use relcomm::reliable_communication::ReliableCommunication;
 use relcomm::node::Node;
@@ -21,16 +19,13 @@ struct Agent {
 impl Agent {
     fn new(
         id: usize,
-        nodes: Vec<Node>,
-        logger: SharedLogger,
+        nodes: Vec<Node>
     ) -> Result<Self, std::io::Error> {
         Ok(Agent {
             id,
             communication: ReliableCommunication::new(
                 nodes[id].clone(),
-                nodes,
-                logger,
-
+                nodes
             )?,
         })
     }
@@ -273,16 +268,8 @@ fn create_agents(
         .map(|i| Node::new(SocketAddr::new(ip, port + (i as u16)), i))
         .collect();
 
-    let logger = Arc::new(
-        Logger::new(
-            true,
-            true,
-            true,
-            true,
-            agent_num));
-
     let agent = Arc::new(
-        Agent::new(id, nodes, logger)?
+        Agent::new(id, nodes)?
     );
     Ok(agent)
 }

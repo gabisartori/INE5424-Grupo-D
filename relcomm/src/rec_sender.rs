@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, RecvTimeoutError};
 
-use logger::{log::{PacketStatus, MessageStatus, SharedLogger}, debug};
+use logger::debug;
 use crate::rec_aux::{SendRequest, Broadcast, SendRequestData, RecAux};
 use crate::config::{GOSSIP_RATE, TIMEOUT, TIMEOUT_LIMIT, W_SIZE};
 use crate::node::Node;
@@ -16,7 +16,6 @@ pub struct RecSender {
     host: Node,
     group: Arc<Mutex<Vec<Node>>>,
     channel: Arc<Channel>,
-    logger: SharedLogger,
     // Keeps track of the sequence number, for sends and broadcasts
     dst_seq_num_cnt: Mutex<HashMap<SocketAddr, (u32, u32)>>,
     broadcast: Broadcast,
@@ -30,14 +29,16 @@ impl RecAux for RecSender {}
 
 impl RecSender {
     /// Constructor
-    pub fn new( host: Node, group: Arc<Mutex<Vec<Node>>>,
-        channel: Arc<Channel>, broadcast: Broadcast,
-        logger: SharedLogger) -> Self {
+    pub fn new(
+        host: Node,
+        group: Arc<Mutex<Vec<Node>>>,
+        channel: Arc<Channel>,
+        broadcast: Broadcast,
+    ) -> Self {
         Self {
             host,
             group,
             channel,
-            logger,
             dst_seq_num_cnt: Mutex::new(HashMap::new()),
             broadcast,
             timeout: TIMEOUT,
@@ -63,12 +64,7 @@ impl RecSender {
                 let _ = request.result_tx.send(0);
                 continue;
             }
-            // logger
-            let state = if messages_to_send[0][0].header.is_brd() {
-                MessageStatus::SentBroadcast
-            } else {
-                MessageStatus::Sent
-            };
+
             let mut success_count = 0;
             for packets in messages_to_send {
                 // Register the destination address and the sequence to the listener thread
@@ -83,7 +79,6 @@ impl RecSender {
                 };
                 if target.is_dead() {
                     debug!("Erro ao enviar mensagem: {} está morto", target);
-                    Self::log_msg(&self.logger, &self.host, &first, MessageStatus::SentFailed);
                     self.reset_seq_num(&first);
                     continue;
                 }
@@ -98,12 +93,9 @@ impl RecSender {
                     (first.header.dst_addr, first.header.origin),
                     first.header.seq_num,
                 )) {
-                    Ok(_) => {
-                        Self::log_msg(&self.logger, &self.host, &first, state);
-                    }
+                    Ok(_) => {},
                     Err(e) => {
                         debug!("Erro ao enviar pedido de ACK para a Listener: {e}");
-                        Self::log_pkt(&self.logger, &self.host, &first, PacketStatus::SentAckFailed);
                         continue;
                     }
                 }
@@ -227,21 +219,12 @@ impl RecSender {
                 return false;
             }
         };
-        // logger
-        let state = {
-            if first.is_brd() {
-                PacketStatus::SentBroadcast
-            } else {
-                PacketStatus::Sent
-            }
-        };
+
         while base < packets.len() {
             // Send window
             while next_seq_num < base + self.w_size && next_seq_num < packets.len() {
                 self.channel.send(&packets[next_seq_num]);
                 next_seq_num += 1;
-                // logger
-                Self::log_pkt(&self.logger, &self.host, &packets[next_seq_num-1], state);
             }
 
             // Wait for an ACK

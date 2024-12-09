@@ -5,26 +5,22 @@ e implementa sockets para comunicação entre os processos participantes.
 use std::net::UdpSocket;
 use std::sync::Arc;
 
-use crate::node::Node;
 use crate::packet::Packet;
 use crate::config::LOSS_RATE;
 use crate::rec_aux::RecAux;
 use logger::debug;
-use logger::log::SharedLogger;
 
 // Estrutura básica para a camada de comunicação por canais
 #[derive(Clone)]
 pub struct Channel {
-    socket: Arc<UdpSocket>,
-    logger: SharedLogger,
-    host: Node
+    socket: Arc<UdpSocket>
 }
 
 impl Channel {
     /// Constructor
-    pub fn new(bind_addr: std::net::SocketAddr, logger: SharedLogger, host: Node) -> Result<Arc<Self>, std::io::Error> {
+    pub fn new(bind_addr: std::net::SocketAddr) -> Result<Arc<Self>, std::io::Error> {
         let socket = Arc::new(UdpSocket::bind(bind_addr)?);
-        Ok(Arc::new(Self { socket, logger, host }))
+        Ok(Arc::new(Self { socket }))
     }
 
     /// Validates the received message
@@ -52,15 +48,9 @@ impl Channel {
                 }
             };
             // Simula perda de pacotes, usand o parâmetro LOSS_RATE
-            if rand::random::<f32>() < LOSS_RATE {
-                Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::InjectedFailure);
-                continue;
-            }
+            if rand::random::<f32>() < LOSS_RATE { continue; }
             // Verifica se o pacote foi corrompido
-            if !self.validate_message(&packet) { 
-                Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::ReceivedFailed);
-                continue; 
-            }
+            if !self.validate_message(&packet) { continue; }
 
             return Ok(packet);
         }
@@ -74,15 +64,7 @@ impl Channel {
         }
         match self.socket.send_to(&packet.to_bytes(), packet.header.dst_addr) {
             Ok(_) => true,
-            Err(_) => {
-                if packet.header.is_ack() {
-                    Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentAckFailed);
-                }
-                else {
-                    Self::log_pkt(&self.logger, &self.host, &packet, logger::log::PacketStatus::SentFailed);
-                }
-                false
-            }
+            Err(_) => { false }
         }
     }
 }
