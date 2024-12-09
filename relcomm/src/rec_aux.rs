@@ -93,7 +93,7 @@ pub trait RecAux {
     fn get_leader(group: &Arc<Mutex<Vec<Node>>>, host: &Node) -> Node {
         for node in group.lock().expect("Falha ao ler do grupo").iter() {
             if !node.is_dead() {
-                // debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
+                debug!("Agente {} escolheu {} como líder", host.agent_number, node.agent_number);
                 return node.clone();
             }
         }
