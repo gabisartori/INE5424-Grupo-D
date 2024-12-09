@@ -60,7 +60,7 @@ impl RecSender {
             let messages_to_send = self.get_messages(&request);
             if messages_to_send.is_empty() {
                 // If there are no messages to send, we can skip the rest of the loop
-                // debug!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>\nNenhuma mensagem para enviar");
+                debug!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>\nNenhuma mensagem para enviar");
                 let _ = request.result_tx.send(0);
                 continue;
             }
@@ -119,17 +119,17 @@ impl RecSender {
         match &request.options {
             SendRequestData::Send { dst_addr } => {
                 let packets = self.get_pkts( &self.host.addr, dst_addr, &self.host.addr, request.data.clone(), false);
-                // debug!("Starting send from {}", packets[0]);
+                debug!("Starting send from {}", packets[0]);
                 messages.push(packets);
             },
             SendRequestData::RequestLeader {} => {
                 let leader = Self::get_leader(&self.group, &self.host);
                 let packets = self.get_pkts(&self.host.addr, &leader.addr, &self.host.addr, request.data.clone(), true);
-                // debug!("Requesting leader with {}", packets[0]);
+                debug!("Requesting leader with {}", packets[0]);
                 messages.push(packets);
             },
             SendRequestData::Gossip { origin, seq_num } => {
-                // debug!("Gossiping msg from Agent {}, with seq_num {}", Self::get_agnt(&origin), seq_num);
+                debug!("Gossiping msg from Agent {}, with seq_num {}", Self::get_agnt(&origin), seq_num);
                 for node in self.get_friends() {
                     let packets = Packet::packets_from_message(
                         self.host.addr,
@@ -143,7 +143,7 @@ impl RecSender {
                 }
             },
             SendRequestData::StartBroadcast {} => {
-                // debug!("Starting broadcast");
+                debug!("Starting broadcast");
                 match self.broadcast {
                     Broadcast::BEB => {
                         for node in self.group
@@ -181,10 +181,10 @@ impl RecSender {
             .expect("Erro ao obter lock de dst_seq_num_cnt em reset_seq_num");
         let start_seq_tup = seq_lock.entry(first.header.dst_addr).or_insert((0, 0));
         if first.header.is_brd() {
-            // debug!("->-> Agent {} brd seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
+            debug!("->-> Agent {} brd seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
             start_seq_tup.1 = first.header.seq_num;
         } else {
-            // debug!("->->-> Agent {} Send seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
+            debug!("->->-> Agent {} Send seq_num was {} and was reset to {}", Self::get_agnt(&first.header.dst_addr), start_seq_tup.1, first.header.seq_num);
             start_seq_tup.0 = first.header.seq_num;
         }
     }
@@ -202,7 +202,7 @@ impl RecSender {
         let packets = Packet::packets_from_message(
             *src_addr, *dst_addr, *origin, data, *seq_num, is_brd,
         );
-        // debug!("<< Agent {} seq_num was {} and was set to {}", Self::get_agnt(dst_addr), *seq_num, *seq_num + packets.len() as u32);
+        debug!("<< Agent {} seq_num was {} and was set to {}", Self::get_agnt(dst_addr), *seq_num, *seq_num + packets.len() as u32);
         *seq_num += packets.len() as u32;
         packets
     }

@@ -49,7 +49,7 @@ fn main() {
         let file_path = format!("tests/test_{test_id}/Resultado.txt");
         let msg = format!("AGENTE {agent_id} -> {} seconds to broadcast {} messages\n", time.as_secs_f32(),
         config::MSG_NUM);
-        println!("{}", msg);
+        println!("{},", time.as_secs_f32());
         debug_file!(file_path, &msg.as_bytes());
     } else {
         println!("uso: cargo run");
