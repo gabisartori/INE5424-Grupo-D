@@ -15,7 +15,7 @@ fn main() {
         initializate_folders!(TESTS_NUM);
         for t in 0..TESTS_NUM {
             let mut children = Vec::new();
-            for i in 0..AGENT_NUM {
+            for i in 0..(t+5) {
                 let c = std::process::Command::new(std::env::current_exe().unwrap())
                     .arg(t.to_string()) // Passando o ID do teste
                     .arg(i.to_string()) // Passando o ID do agente

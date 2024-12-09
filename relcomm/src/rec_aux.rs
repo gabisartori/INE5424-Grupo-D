@@ -2,9 +2,8 @@ use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-use logger::{debug, log::{Logger, LoggerState, MessageStatus, PacketStatus}};
+use logger::debug;
 use crate::node::Node;
-use crate::packet::Packet;
 
 #[derive(Clone)]
 pub enum SendRequestData {
@@ -114,37 +113,6 @@ pub trait RecAux {
 
     fn get_agnt(addr: &SocketAddr) -> usize {
         addr.port() as usize % 100
-    }
-
-    fn log_msg(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: MessageStatus) {
-        let other_id = if host.addr == pkt.header.src_addr {
-            Self::get_agnt(&pkt.header.dst_addr)
-        } else {
-            Self::get_agnt(&pkt.header.src_addr)
-        };
-        let logger_state = LoggerState::Message {
-            state,
-            current_agent_id: Some(host.agent_number),
-            target_agent_id: Some(other_id),
-            message_id: pkt.header.seq_num as usize,
-        };
-        logger.log(logger_state);
-    }
-
-    fn log_pkt(logger: &Arc<Logger>, host: &Node, pkt: &Packet, state: PacketStatus) {
-        let other_id = if host.addr == pkt.header.src_addr {
-            Self::get_agnt(&pkt.header.dst_addr)
-        } else {
-            Self::get_agnt(&pkt.header.src_addr)
-        };
-        let logger_state = LoggerState::Packet {
-            state,
-            current_agent_id: Some(host.agent_number),
-            target_agent_id: Some(other_id),
-            seq_num: pkt.header.seq_num as usize,
-        };
-
-        logger.log(logger_state);
     }
 
     fn send_nonblocking(reg_to_snd_tx: &Sender<SendRequest>,
